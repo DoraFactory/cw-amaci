@@ -1,6 +1,7 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Uint128, Uint256};
 use cw4::TOTAL_KEY;
+use cw_amaci::state::PubKey;
 use cw_storage_plus::{Item, Map};
 
 #[cw_serde]
@@ -9,12 +10,6 @@ pub struct Config {
     pub denom: String,
     pub min_deposit_amount: Uint128,
     pub slash_amount: Uint128,
-}
-
-#[cw_serde]
-pub struct PubKey {
-    pub x: Uint256,
-    pub y: Uint256,
 }
 
 #[cw_serde]

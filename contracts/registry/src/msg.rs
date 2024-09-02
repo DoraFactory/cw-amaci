@@ -1,7 +1,7 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128, Uint256};
 
-use crate::state::PubKey;
+use cw_amaci::state::PubKey;
 
 #[cw_serde]
 pub struct InstantiateMsg {

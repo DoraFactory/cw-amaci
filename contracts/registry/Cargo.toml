@@ -49,12 +49,13 @@ serde = { version = "1.0.145", default-features = false, features = ["derive"] }
 thiserror = { version = "1.0.31" }
 cw-utils = "1.0.1"
 cw4 = "1.1.0"
-cw20 = "1.1.0"
 cw-controllers = "1.1.0"
 hex = "0.4"
 # pairing_ce = { git = "https://github.com/matter-labs/pairing.git" }
 num-bigint = "0.4.3"
 num-traits = "0.2"
+cw-amaci = { path = "../amaci", features = ["library"] }
+
 
 [dev-dependencies]
 anyhow = "1"

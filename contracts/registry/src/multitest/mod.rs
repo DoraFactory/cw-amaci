@@ -6,9 +6,9 @@ use anyhow::Result as AnyResult;
 use crate::{
     contract::{execute, instantiate, query},
     msg::*,
-    state::PubKey,
 };
 use cosmwasm_std::{Addr, Coin, StdResult, Uint128, Uint256};
+use cw_amaci::state::PubKey;
 use cw_multi_test::{App, AppResponse, ContractWrapper, Executor};
 
 pub const MOCK_CONTRACT_ADDR: &str = "cosmos2contract";

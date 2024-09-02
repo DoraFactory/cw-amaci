@@ -10,9 +10,10 @@ use cw2::set_contract_version;
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::state::{
-    Admin, Config, PubKey, ADMIN, CONFIG, MACI_DEACTIVATE_MESSAGE, MACI_DEACTIVATE_OPERATOR,
+    Admin, Config, ADMIN, CONFIG, MACI_DEACTIVATE_MESSAGE, MACI_DEACTIVATE_OPERATOR,
     MACI_OPERATOR_PUBKEY, MACI_OPERATOR_SET, OPERATOR, TOTAL,
 };
+use cw_amaci::state::PubKey;
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:cw-amaci-registry";

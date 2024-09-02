@@ -10,9 +10,9 @@ mod test {
             contract_address, owner, uint256_from_decimal_string, user1, user2, user3,
             AmaciRegistryCodeId, DORA_DEMON, MIN_DEPOSIT_AMOUNT,
         },
-        state::PubKey,
         ContractError,
     };
+    use cw_amaci::state::PubKey;
 
     // #[test]
     fn instantiate_should_works() {
