@@ -52,4 +52,7 @@ pub enum ContractError {
 
     #[error("No data in ReceiveMsg")]
     NoData {},
+
+    #[error("No matched-size circuits")]
+    NoMatchedSizeCircuit,
 }

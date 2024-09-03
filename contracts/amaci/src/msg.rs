@@ -9,6 +9,7 @@ use cosmwasm_std::{Addr, Uint128, Uint256};
 pub struct InstantiateMsg {
     pub parameters: MaciParameters,
     pub coordinator: PubKey,
+    pub admin: Addr,
     pub operator: Addr,
     // pub qtr_lib: QuinaryTreeRoot,
     // pub groth16_process_vkey: Groth16VKeyType,

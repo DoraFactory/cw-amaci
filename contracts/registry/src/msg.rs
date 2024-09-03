@@ -25,10 +25,10 @@ pub enum ExecuteMsg {
         pubkey: PubKey,
     },
     Deregister {},
-    UploadDeactivateMessage {
-        contract_address: Addr,
-        deactivate_message: Vec<Vec<Uint256>>,
-    },
+    // UploadDeactivateMessage {
+    //     contract_address: Addr,
+    //     deactivate_message: Vec<Vec<Uint256>>,
+    // },
     ChangeParams {
         min_deposit_amount: Uint128,
         slash_amount: Uint128,

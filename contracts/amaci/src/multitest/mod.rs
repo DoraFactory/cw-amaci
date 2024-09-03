@@ -494,6 +494,7 @@ impl MaciContract {
             voting_time,
             // circuit_type,
             operator: operator(),
+            admin: owner(),
         };
 
         app.instantiate_contract(
@@ -604,6 +605,7 @@ impl MaciContract {
             voting_time,
             // circuit_type,
             operator: operator(),
+            admin: owner(),
         };
 
         app.instantiate_contract(

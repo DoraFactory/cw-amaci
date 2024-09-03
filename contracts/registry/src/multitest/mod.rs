@@ -132,24 +132,24 @@ impl AmaciRegistryContract {
         app.execute_contract(sender, self.addr(), &ExecuteMsg::Deregister {}, &[])
     }
 
-    #[track_caller]
-    pub fn upload_deactivate_message(
-        &self,
-        app: &mut App,
-        sender: Addr,
-        contract_address: Addr,
-        deactivate_message: Vec<Vec<Uint256>>,
-    ) -> AnyResult<AppResponse> {
-        app.execute_contract(
-            sender,
-            self.addr(),
-            &ExecuteMsg::UploadDeactivateMessage {
-                contract_address,
-                deactivate_message,
-            },
-            &[],
-        )
-    }
+    // #[track_caller]
+    // pub fn upload_deactivate_message(
+    //     &self,
+    //     app: &mut App,
+    //     sender: Addr,
+    //     contract_address: Addr,
+    //     deactivate_message: Vec<Vec<Uint256>>,
+    // ) -> AnyResult<AppResponse> {
+    //     app.execute_contract(
+    //         sender,
+    //         self.addr(),
+    //         &ExecuteMsg::UploadDeactivateMessage {
+    //             contract_address,
+    //             deactivate_message,
+    //         },
+    //         &[],
+    //     )
+    // }
 
     #[track_caller]
     pub fn change_params(

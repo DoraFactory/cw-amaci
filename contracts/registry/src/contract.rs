@@ -1,8 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    coins, to_json_binary, Addr, BankMsg, Binary, Deps, DepsMut, Env, MessageInfo, Response,
-    StdResult, Uint128, Uint256,
+    coins, to_binary, to_json_binary, Addr, BankMsg, Binary, Coin, Deps, DepsMut, Env, MessageInfo,
+    Response, StdResult, SubMsg, Uint128, Uint256, WasmMsg,
 };
 
 use cw2::set_contract_version;
@@ -13,7 +13,8 @@ use crate::state::{
     Admin, Config, ADMIN, CONFIG, MACI_DEACTIVATE_MESSAGE, MACI_DEACTIVATE_OPERATOR,
     MACI_OPERATOR_PUBKEY, MACI_OPERATOR_SET, OPERATOR, TOTAL,
 };
-use cw_amaci::state::PubKey;
+use cw_amaci::msg::InstantiateMsg as AMaciInstantiateMsg;
+use cw_amaci::state::{MaciParameters, PubKey, RoundInfo, VotingTime, Whitelist};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:cw-amaci-registry";
@@ -57,12 +58,12 @@ pub fn execute(
     match msg {
         ExecuteMsg::Register { pubkey } => execute_register(deps, env, info, pubkey),
         ExecuteMsg::Deregister {} => execute_deregister(deps, env, info),
-        ExecuteMsg::UploadDeactivateMessage {
-            contract_address,
-            deactivate_message,
-        } => {
-            execute_upload_deactivate_message(deps, env, info, contract_address, deactivate_message)
-        }
+        // ExecuteMsg::UploadDeactivateMessage {
+        //     contract_address,
+        //     deactivate_message,
+        // } => {
+        //     execute_upload_deactivate_message(deps, env, info, contract_address, deactivate_message)
+        // }
         ExecuteMsg::ChangeParams {
             min_deposit_amount,
             slash_amount,
@@ -142,6 +143,77 @@ pub fn execute_deregister(
     }
 }
 
+pub fn create_round(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    amaci_code_id: u64,
+    operator: Addr,
+    max_voter: Uint256,
+    max_option: Uint256,
+    voice_credit_amount: Uint256,
+    round_info: RoundInfo,
+    voting_time: VotingTime,
+    whitelist: Option<Whitelist>,
+    pre_deactivate_root: Uint256,
+) -> Result<Response, ContractError> {
+    let mut maci_parameters: MaciParameters;
+    if max_voter <= Uint256::from_u128(25u128) && max_option <= Uint256::from_u128(5u128) {
+        // state_tree_depth: 2
+        // vote_option_tree_depth: 1
+        maci_parameters = MaciParameters {
+            state_tree_depth: Uint256::from_u128(2u128),
+            int_state_tree_depth: Uint256::from_u128(1u128),
+            vote_option_tree_depth: Uint256::from_u128(1u128),
+            message_batch_size: Uint256::from_u128(5u128),
+        }
+    } else if max_voter <= Uint256::from_u128(625u128) && max_option <= Uint256::from_u128(25u128) {
+        // state_tree_depth: 4
+        // vote_option_tree_depth: 2
+        maci_parameters = MaciParameters {
+            state_tree_depth: Uint256::from_u128(4u128),
+            int_state_tree_depth: Uint256::from_u128(2u128),
+            vote_option_tree_depth: Uint256::from_u128(2u128),
+            message_batch_size: Uint256::from_u128(25u128),
+        }
+        // } else if max_voter <= 15625 && max_option <= 125 {
+    } else {
+        return Err(ContractError::NoMatchedSizeCircuit {});
+    }
+
+    let operator_pubkey = MACI_OPERATOR_PUBKEY.load(deps.storage, &operator)?;
+
+    let init_msg = AMaciInstantiateMsg {
+        parameters: maci_parameters,
+        coordinator: operator_pubkey,
+        operator,
+        admin: info.sender,
+        max_vote_options: max_option,
+        voice_credit_amount,
+        round_info,
+        voting_time,
+        whitelist,
+        pre_deactivate_root,
+    };
+
+    let msg = WasmMsg::Instantiate {
+        admin: Some(env.contract.address.to_string()),
+        code_id: amaci_code_id,
+        msg: to_json_binary(&init_msg)?,
+        funds: vec![],
+        label: "AMACI".to_string(),
+    };
+
+    // let msg = SubMsg::reply_on_success(msg, INITIAL_LOTTERY_INSTANTIATION_REPLY_ID);
+
+    let resp = Response::new()
+        // .add_submessage(msg)
+        .add_message(msg)
+        .add_attribute("action", "create_maci_round");
+
+    Ok(resp)
+}
+
 pub fn execute_change_params(
     deps: DepsMut,
     _env: Env,
@@ -180,33 +252,33 @@ pub fn execute_change_operator(
     }
 }
 
-pub fn execute_upload_deactivate_message(
-    deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
-    contract_address: Addr,
-    deactivate_message: Vec<Vec<Uint256>>,
-) -> Result<Response, ContractError> {
-    if !is_operator_set(deps.as_ref(), &info.sender)? {
-        Err(ContractError::Unauthorized {})
-    } else {
-        let deactivate_format_data: Vec<Vec<String>> = deactivate_message
-            .iter()
-            .map(|input| input.iter().map(|f| f.to_string()).collect())
-            .collect();
-        MACI_DEACTIVATE_MESSAGE.save(deps.storage, &contract_address, &deactivate_format_data)?;
-        MACI_DEACTIVATE_OPERATOR.save(deps.storage, &contract_address, &info.sender)?;
+// pub fn execute_upload_deactivate_message(
+//     deps: DepsMut,
+//     _env: Env,
+//     info: MessageInfo,
+//     contract_address: Addr,
+//     deactivate_message: Vec<Vec<Uint256>>,
+// ) -> Result<Response, ContractError> {
+//     if !is_operator_set(deps.as_ref(), &info.sender)? {
+//         Err(ContractError::Unauthorized {})
+//     } else {
+//         let deactivate_format_data: Vec<Vec<String>> = deactivate_message
+//             .iter()
+//             .map(|input| input.iter().map(|f| f.to_string()).collect())
+//             .collect();
+//         MACI_DEACTIVATE_MESSAGE.save(deps.storage, &contract_address, &deactivate_format_data)?;
+//         MACI_DEACTIVATE_OPERATOR.save(deps.storage, &contract_address, &info.sender)?;
 
-        Ok(Response::new()
-            .add_attribute("action", "upload_deactivate_message")
-            .add_attribute("contract_address", &contract_address.to_string())
-            .add_attribute("maci_operator", &info.sender.to_string())
-            .add_attribute(
-                "deactivate_message",
-                format!("{:?}", deactivate_format_data),
-            ))
-    }
-}
+//         Ok(Response::new()
+//             .add_attribute("action", "upload_deactivate_message")
+//             .add_attribute("contract_address", &contract_address.to_string())
+//             .add_attribute("maci_operator", &info.sender.to_string())
+//             .add_attribute(
+//                 "deactivate_message",
+//                 format!("{:?}", deactivate_format_data),
+//             ))
+//     }
+// }
 
 // Only admin can execute
 fn is_admin(deps: Deps, sender: &str) -> StdResult<bool> {

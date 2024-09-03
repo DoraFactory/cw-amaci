@@ -291,19 +291,13 @@ pub const GROTH16_TALLY_VKEYS: Item<Groth16VkeyStr> = Item::new("groth16_tally_v
 pub const GROTH16_DEACTIVATE_VKEYS: Item<Groth16VkeyStr> = Item::new("groth16_deactivate_vkeys");
 pub const GROTH16_NEWKEY_VKEYS: Item<Groth16VkeyStr> = Item::new("groth16_newkey_vkeys");
 
-#[cw_serde]
-pub struct PlonkVkeyStr {
-    pub n: usize,
-    pub num_inputs: usize,
-    pub selector_commitments: Vec<Vec<u8>>,
-    pub next_step_selector_commitments: Vec<Vec<u8>>,
-    pub permutation_commitments: Vec<Vec<u8>>,
-    pub non_residues: Vec<String>,
-    pub g2_elements: Vec<Vec<u8>>,
-}
+// registry operator data
+pub const MACI_DEACTIVATE_MESSAGE: Map<&Addr, Vec<Vec<String>>> =
+    // contract_address - [["", "", "", "", ""]]
+    Map::new("maci_deactivate_message");
 
-pub const PLONK_PROCESS_VKEYS: Item<PlonkVkeyStr> = Item::new("plonk_process_vkeys");
-pub const PLONK_TALLY_VKEYS: Item<PlonkVkeyStr> = Item::new("plonk_tally_vkeys");
+// registry operator data
+pub const MACI_OPERATOR: Item<Addr> = Item::new("maci_operator");
 
 #[cfg(test)]
 mod tests {

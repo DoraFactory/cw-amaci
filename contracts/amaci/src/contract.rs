@@ -8,11 +8,11 @@ use crate::state::{
     CURRENT_DEACTIVATE_COMMITMENT, CURRENT_STATE_COMMITMENT, CURRENT_TALLY_COMMITMENT,
     DMSG_CHAIN_LENGTH, DMSG_HASHES, DNODES, FEEGRANTS, GROTH16_DEACTIVATE_VKEYS,
     GROTH16_NEWKEY_VKEYS, GROTH16_PROCESS_VKEYS, GROTH16_TALLY_VKEYS, LEAF_IDX_0, MACIPARAMETERS,
-    MAX_LEAVES_COUNT, MAX_VOTE_OPTIONS, MSG_CHAIN_LENGTH, MSG_HASHES, NODES, NULLIFIERS,
-    NUMSIGNUPS, PERIOD, PRE_DEACTIVATE_ROOT, PROCESSED_DMSG_COUNT, PROCESSED_MSG_COUNT,
-    PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO, SIGNUPED, STATEIDXINC, STATE_ROOT_BY_DMSG,
-    TOTAL_RESULT, VOICECREDITBALANCE, VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP, VOTINGTIME, WHITELIST,
-    ZEROS, ZEROS_H10,
+    MACI_DEACTIVATE_MESSAGE, MACI_OPERATOR, MAX_LEAVES_COUNT, MAX_VOTE_OPTIONS, MSG_CHAIN_LENGTH,
+    MSG_HASHES, NODES, NULLIFIERS, NUMSIGNUPS, PERIOD, PRE_DEACTIVATE_ROOT, PROCESSED_DMSG_COUNT,
+    PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO, SIGNUPED, STATEIDXINC,
+    STATE_ROOT_BY_DMSG, TOTAL_RESULT, VOICECREDITBALANCE, VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP,
+    VOTINGTIME, WHITELIST, ZEROS, ZEROS_H10,
 };
 
 use pairing_ce::bn256::Bn256;
@@ -50,9 +50,7 @@ pub fn instantiate(
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     // Create an admin with the sender address
-    let admin = Admin {
-        admin: info.clone().sender,
-    };
+    let admin = Admin { admin: msg.admin };
     ADMIN.save(deps.storage, &admin)?;
 
     // An error will be thrown if the number of vote options exceeds the circuit’s capacity.
@@ -265,6 +263,8 @@ pub fn instantiate(
     // Save the initial period to storage
     PERIOD.save(deps.storage, &period)?;
 
+    MACI_OPERATOR.save(deps.storage, &msg.operator)?;
+
     Ok(Response::default()
         .add_attribute("action", "instantiate")
         .add_attribute("creator", &info.sender.to_string())
@@ -403,7 +403,7 @@ pub fn execute(
 //         }
 //     }
 //     // Check if the sender is authorized to execute the function
-//     if !can_execute(deps.as_ref(), info.sender.as_ref())? {
+//     if !is_admin(deps.as_ref(), info.sender.as_ref())? {
 //         Err(ContractError::Unauthorized {})
 //     } else {
 //         // Update the period status to Processing
@@ -446,7 +446,7 @@ pub fn execute(
 //     message_batch_size: Uint256,
 //     vote_option_tree_depth: Uint256,
 // ) -> Result<Response, ContractError> {
-//     if !can_execute(deps.as_ref(), info.sender.as_ref())? {
+//     if !is_admin(deps.as_ref(), info.sender.as_ref())? {
 //         Err(ContractError::Unauthorized {})
 //     } else {
 //         let mut cfg = MACIPARAMETERS.load(deps.storage)?;
@@ -467,7 +467,7 @@ pub fn execute_set_round_info(
     info: MessageInfo,
     round_info: RoundInfo,
 ) -> Result<Response, ContractError> {
-    if !can_execute(deps.as_ref(), info.sender.as_ref())? {
+    if !is_admin(deps.as_ref(), info.sender.as_ref())? {
         Err(ContractError::Unauthorized {})
     } else {
         if round_info.title == "" {
@@ -508,7 +508,7 @@ pub fn execute_set_whitelists(
         return Err(ContractError::PeriodError {});
     }
 
-    if !can_execute(deps.as_ref(), info.sender.as_ref())? {
+    if !is_admin(deps.as_ref(), info.sender.as_ref())? {
         Err(ContractError::Unauthorized {})
     } else {
         let cfg = MACIPARAMETERS.load(deps.storage)?;
@@ -542,7 +542,7 @@ pub fn execute_set_vote_options_map(
         return Err(ContractError::PeriodError {});
     }
 
-    if !can_execute(deps.as_ref(), info.sender.as_ref())? {
+    if !is_admin(deps.as_ref(), info.sender.as_ref())? {
         Err(ContractError::Unauthorized {})
     } else {
         let max_vote_options = vote_option_map.len() as u128;
@@ -801,6 +801,37 @@ pub fn execute_publish_deactivate_message(
         Ok(Response::new()
             .add_attribute("action", "publish_deactivate_message")
             .add_attribute("event", "error user."))
+    }
+}
+
+pub fn execute_upload_deactivate_message(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    deactivate_message: Vec<Vec<Uint256>>,
+) -> Result<Response, ContractError> {
+    if !is_operator(deps.as_ref(), &info.sender.as_ref())? {
+        Err(ContractError::Unauthorized {})
+    } else {
+        let deactivate_format_data: Vec<Vec<String>> = deactivate_message
+            .iter()
+            .map(|input| input.iter().map(|f| f.to_string()).collect())
+            .collect();
+        MACI_DEACTIVATE_MESSAGE.save(
+            deps.storage,
+            &env.contract.address,
+            &deactivate_format_data,
+        )?;
+        // MACI_DEACTIVATE_OPERATOR.save(deps.storage, &contract_address, &info.sender)?;
+
+        Ok(Response::new()
+            .add_attribute("action", "upload_deactivate_message")
+            .add_attribute("contract_address", &env.contract.address.to_string())
+            .add_attribute("maci_operator", &info.sender.to_string())
+            .add_attribute(
+                "deactivate_message",
+                format!("{:?}", deactivate_format_data),
+            ))
     }
 }
 
@@ -1572,7 +1603,7 @@ fn execute_grant(
     max_amount: Uint128,
 ) -> Result<Response, ContractError> {
     // Check if the sender is authorized to execute the function
-    if !can_execute(deps.as_ref(), info.sender.as_ref())? {
+    if !is_admin(deps.as_ref(), info.sender.as_ref())? {
         return Err(ContractError::Unauthorized {});
     }
 
@@ -1647,7 +1678,7 @@ fn execute_grant(
 
 fn execute_revoke(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
     // Check if the sender is authorized to execute the function
-    if !can_execute(deps.as_ref(), info.sender.as_ref())? {
+    if !is_admin(deps.as_ref(), info.sender.as_ref())? {
         return Err(ContractError::Unauthorized {});
     }
 
@@ -1677,7 +1708,7 @@ fn execute_revoke(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response
 }
 
 fn execute_bond(deps: DepsMut, _env: Env, info: MessageInfo) -> Result<Response, ContractError> {
-    if !can_execute(deps.as_ref(), info.sender.as_ref())? {
+    if !is_admin(deps.as_ref(), info.sender.as_ref())? {
         return Err(ContractError::Unauthorized {});
     }
 
@@ -1701,7 +1732,7 @@ fn execute_withdraw(
     info: MessageInfo,
     amount: Option<Uint128>,
 ) -> Result<Response, ContractError> {
-    if !can_execute(deps.as_ref(), info.sender.as_ref())? {
+    if !is_admin(deps.as_ref(), info.sender.as_ref())? {
         return Err(ContractError::Unauthorized {});
     }
 
@@ -1867,10 +1898,17 @@ pub fn hash_message_and_enc_pub_key(
 }
 
 // Only admin can execute
-fn can_execute(deps: Deps, sender: &str) -> StdResult<bool> {
+fn is_admin(deps: Deps, sender: &str) -> StdResult<bool> {
     let cfg = ADMIN.load(deps.storage)?;
     let can = cfg.is_admin(&sender);
     Ok(can)
+}
+
+// Only operator can execute
+fn is_operator(deps: Deps, sender: &str) -> StdResult<bool> {
+    let operator = MACI_OPERATOR.load(deps.storage)?;
+    let can_operator = sender.to_string() == operator.to_string();
+    Ok(can_operator)
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]

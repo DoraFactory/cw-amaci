@@ -162,16 +162,16 @@ mod test {
             .iter()
             .map(|input| input.iter().map(|f| f.to_string()).collect())
             .collect();
-        _ = contract.upload_deactivate_message(
-            &mut app,
-            user1(),
-            contract_address(),
-            deactivate_message,
-        );
-        let deactivate_message_state = contract
-            .get_deactivate_message(&app, contract_address())
-            .unwrap();
-        assert_eq!(deactivate_message_state, deactivate_format_message);
+        // _ = contract.upload_deactivate_message(
+        //     &mut app,
+        //     user1(),
+        //     contract_address(),
+        //     deactivate_message,
+        // );
+        // let deactivate_message_state = contract
+        //     .get_deactivate_message(&app, contract_address())
+        //     .unwrap();
+        // assert_eq!(deactivate_message_state, deactivate_format_message);
 
         let maci_operator = contract
             .get_maci_operator(&app, contract_address())
