@@ -1914,6 +1914,8 @@ fn is_operator(deps: Deps, sender: &str) -> StdResult<bool> {
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
+        QueryMsg::Admin {} => to_json_binary(&ADMIN.load(deps.storage)?.admin),
+        QueryMsg::Operator {} => to_json_binary(&MACI_OPERATOR.load(deps.storage)?),
         QueryMsg::GetRoundInfo {} => {
             to_json_binary::<RoundInfo>(&ROUNDINFO.load(deps.storage).unwrap())
         }

@@ -126,6 +126,12 @@ pub struct Period {
 #[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
+    #[returns(Addr)]
+    Admin {},
+
+    #[returns(Addr)]
+    Operator {},
+
     #[returns(RoundInfo)]
     GetRoundInfo {},
 
