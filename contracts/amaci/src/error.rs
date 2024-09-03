@@ -1,4 +1,4 @@
-use cosmwasm_std::StdError;
+use cosmwasm_std::{StdError, Uint256};
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq)]
@@ -42,6 +42,9 @@ pub enum ContractError {
     #[error("invalid hex format")]
     HexDecodingError {},
 
+    #[error("Invalid vkey")]
+    InvalidVKeyError {},
+
     #[error("Invalid proof, step {step} verify failed")]
     InvalidProof { step: String },
 
@@ -51,7 +54,7 @@ pub enum ContractError {
     #[error("already set {time_name} time")]
     AlreadySetVotingTime { time_name: String },
 
-    #[error("end_time must big than start_time")]
+    #[error("The end_time must be greater than the start_time and more than 10 minutes apart.")]
     WrongTimeSet {},
 
     #[error("round title can not be empty")]
@@ -80,4 +83,19 @@ pub enum ContractError {
 
     #[error("this new key is already exist.")]
     NewKeyExist,
+
+    #[error("max_vote_options cannot exceed {max_allowed}, current value is {current}.")]
+    MaxVoteOptionsExceeded {
+        current: Uint256,
+        max_allowed: Uint256,
+    },
+
+    #[error("max_voter_num cannot exceed {max_allowed}, current value is {current}.")]
+    MaxVoterExceeded {
+        current: Uint256,
+        max_allowed: Uint256,
+    },
+
+    #[error("No matching circuit size.")]
+    NotMatchCircuitSize {},
 }

@@ -14,8 +14,8 @@ pub const ROUNDINFO: Item<RoundInfo> = Item::new("round_info");
 
 #[cw_serde]
 pub struct VotingTime {
-    pub start_time: Option<Timestamp>,
-    pub end_time: Option<Timestamp>,
+    pub start_time: Timestamp,
+    pub end_time: Timestamp,
 }
 
 pub const VOTINGTIME: Item<VotingTime> = Item::new("voting_time");
@@ -236,7 +236,6 @@ pub const QTR_LIB: Item<QuinaryTreeRoot> = Item::new("qtr_lib");
 #[cw_serde]
 pub struct WhitelistConfig {
     pub addr: String,
-    // pub balance: Uint256,
 }
 
 #[cw_serde]
@@ -255,7 +254,7 @@ pub const WHITELIST: Item<Whitelist> = Item::new("whitelist");
 
 pub const FEEGRANTS: Item<Uint128> = Item::new("fee_grants");
 
-pub const CIRCUITTYPE: Item<Uint256> = Item::new("circuit_type"); // <0: 1p1v | 1: pv>
+// pub const CIRCUITTYPE: Item<Uint256> = Item::new("circuit_type"); // <0: 1p1v | 1: pv>
 
 pub const CERTSYSTEM: Item<Uint256> = Item::new("certification_system"); // <0: groth16 | 1: plonk>
 

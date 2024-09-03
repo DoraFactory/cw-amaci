@@ -9,18 +9,21 @@ use cosmwasm_std::{Addr, Uint128, Uint256};
 pub struct InstantiateMsg {
     pub parameters: MaciParameters,
     pub coordinator: PubKey,
-    pub qtr_lib: QuinaryTreeRoot,
-    pub groth16_process_vkey: Groth16VKeyType,
-    pub groth16_tally_vkey: Groth16VKeyType,
-    pub groth16_deactivate_vkey: Groth16VKeyType,
-    pub groth16_add_key_vkey: Groth16VKeyType,
+    pub operator: Addr,
+    // pub qtr_lib: QuinaryTreeRoot,
+    // pub groth16_process_vkey: Groth16VKeyType,
+    // pub groth16_tally_vkey: Groth16VKeyType,
+    // pub groth16_deactivate_vkey: Groth16VKeyType,
+    // pub groth16_add_key_vkey: Groth16VKeyType,
     pub max_vote_options: Uint256,
     pub voice_credit_amount: Uint256,
 
     pub round_info: RoundInfo,
-    pub voting_time: Option<VotingTime>,
+    pub voting_time: VotingTime,
     pub whitelist: Option<Whitelist>,
-    pub circuit_type: Uint256, // <0: 1p1v | 1: pv>
+    // TODO: waiting add qv modal
+    // pub circuit_type: Uint256, // <0: 1p1v | 1: pv>
+
     // pub certification_system: Uint256, // <0: groth16 | 1: plonk>
     pub pre_deactivate_root: Uint256,
 }
@@ -43,42 +46,13 @@ pub struct Groth16ProofType {
 }
 
 #[cw_serde]
-pub struct PlonkVKeyType {
-    pub n: usize,
-    pub num_inputs: usize,
-    pub selector_commitments: Vec<String>,
-    pub next_step_selector_commitments: Vec<String>,
-    pub permutation_commitments: Vec<String>,
-    pub non_residues: Vec<String>,
-    pub g2_elements: Vec<String>,
-}
-
-#[cw_serde]
-pub struct PlonkProofType {
-    pub num_inputs: usize,
-    pub n: usize,
-    pub input_values: Vec<String>,
-    pub wire_commitments: Vec<String>,
-    pub grand_product_commitment: String,
-    pub quotient_poly_commitments: Vec<String>,
-    pub wire_values_at_z: Vec<String>,
-    pub wire_values_at_z_omega: Vec<String>,
-    pub grand_product_at_z_omega: String,
-    pub quotient_polynomial_at_z: String,
-    pub linearization_polynomial_at_z: String,
-    pub permutation_polynomials_at_z: Vec<String>,
-    pub opening_at_z_proof: String,
-    pub opening_at_z_omega_proof: String,
-}
-
-#[cw_serde]
 pub enum ExecuteMsg {
-    SetParams {
-        state_tree_depth: Uint256,
-        int_state_tree_depth: Uint256,
-        message_batch_size: Uint256,
-        vote_option_tree_depth: Uint256,
-    },
+    // SetParams {
+    //     state_tree_depth: Uint256,
+    //     int_state_tree_depth: Uint256,
+    //     message_batch_size: Uint256,
+    //     vote_option_tree_depth: Uint256,
+    // },
     SetRoundInfo {
         round_info: RoundInfo,
     },
@@ -88,12 +62,12 @@ pub enum ExecuteMsg {
     SetVoteOptionsMap {
         vote_option_map: Vec<String>,
     },
-    StartVotingPeriod {},
+    // StartVotingPeriod {},
     SignUp {
         pubkey: PubKey, // user's pubkey
     },
     StartProcessPeriod {},
-    StopVotingPeriod {},
+    // StopVotingPeriod {},
     PublishDeactivateMessage {
         message: MessageData,
         enc_pub_key: PubKey,
@@ -212,9 +186,8 @@ pub enum QueryMsg {
     #[returns(Uint128)]
     QueryTotalFeeGrant {},
 
-    #[returns(Uint256)]
-    QueryCircuitType {},
-
+    // #[returns(Uint256)]
+    // QueryCircuitType {},
     #[returns(Uint256)]
     QueryCertSystem {},
 

@@ -1,9 +1,10 @@
+use crate::circuit_params::{match_vkeys, VkeyParams};
 use crate::error::ContractError;
 use crate::groth16_parser::{parse_groth16_proof, parse_groth16_vkey};
 use crate::msg::{ExecuteMsg, Groth16ProofType, InstantiateMsg, QueryMsg};
 use crate::state::{
-    Admin, Groth16ProofStr, Groth16VkeyStr, MessageData, Period, PeriodStatus, PubKey, RoundInfo,
-    StateLeaf, VotingTime, Whitelist, ADMIN, CERTSYSTEM, CIRCUITTYPE, COORDINATORHASH,
+    Admin, Groth16ProofStr, MessageData, Period, PeriodStatus, PubKey, QuinaryTreeRoot, RoundInfo,
+    StateLeaf, VotingTime, Whitelist, ADMIN, CERTSYSTEM, COORDINATORHASH,
     CURRENT_DEACTIVATE_COMMITMENT, CURRENT_STATE_COMMITMENT, CURRENT_TALLY_COMMITMENT,
     DMSG_CHAIN_LENGTH, DMSG_HASHES, DNODES, FEEGRANTS, GROTH16_DEACTIVATE_VKEYS,
     GROTH16_NEWKEY_VKEYS, GROTH16_PROCESS_VKEYS, GROTH16_TALLY_VKEYS, LEAF_IDX_0, MACIPARAMETERS,
@@ -49,96 +50,98 @@ pub fn instantiate(
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     // Create an admin with the sender address
-    let admin = Admin { admin: info.sender };
+    let admin = Admin {
+        admin: info.clone().sender,
+    };
     ADMIN.save(deps.storage, &admin)?;
+
+    // An error will be thrown if the number of vote options exceeds the circuit’s capacity.
+    let vote_option_max_amount = Uint256::from_u128(
+        5u128.pow(
+            msg.parameters
+                .vote_option_tree_depth
+                .to_string()
+                .parse()
+                .unwrap(),
+        ),
+    );
+    if msg.max_vote_options > vote_option_max_amount {
+        return Err(ContractError::MaxVoteOptionsExceeded {
+            current: msg.max_vote_options,
+            max_allowed: vote_option_max_amount,
+        });
+    }
+
+    if msg.voting_time.start_time >= msg.voting_time.end_time {
+        return Err(ContractError::WrongTimeSet {});
+    }
+
+    // // TODO: check apart time.
+    // if msg.voting_time.start_time.plus_minutes(10) >= msg.voting_time.end_time {
+    //     return Err(ContractError::WrongTimeSet {});
+    // }
+
+    match msg.whitelist {
+        Some(content) => {
+            let max_voter_amount = Uint256::from_u128(
+                5u128.pow(msg.parameters.state_tree_depth.to_string().parse().unwrap()),
+            );
+            if Uint256::from_u128(content.users.len() as u128) > max_voter_amount {
+                return Err(ContractError::MaxVoterExceeded {
+                    current: Uint256::from_u128(content.users.len() as u128),
+                    max_allowed: max_voter_amount,
+                });
+            }
+
+            WHITELIST.save(deps.storage, &content)?
+        }
+        None => {}
+    }
 
     // Save the MACI parameters to storage
     MACIPARAMETERS.save(deps.storage, &msg.parameters)?;
+    let qtr_lab = QuinaryTreeRoot {
+        zeros: [
+            Uint256::from_u128(0u128),
+            uint256_from_hex_string(
+                "2066be41bebe6caf7e079360abe14fbf9118c62eabc42e2fe75e342b160a95bc",
+            ),
+            uint256_from_hex_string(
+                "2a956d37d8e73692877b104630a08cc6840036f235f2134b0606769a369d85c1",
+            ),
+            uint256_from_hex_string(
+                "2f9791ba036a4148ff026c074e713a4824415530dec0f0b16c5115aa00e4b825",
+            ),
+            uint256_from_hex_string(
+                "2c41a7294c7ef5c9c5950dc627c55a00adb6712548bcbd6cd8569b1f2e5acc2a",
+            ),
+            uint256_from_hex_string(
+                "2594ba68eb0f314eabbeea1d847374cc2be7965944dec513746606a1f2fadf2e",
+            ),
+            uint256_from_hex_string(
+                "5c697158c9032bfd7041223a7dba696396388129118ae8f867266eb64fe7636",
+            ),
+            uint256_from_hex_string(
+                "272b3425fcc3b2c45015559b9941fde27527aab5226045bf9b0a6c1fe902d601",
+            ),
+            uint256_from_hex_string(
+                "268d82cc07023a1d5e7c987cbd0328b34762c9ea21369bea418f08b71b16846a",
+            ),
+        ],
+    };
 
     // Save the qtr_lib value to storage
-    QTR_LIB.save(deps.storage, &msg.qtr_lib)?;
+    QTR_LIB.save(deps.storage, &qtr_lab)?;
 
     // Save the pre_deactivate_root value to storage
     PRE_DEACTIVATE_ROOT.save(deps.storage, &msg.pre_deactivate_root)?;
 
-    let groth16_process_vkey = msg.groth16_process_vkey;
-    // Create a process_vkeys struct from the process_vkey in the message
-    let groth16_process_vkeys = Groth16VkeyStr {
-        alpha_1: hex::decode(groth16_process_vkey.vk_alpha1)
-            .map_err(|_| ContractError::HexDecodingError {})?,
-        beta_2: hex::decode(groth16_process_vkey.vk_beta_2)
-            .map_err(|_| ContractError::HexDecodingError {})?,
-        gamma_2: hex::decode(groth16_process_vkey.vk_gamma_2)
-            .map_err(|_| ContractError::HexDecodingError {})?,
-        delta_2: hex::decode(groth16_process_vkey.vk_delta_2)
-            .map_err(|_| ContractError::HexDecodingError {})?,
-        ic0: hex::decode(groth16_process_vkey.vk_ic0)
-            .map_err(|_| ContractError::HexDecodingError {})?,
-        ic1: hex::decode(groth16_process_vkey.vk_ic1)
-            .map_err(|_| ContractError::HexDecodingError {})?,
-    };
-    let _ = parse_groth16_vkey::<Bn256>(groth16_process_vkeys.clone())?;
-    GROTH16_PROCESS_VKEYS.save(deps.storage, &groth16_process_vkeys)?;
+    let vkey = match_vkeys(&msg.parameters)?;
 
-    // Create a tally_vkeys struct from the tally_vkey in the message
-    let groth16_tally_vkey = msg.groth16_tally_vkey;
-    // Create a process_vkeys struct from the process_vkey in the message
-    let groth16_tally_vkeys = Groth16VkeyStr {
-        alpha_1: hex::decode(groth16_tally_vkey.vk_alpha1)
-            .map_err(|_| ContractError::HexDecodingError {})?,
-        beta_2: hex::decode(groth16_tally_vkey.vk_beta_2)
-            .map_err(|_| ContractError::HexDecodingError {})?,
-        gamma_2: hex::decode(groth16_tally_vkey.vk_gamma_2)
-            .map_err(|_| ContractError::HexDecodingError {})?,
-        delta_2: hex::decode(groth16_tally_vkey.vk_delta_2)
-            .map_err(|_| ContractError::HexDecodingError {})?,
-        ic0: hex::decode(groth16_tally_vkey.vk_ic0)
-            .map_err(|_| ContractError::HexDecodingError {})?,
-        ic1: hex::decode(groth16_tally_vkey.vk_ic1)
-            .map_err(|_| ContractError::HexDecodingError {})?,
-    };
-    let _ = parse_groth16_vkey::<Bn256>(groth16_tally_vkeys.clone())?;
-    GROTH16_TALLY_VKEYS.save(deps.storage, &groth16_tally_vkeys)?;
-
-    // Create a tally_vkeys struct from the tally_vkey in the message
-    let groth16_deactivate_vkey = msg.groth16_deactivate_vkey;
-    // Create a process_vkeys struct from the process_vkey in the message
-    let groth16_deactivate_vkeys = Groth16VkeyStr {
-        alpha_1: hex::decode(groth16_deactivate_vkey.vk_alpha1)
-            .map_err(|_| ContractError::HexDecodingError {})?,
-        beta_2: hex::decode(groth16_deactivate_vkey.vk_beta_2)
-            .map_err(|_| ContractError::HexDecodingError {})?,
-        gamma_2: hex::decode(groth16_deactivate_vkey.vk_gamma_2)
-            .map_err(|_| ContractError::HexDecodingError {})?,
-        delta_2: hex::decode(groth16_deactivate_vkey.vk_delta_2)
-            .map_err(|_| ContractError::HexDecodingError {})?,
-        ic0: hex::decode(groth16_deactivate_vkey.vk_ic0)
-            .map_err(|_| ContractError::HexDecodingError {})?,
-        ic1: hex::decode(groth16_deactivate_vkey.vk_ic1)
-            .map_err(|_| ContractError::HexDecodingError {})?,
-    };
-    let _ = parse_groth16_vkey::<Bn256>(groth16_deactivate_vkeys.clone())?;
-    GROTH16_DEACTIVATE_VKEYS.save(deps.storage, &groth16_deactivate_vkeys)?;
-
-    // Create a tally_vkeys struct from the tally_vkey in the message
-    let groth16_add_new_key_vkey = msg.groth16_add_key_vkey;
-    // Create a process_vkeys struct from the process_vkey in the message
-    let groth16_add_new_key_vkeys = Groth16VkeyStr {
-        alpha_1: hex::decode(groth16_add_new_key_vkey.vk_alpha1)
-            .map_err(|_| ContractError::HexDecodingError {})?,
-        beta_2: hex::decode(groth16_add_new_key_vkey.vk_beta_2)
-            .map_err(|_| ContractError::HexDecodingError {})?,
-        gamma_2: hex::decode(groth16_add_new_key_vkey.vk_gamma_2)
-            .map_err(|_| ContractError::HexDecodingError {})?,
-        delta_2: hex::decode(groth16_add_new_key_vkey.vk_delta_2)
-            .map_err(|_| ContractError::HexDecodingError {})?,
-        ic0: hex::decode(groth16_add_new_key_vkey.vk_ic0)
-            .map_err(|_| ContractError::HexDecodingError {})?,
-        ic1: hex::decode(groth16_add_new_key_vkey.vk_ic1)
-            .map_err(|_| ContractError::HexDecodingError {})?,
-    };
-    let _ = parse_groth16_vkey::<Bn256>(groth16_add_new_key_vkeys.clone())?;
-    GROTH16_NEWKEY_VKEYS.save(deps.storage, &groth16_add_new_key_vkeys)?;
+    GROTH16_PROCESS_VKEYS.save(deps.storage, &vkey.process_vkey)?;
+    GROTH16_TALLY_VKEYS.save(deps.storage, &vkey.tally_vkey)?;
+    GROTH16_DEACTIVATE_VKEYS.save(deps.storage, &vkey.deactivate_vkey)?;
+    GROTH16_NEWKEY_VKEYS.save(deps.storage, &vkey.add_key_vkey)?;
 
     // Compute the coordinator hash from the coordinator values in the message
     let coordinator_hash = hash2([msg.coordinator.x, msg.coordinator.y]);
@@ -249,27 +252,10 @@ pub fn instantiate(
     }
     VOTEOPTIONMAP.save(deps.storage, &vote_option_map)?;
     ROUNDINFO.save(deps.storage, &msg.round_info)?;
-    CIRCUITTYPE.save(deps.storage, &msg.circuit_type)?;
+    // TODO: wait add qv model.
+    // CIRCUITTYPE.save(deps.storage, &msg.circuit_type)?;
 
-    match msg.whitelist {
-        Some(content) => WHITELIST.save(deps.storage, &content)?,
-        None => {}
-    }
-
-    match msg.voting_time {
-        Some(content) => {
-            if let (Some(start_time), Some(end_time)) = (content.start_time, content.end_time) {
-                if start_time >= end_time {
-                    return Err(ContractError::WrongTimeSet {});
-                }
-
-                VOTINGTIME.save(deps.storage, &content)?;
-            } else {
-                VOTINGTIME.save(deps.storage, &content)?;
-            }
-        }
-        None => {}
-    }
+    VOTINGTIME.save(deps.storage, &msg.voting_time)?;
 
     // Create a period struct with the initial status set to Voting
     let period = Period {
@@ -279,7 +265,12 @@ pub fn instantiate(
     // Save the initial period to storage
     PERIOD.save(deps.storage, &period)?;
 
-    Ok(Response::default().add_attribute("action", "instantiate"))
+    Ok(Response::default()
+        .add_attribute("action", "instantiate")
+        .add_attribute("creator", &info.sender.to_string())
+        .add_attribute("operator", &msg.operator.to_string())
+        .add_attribute("start_time", &msg.voting_time.start_time.to_string())
+        .add_attribute("end_time", &msg.voting_time.end_time.to_string()))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -290,20 +281,20 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::SetParams {
-            state_tree_depth,
-            int_state_tree_depth,
-            message_batch_size,
-            vote_option_tree_depth,
-        } => execute_set_parameters(
-            deps,
-            env,
-            info,
-            state_tree_depth,
-            int_state_tree_depth,
-            message_batch_size,
-            vote_option_tree_depth,
-        ),
+        // ExecuteMsg::SetParams {
+        //     state_tree_depth,
+        //     int_state_tree_depth,
+        //     message_batch_size,
+        //     vote_option_tree_depth,
+        // } => execute_set_parameters(
+        //     deps,
+        //     env,
+        //     info,
+        //     state_tree_depth,
+        //     int_state_tree_depth,
+        //     message_batch_size,
+        //     vote_option_tree_depth,
+        // ),
         ExecuteMsg::SetRoundInfo { round_info } => {
             execute_set_round_info(deps, env, info, round_info)
         }
@@ -313,9 +304,9 @@ pub fn execute(
         ExecuteMsg::SetVoteOptionsMap { vote_option_map } => {
             execute_set_vote_options_map(deps, env, info, vote_option_map)
         }
-        ExecuteMsg::StartVotingPeriod {} => execute_start_voting_period(deps, env, info),
+        // ExecuteMsg::StartVotingPeriod {} => execute_start_voting_period(deps, env, info),
         ExecuteMsg::SignUp { pubkey } => execute_sign_up(deps, env, info, pubkey),
-        ExecuteMsg::StopVotingPeriod {} => execute_stop_voting_period(deps, env, info),
+        // ExecuteMsg::StopVotingPeriod {} => execute_stop_voting_period(deps, env, info),
         ExecuteMsg::PublishDeactivateMessage {
             message,
             enc_pub_key,
@@ -370,105 +361,105 @@ pub fn execute(
     }
 }
 
-pub fn execute_start_voting_period(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-) -> Result<Response, ContractError> {
-    let period = PERIOD.load(deps.storage)?;
+// pub fn execute_start_voting_period(
+//     deps: DepsMut,
+//     env: Env,
+//     info: MessageInfo,
+// ) -> Result<Response, ContractError> {
+//     let period = PERIOD.load(deps.storage)?;
 
-    if VOTINGTIME.exists(deps.storage) {
-        let voting_time = VOTINGTIME.load(deps.storage)?;
+//     if VOTINGTIME.exists(deps.storage) {
+//         let voting_time = VOTINGTIME.load(deps.storage)?;
 
-        if let Some(_) = voting_time.start_time {
-            // if start_time exist，admin can't start round with this command.
-            return Err(ContractError::AlreadySetVotingTime {
-                time_name: String::from("start_time"),
-            });
-        } else {
-            // if start_time isn't exist，admin need start round with this command. (in Pending period can execute)
-            if period.status != PeriodStatus::Pending {
-                return Err(ContractError::PeriodError {});
-            }
-        }
+//         if let Some(_) = voting_time.start_time {
+//             // if start_time exist，admin can't start round with this command.
+//             return Err(ContractError::AlreadySetVotingTime {
+//                 time_name: String::from("start_time"),
+//             });
+//         } else {
+//             // if start_time isn't exist，admin need start round with this command. (in Pending period can execute)
+//             if period.status != PeriodStatus::Pending {
+//                 return Err(ContractError::PeriodError {});
+//             }
+//         }
 
-        if let Some(end_time) = voting_time.end_time {
-            if env.block.time >= end_time {
-                // If the end time is set,
-                // I need to determine if the current time is before the end time,
-                // if it is greater than the end time, it means it is no longer a voting session.
-                return Err(ContractError::PeriodError {});
-            }
-        } else {
-            if period.status != PeriodStatus::Pending {
-                // If I don't set an end time, I need to determine the current period.
-                return Err(ContractError::PeriodError {});
-            }
-        }
-    } else {
-        // Check if the period status is Voting
-        if period.status != PeriodStatus::Pending {
-            return Err(ContractError::PeriodError {});
-        }
-    }
-    // Check if the sender is authorized to execute the function
-    if !can_execute(deps.as_ref(), info.sender.as_ref())? {
-        Err(ContractError::Unauthorized {})
-    } else {
-        // Update the period status to Processing
-        let period = Period {
-            status: PeriodStatus::Voting,
-        };
-        PERIOD.save(deps.storage, &period)?;
-        let start_time = env.block.time;
-        // let voting_time = VOTINGTIME.may_load(deps.storage)?;
-        match VOTINGTIME.may_load(deps.storage)? {
-            Some(time) => {
-                let votingtime = VotingTime {
-                    start_time: Some(start_time),
-                    end_time: time.end_time,
-                };
-                VOTINGTIME.save(deps.storage, &votingtime)?;
-            }
-            None => {
-                let votingtime = VotingTime {
-                    start_time: Some(start_time),
-                    end_time: None,
-                };
-                VOTINGTIME.save(deps.storage, &votingtime)?;
-            }
-        }
+//         if let Some(end_time) = voting_time.end_time {
+//             if env.block.time >= end_time {
+//                 // If the end time is set,
+//                 // I need to determine if the current time is before the end time,
+//                 // if it is greater than the end time, it means it is no longer a voting session.
+//                 return Err(ContractError::PeriodError {});
+//             }
+//         } else {
+//             if period.status != PeriodStatus::Pending {
+//                 // If I don't set an end time, I need to determine the current period.
+//                 return Err(ContractError::PeriodError {});
+//             }
+//         }
+//     } else {
+//         // Check if the period status is Voting
+//         if period.status != PeriodStatus::Pending {
+//             return Err(ContractError::PeriodError {});
+//         }
+//     }
+//     // Check if the sender is authorized to execute the function
+//     if !can_execute(deps.as_ref(), info.sender.as_ref())? {
+//         Err(ContractError::Unauthorized {})
+//     } else {
+//         // Update the period status to Processing
+//         let period = Period {
+//             status: PeriodStatus::Voting,
+//         };
+//         PERIOD.save(deps.storage, &period)?;
+//         let start_time = env.block.time;
+//         // let voting_time = VOTINGTIME.may_load(deps.storage)?;
+//         match VOTINGTIME.may_load(deps.storage)? {
+//             Some(time) => {
+//                 let votingtime = VotingTime {
+//                     start_time: Some(start_time),
+//                     end_time: time.end_time,
+//                 };
+//                 VOTINGTIME.save(deps.storage, &votingtime)?;
+//             }
+//             None => {
+//                 let votingtime = VotingTime {
+//                     start_time: Some(start_time),
+//                     end_time: None,
+//                 };
+//                 VOTINGTIME.save(deps.storage, &votingtime)?;
+//             }
+//         }
 
-        // Return a success response
-        Ok(Response::new()
-            .add_attribute("action", "start_voting_period")
-            .add_attribute("start_time", start_time.nanos().to_string()))
-    }
-}
+//         // Return a success response
+//         Ok(Response::new()
+//             .add_attribute("action", "start_voting_period")
+//             .add_attribute("start_time", start_time.nanos().to_string()))
+//     }
+// }
 
-pub fn execute_set_parameters(
-    deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
-    state_tree_depth: Uint256,
-    int_state_tree_depth: Uint256,
-    message_batch_size: Uint256,
-    vote_option_tree_depth: Uint256,
-) -> Result<Response, ContractError> {
-    if !can_execute(deps.as_ref(), info.sender.as_ref())? {
-        Err(ContractError::Unauthorized {})
-    } else {
-        let mut cfg = MACIPARAMETERS.load(deps.storage)?;
-        cfg.state_tree_depth = state_tree_depth;
-        cfg.int_state_tree_depth = int_state_tree_depth;
-        cfg.message_batch_size = message_batch_size;
-        cfg.vote_option_tree_depth = vote_option_tree_depth;
+// pub fn execute_set_parameters(
+//     deps: DepsMut,
+//     _env: Env,
+//     info: MessageInfo,
+//     state_tree_depth: Uint256,
+//     int_state_tree_depth: Uint256,
+//     message_batch_size: Uint256,
+//     vote_option_tree_depth: Uint256,
+// ) -> Result<Response, ContractError> {
+//     if !can_execute(deps.as_ref(), info.sender.as_ref())? {
+//         Err(ContractError::Unauthorized {})
+//     } else {
+//         let mut cfg = MACIPARAMETERS.load(deps.storage)?;
+//         cfg.state_tree_depth = state_tree_depth;
+//         cfg.int_state_tree_depth = int_state_tree_depth;
+//         cfg.message_batch_size = message_batch_size;
+//         cfg.vote_option_tree_depth = vote_option_tree_depth;
 
-        MACIPARAMETERS.save(deps.storage, &cfg)?;
-        let res = Response::new().add_attribute("action", "set_parameters");
-        Ok(res)
-    }
-}
+//         MACIPARAMETERS.save(deps.storage, &cfg)?;
+//         let res = Response::new().add_attribute("action", "set_parameters");
+//         Ok(res)
+//     }
+// }
 
 pub fn execute_set_round_info(
     deps: DepsMut,
@@ -507,36 +498,31 @@ pub fn execute_set_whitelists(
     info: MessageInfo,
     whitelists: Whitelist,
 ) -> Result<Response, ContractError> {
-    let period = PERIOD.load(deps.storage)?;
-
     if FEEGRANTS.exists(deps.storage) {
         return Err(ContractError::FeeGrantAlreadyExists);
     }
 
-    if VOTINGTIME.exists(deps.storage) {
-        let voting_time = VOTINGTIME.load(deps.storage)?;
+    let voting_time = VOTINGTIME.load(deps.storage)?;
 
-        if let Some(start_time) = voting_time.start_time {
-            if env.block.time >= start_time {
-                return Err(ContractError::PeriodError {});
-            }
-        } else {
-            return Err(ContractError::PeriodError {});
-        }
-    } else {
-        // Check if the period status is Pending
-        if period.status != PeriodStatus::Pending {
-            return Err(ContractError::PeriodError {});
-        }
+    if env.block.time >= voting_time.start_time {
+        return Err(ContractError::PeriodError {});
     }
-
-    // if WHITELIST.exists(deps.storage) {
-    //     return Err(ContractError::AlreadyHaveWhitelist {});
-    // }
 
     if !can_execute(deps.as_ref(), info.sender.as_ref())? {
         Err(ContractError::Unauthorized {})
     } else {
+        let cfg = MACIPARAMETERS.load(deps.storage)?;
+
+        let max_voter_amount =
+            Uint256::from_u128(5u128.pow(cfg.state_tree_depth.to_string().parse().unwrap()));
+        if Uint256::from_u128(whitelists.users.len() as u128) > max_voter_amount {
+            return Err(ContractError::MaxVoterExceeded {
+                current: Uint256::from_u128(whitelists.users.len() as u128),
+                max_allowed: max_voter_amount,
+            });
+        }
+
+        // WHITELIST.save(deps.storage, &content)?
         WHITELIST.save(deps.storage, &whitelists)?;
         let res = Response::new().add_attribute("action", "set_whitelists");
         Ok(res)
@@ -550,29 +536,28 @@ pub fn execute_set_vote_options_map(
     info: MessageInfo,
     vote_option_map: Vec<String>,
 ) -> Result<Response, ContractError> {
-    let period = PERIOD.load(deps.storage)?;
+    let voting_time = VOTINGTIME.load(deps.storage)?;
 
-    if VOTINGTIME.exists(deps.storage) {
-        let voting_time = VOTINGTIME.load(deps.storage)?;
-
-        if let Some(start_time) = voting_time.start_time {
-            if env.block.time >= start_time {
-                return Err(ContractError::PeriodError {});
-            }
-        } else {
-            return Err(ContractError::PeriodError {});
-        }
-    } else {
-        // Check if the period status is Pending
-        if period.status != PeriodStatus::Pending {
-            return Err(ContractError::PeriodError {});
-        }
+    if env.block.time >= voting_time.start_time {
+        return Err(ContractError::PeriodError {});
     }
 
     if !can_execute(deps.as_ref(), info.sender.as_ref())? {
         Err(ContractError::Unauthorized {})
     } else {
         let max_vote_options = vote_option_map.len() as u128;
+        let cfg = MACIPARAMETERS.load(deps.storage)?;
+
+        // An error will be thrown if the number of vote options exceeds the circuit’s capacity.
+        let vote_option_max_amount =
+            Uint256::from_u128(5u128.pow(cfg.vote_option_tree_depth.to_string().parse().unwrap()));
+        if Uint256::from_u128(max_vote_options) > vote_option_max_amount {
+            return Err(ContractError::MaxVoteOptionsExceeded {
+                current: Uint256::from_u128(max_vote_options),
+                max_allowed: vote_option_max_amount,
+            });
+        }
+
         VOTEOPTIONMAP.save(deps.storage, &vote_option_map)?;
         // Save the maximum vote options
         MAX_VOTE_OPTIONS.save(deps.storage, &Uint256::from_u128(max_vote_options))?;
@@ -588,17 +573,14 @@ pub fn execute_set_vote_options_map(
 pub fn execute_sign_up(
     mut deps: DepsMut,
     env: Env,
-    _info: MessageInfo,
+    info: MessageInfo,
     pubkey: PubKey,
 ) -> Result<Response, ContractError> {
-    let period = PERIOD.load(deps.storage)?;
-    if VOTINGTIME.exists(deps.storage) {
-        let voting_time = VOTINGTIME.load(deps.storage)?;
-        check_voting_time(env, Some(voting_time), period.status)?;
-    } else {
-        check_voting_time(env, None, period.status)?;
+    let voting_time = VOTINGTIME.load(deps.storage)?;
+    check_voting_time(env, voting_time)?;
+    if !can_sign_up(deps.as_ref(), &info.sender.to_string())? {
+        return Err(ContractError::Unauthorized {});
     }
-
     // let user_balance = user_balance_of(deps.as_ref(), info.sender.as_ref())?;
     // if user_balance == Uint256::from_u128(0u128) {
     //     return Err(ContractError::Unauthorized {});
@@ -671,14 +653,9 @@ pub fn execute_publish_message(
     message: MessageData,
     enc_pub_key: PubKey,
 ) -> Result<Response, ContractError> {
-    let period = PERIOD.load(deps.storage)?;
     // Check if the period status is Voting
-    if VOTINGTIME.exists(deps.storage) {
-        let voting_time = VOTINGTIME.load(deps.storage)?;
-        check_voting_time(env, Some(voting_time), period.status)?;
-    } else {
-        check_voting_time(env, None, period.status)?;
-    }
+    let voting_time = VOTINGTIME.load(deps.storage)?;
+    check_voting_time(env, voting_time)?;
 
     // Load the scalar field value
     let snark_scalar_field =
@@ -740,14 +717,9 @@ pub fn execute_publish_deactivate_message(
     message: MessageData,
     enc_pub_key: PubKey,
 ) -> Result<Response, ContractError> {
-    let period = PERIOD.load(deps.storage)?;
     // Check if the period status is Voting
-    if VOTINGTIME.exists(deps.storage) {
-        let voting_time = VOTINGTIME.load(deps.storage)?;
-        check_voting_time(env, Some(voting_time), period.status)?;
-    } else {
-        check_voting_time(env, None, period.status)?;
-    }
+    let voting_time = VOTINGTIME.load(deps.storage)?;
+    check_voting_time(env, voting_time)?;
 
     // Load the scalar field value
     let snark_scalar_field =
@@ -842,14 +814,10 @@ pub fn execute_process_deactivate_message(
     new_deactivate_root: Uint256,
     groth16_proof: Groth16ProofType,
 ) -> Result<Response, ContractError> {
-    let period = PERIOD.load(deps.storage)?;
     // Check if the period status is Voting
-    if VOTINGTIME.exists(deps.storage) {
-        let voting_time = VOTINGTIME.load(deps.storage)?;
-        check_voting_time(env, Some(voting_time), period.status)?;
-    } else {
-        check_voting_time(env, None, period.status)?;
-    }
+    let voting_time = VOTINGTIME.load(deps.storage)?;
+    check_voting_time(env, voting_time)?;
+
     let processed_dmsg_count = PROCESSED_DMSG_COUNT.load(deps.storage)?;
     let dmsg_chain_length = DMSG_CHAIN_LENGTH.load(deps.storage)?;
 
@@ -964,14 +932,9 @@ pub fn execute_add_new_key(
     d: [Uint256; 4],
     groth16_proof: Groth16ProofType,
 ) -> Result<Response, ContractError> {
-    let period = PERIOD.load(deps.storage)?;
     // Check if the period status is Voting
-    if VOTINGTIME.exists(deps.storage) {
-        let voting_time = VOTINGTIME.load(deps.storage)?;
-        check_voting_time(env, Some(voting_time), period.status)?;
-    } else {
-        check_voting_time(env, None, period.status)?;
-    }
+    let voting_time = VOTINGTIME.load(deps.storage)?;
+    check_voting_time(env, voting_time)?;
 
     if NULLIFIERS.has(deps.storage, nullifier.to_be_bytes().to_vec()) {
         // Return an error response for invalid user or encrypted public key
@@ -1100,14 +1063,9 @@ pub fn execute_pre_add_new_key(
     d: [Uint256; 4],
     groth16_proof: Groth16ProofType,
 ) -> Result<Response, ContractError> {
-    let period = PERIOD.load(deps.storage)?;
     // Check if the period status is Voting
-    if VOTINGTIME.exists(deps.storage) {
-        let voting_time = VOTINGTIME.load(deps.storage)?;
-        check_voting_time(env, Some(voting_time), period.status)?;
-    } else {
-        check_voting_time(env, None, period.status)?;
-    }
+    let voting_time = VOTINGTIME.load(deps.storage)?;
+    check_voting_time(env, voting_time)?;
 
     if NULLIFIERS.has(deps.storage, nullifier.to_be_bytes().to_vec()) {
         // Return an error response for invalid user or encrypted public key
@@ -1217,83 +1175,23 @@ pub fn execute_pre_add_new_key(
         .add_attribute("balance", voice_credit_amount.to_string()))
 }
 
-pub fn execute_stop_voting_period(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    // max_vote_options: Uint256,
-) -> Result<Response, ContractError> {
-    let period = PERIOD.load(deps.storage)?;
-
-    if VOTINGTIME.exists(deps.storage) {
-        let voting_time = VOTINGTIME.load(deps.storage)?;
-
-        // if let Some(start_time) = voting_time.start_time {
-        if let Some(_) = voting_time.end_time {
-            return Err(ContractError::AlreadySetVotingTime {
-                time_name: String::from("end_time"),
-            });
-        }
-
-        if let Some(start_time) = voting_time.start_time {
-            if env.block.time <= start_time {
-                return Err(ContractError::PeriodError {});
-            }
-        }
-    } else {
-        // Check if the period status is Voting
-        if period.status != PeriodStatus::Voting {
-            return Err(ContractError::PeriodError {});
-        }
-    }
-    // Check if the sender is authorized to execute the function
-    if !can_execute(deps.as_ref(), info.sender.as_ref())? {
-        Err(ContractError::Unauthorized {})
-    } else {
-        let end_time = env.block.time;
-        match VOTINGTIME.may_load(deps.storage)? {
-            Some(time) => {
-                let votingtime = VotingTime {
-                    start_time: time.start_time,
-                    end_time: Some(end_time),
-                };
-                VOTINGTIME.save(deps.storage, &votingtime)?;
-            }
-            None => {}
-        }
-
-        // Return a success response
-        Ok(Response::new()
-            .add_attribute("action", "stop_voting_period")
-            .add_attribute("end_time", end_time.nanos().to_string()))
-    }
-}
-
 pub fn execute_start_process_period(
     deps: DepsMut,
     env: Env,
     _info: MessageInfo,
 ) -> Result<Response, ContractError> {
     let period = PERIOD.load(deps.storage)?;
-    let voting_time = VOTINGTIME.may_load(deps.storage)?;
+    let voting_time = VOTINGTIME.load(deps.storage)?;
 
-    if let Some(voting_time) = voting_time {
-        if let Some(end_time) = voting_time.end_time {
-            if env.block.time <= end_time {
-                return Err(ContractError::PeriodError {});
-            } else {
-                if period.status == PeriodStatus::Ended
-                    || period.status == PeriodStatus::Processing
-                    || period.status == PeriodStatus::Tallying
-                {
-                    return Err(ContractError::PeriodError {});
-                }
-            }
-        } else {
+    if env.block.time <= voting_time.end_time {
+        return Err(ContractError::PeriodError {});
+    } else {
+        if period.status == PeriodStatus::Ended
+            || period.status == PeriodStatus::Processing
+            || period.status == PeriodStatus::Tallying
+        {
             return Err(ContractError::PeriodError {});
         }
-    } else {
-        return Err(ContractError::PeriodError {});
     }
 
     // Update the period status to Processing
@@ -1339,15 +1237,19 @@ pub fn execute_process_message(
 
     let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
     let max_vote_options = MAX_VOTE_OPTIONS.load(deps.storage)?;
-    let circuit_type = CIRCUITTYPE.load(deps.storage)?;
-    if circuit_type == Uint256::from_u128(0u128) {
-        // 1p1v
-        input[0] = (num_sign_ups << 32) + max_vote_options; // packedVals
-    } else if circuit_type == Uint256::from_u128(1u128) {
-        // qv
-        input[0] = (num_sign_ups << 32) + (circuit_type << 64) + max_vote_options;
-        // packedVals
-    }
+
+    // TODO: add qv model
+    // let circuit_type = CIRCUITTYPE.load(deps.storage)?;
+    // if circuit_type == Uint256::from_u128(0u128) {
+    //     // 1p1v
+    //     input[0] = (num_sign_ups << 32) + max_vote_options; // packedVals
+    // } else if circuit_type == Uint256::from_u128(1u128) {
+    //     // qv
+    //     input[0] = (num_sign_ups << 32) + (circuit_type << 64) + max_vote_options;
+    //     // packedVals
+
+    input[0] = (num_sign_ups << 32) + max_vote_options; // packedVals
+
     // Load the coordinator's public key hash
     let coordinator_hash = COORDINATORHASH.load(deps.storage)?;
     input[1] = coordinator_hash; // coordPubKeyHash
@@ -1674,13 +1576,8 @@ fn execute_grant(
         return Err(ContractError::Unauthorized {});
     }
 
-    let period = PERIOD.load(deps.storage)?;
-    if VOTINGTIME.exists(deps.storage) {
-        let voting_time = VOTINGTIME.load(deps.storage)?;
-        check_voting_time(env.clone(), Some(voting_time), period.status)?;
-    } else {
-        check_voting_time(env.clone(), None, period.status)?;
-    }
+    let voting_time = VOTINGTIME.load(deps.storage)?;
+    check_voting_time(env.clone(), voting_time.clone())?;
 
     if FEEGRANTS.exists(deps.storage) {
         return Err(ContractError::FeeGrantAlreadyExists {});
@@ -1701,18 +1598,10 @@ fn execute_grant(
 
     let base_amount = max_amount / Uint128::from(whitelist.users.len() as u128);
 
-    let mut expiration_time: Option<SdkTimestamp> = None;
-
-    let voting_time = VOTINGTIME.may_load(deps.storage)?;
-
-    if let Some(voting_time) = voting_time {
-        if let Some(end_time) = voting_time.end_time {
-            expiration_time = Some(SdkTimestamp {
-                seconds: end_time.seconds() as i64,
-                nanos: 0,
-            })
-        }
-    }
+    let expiration_time = Some(SdkTimestamp {
+        seconds: voting_time.end_time.seconds() as i64,
+        nanos: 0,
+    });
 
     let allowance = BasicAllowance {
         spend_limit: vec![SdkCoin {
@@ -1933,31 +1822,19 @@ fn state_update_at(deps: &mut DepsMut, index: Uint256) -> Result<bool, ContractE
     Ok(true)
 }
 
-fn check_voting_time(
-    env: Env,
-    voting_time: Option<VotingTime>,
-    period_status: PeriodStatus,
-) -> Result<(), ContractError> {
-    match voting_time {
-        Some(vt) => {
-            if let Some(start_time) = vt.start_time {
-                if env.block.time <= start_time {
-                    return Err(ContractError::PeriodError {});
-                }
-                if let Some(end_time) = vt.end_time {
-                    if env.block.time >= end_time {
-                        return Err(ContractError::PeriodError {});
-                    }
-                }
-            } else {
-                return Err(ContractError::PeriodError {});
-            }
-        }
-        None => {
-            if period_status != PeriodStatus::Voting {
-                return Err(ContractError::PeriodError {});
-            }
-        }
+fn check_voting_time(env: Env, voting_time: VotingTime) -> Result<(), ContractError> {
+    // if env.block.time <= voting_time.start_time {
+    //     return Err(ContractError::PeriodError {});
+    // }
+    // if env.block.time >= voting_time.end_time {
+    //     return Err(ContractError::PeriodError {});
+    // }
+
+    let current_time = env.block.time;
+
+    // 检查当前时间是否在投票时间范围内（包括开始和结束时间）
+    if current_time < voting_time.start_time || current_time > voting_time.end_time {
+        return Err(ContractError::PeriodError {});
     }
 
     Ok(())
@@ -2071,9 +1948,9 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::QueryTotalFeeGrant {} => {
             to_json_binary::<Uint128>(&FEEGRANTS.may_load(deps.storage)?.unwrap_or_default())
         }
-        QueryMsg::QueryCircuitType {} => {
-            to_json_binary::<Uint256>(&CIRCUITTYPE.may_load(deps.storage)?.unwrap_or_default())
-        }
+        // QueryMsg::QueryCircuitType {} => {
+        //     to_json_binary::<Uint256>(&CIRCUITTYPE.may_load(deps.storage)?.unwrap_or_default())
+        // }
         QueryMsg::QueryCertSystem {} => {
             to_json_binary::<Uint256>(&CERTSYSTEM.may_load(deps.storage)?.unwrap_or_default())
         }
