@@ -69,8 +69,8 @@ impl MaciCodeId {
 
     pub fn store_default_code(app: &mut DefaultApp) -> Self {
         let contract =
-            ContractWrapper::new_with_empty(execute, instantiate, query).with_reply(reply);
-        // ContractWrapper::new(execute, instantiate, query);
+            // ContractWrapper::new(execute, instantiate, query).with_reply(reply);
+        ContractWrapper::new(execute, instantiate, query);
 
         let code_id = app.store_code(Box::new(contract));
         Self(code_id)
