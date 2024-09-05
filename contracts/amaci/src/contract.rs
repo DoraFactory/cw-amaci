@@ -1,7 +1,7 @@
 use crate::circuit_params::match_vkeys;
 use crate::error::ContractError;
 use crate::groth16_parser::{parse_groth16_proof, parse_groth16_vkey};
-use crate::msg::{ExecuteMsg, Groth16ProofType, InstantiateMsg, QueryMsg};
+use crate::msg::{ExecuteMsg, Groth16ProofType, InstantiateMsg, InstantiationData, QueryMsg};
 use crate::state::{
     Admin, Groth16ProofStr, MessageData, Period, PeriodStatus, PubKey, QuinaryTreeRoot, RoundInfo,
     StateLeaf, VotingTime, Whitelist, ADMIN, CERTSYSTEM, COORDINATORHASH,
@@ -273,6 +273,18 @@ pub fn instantiate(
 
     MACI_OPERATOR.save(deps.storage, &msg.operator)?;
 
+    let data: InstantiationData = InstantiationData {
+        caller: info.sender.clone(),
+        parameters: msg.parameters.clone(),
+        coordinator: msg.coordinator.clone(),
+        admin: msg.admin.clone(),
+        operator: msg.operator.clone(),
+        max_vote_options: msg.max_vote_options.clone(),
+        voice_credit_amount: msg.voice_credit_amount.clone(),
+        round_info: msg.round_info.clone(),
+        voting_time: msg.voting_time.clone(),
+        pre_deactivate_root: msg.pre_deactivate_root.clone(),
+    };
     Ok(Response::default()
         .add_attribute("action", "instantiate")
         .add_attribute("caller", &info.sender.to_string())
@@ -303,7 +315,8 @@ pub fn instantiate(
         .add_attribute(
             "message_batch_size",
             &msg.parameters.message_batch_size.to_string(),
-        ))
+        )
+        .set_data(to_json_binary(&data)?))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]

@@ -203,3 +203,17 @@ pub enum QueryMsg {
     #[returns(Uint256)]
     QueryPreDeactivateRoot {},
 }
+
+#[cw_serde]
+pub struct InstantiationData {
+    pub caller: Addr,
+    pub parameters: MaciParameters,
+    pub coordinator: PubKey,
+    pub admin: Addr,
+    pub operator: Addr,
+    pub max_vote_options: Uint256,
+    pub voice_credit_amount: Uint256,
+    pub round_info: RoundInfo,
+    pub voting_time: VotingTime,
+    pub pre_deactivate_root: Uint256,
+}

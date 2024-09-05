@@ -1,8 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    coins, to_json_binary, Addr, BankMsg, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response,
-    StdError, StdResult, SubMsg, SubMsgResponse, Uint128, Uint256, WasmMsg,
+    coins, from_json, to_json_binary, Addr, BankMsg, Binary, Deps, DepsMut, Env, MessageInfo,
+    Reply, Response, StdError, StdResult, SubMsg, SubMsgResponse, Uint128, Uint256, WasmMsg,
 };
 
 use cw2::set_contract_version;
@@ -14,7 +14,9 @@ use crate::state::{
     Admin, Config, ADMIN, CONFIG, MACI_DEACTIVATE_MESSAGE, MACI_DEACTIVATE_OPERATOR,
     MACI_OPERATOR_PUBKEY, MACI_OPERATOR_SET, OPERATOR, TOTAL,
 };
-use cw_amaci::msg::InstantiateMsg as AMaciInstantiateMsg;
+use cw_amaci::msg::{
+    InstantiateMsg as AMaciInstantiateMsg, InstantiationData as AMaciInstantiationData,
+};
 use cw_amaci::state::{MaciParameters, PubKey, RoundInfo, VotingTime, Whitelist};
 use cw_utils::parse_instantiate_response_data;
 
@@ -378,11 +380,75 @@ pub fn reply_created_round(
         }
     };
 
-    let addr = Addr::unchecked(response.contract_address);
+    let addr = Addr::unchecked(response.clone().contract_address);
     let data = InstantiationData { addr: addr.clone() };
+    let amaci_return_data: AMaciInstantiationData = from_json(&response.data.unwrap())?;
+
     let resp = Response::new()
         .add_attribute("action", "created_round")
         .add_attribute("round_addr", addr.to_string())
+        .add_attribute("caller", &amaci_return_data.caller.to_string())
+        .add_attribute("admin", &amaci_return_data.admin.to_string())
+        .add_attribute("operator", &amaci_return_data.operator.to_string())
+        .add_attribute(
+            "voting_start",
+            &amaci_return_data.voting_time.start_time.to_string(),
+        )
+        .add_attribute(
+            "voting_end",
+            &amaci_return_data.voting_time.end_time.to_string(),
+        )
+        .add_attribute(
+            "round_title",
+            &amaci_return_data.round_info.title.to_string(),
+        )
+        .add_attribute(
+            "round_description",
+            &amaci_return_data.round_info.description.to_string(),
+        )
+        .add_attribute("round_link", &amaci_return_data.round_info.link.to_string())
+        .add_attribute(
+            "coordinator_pubkey_x",
+            &amaci_return_data.coordinator.x.to_string(),
+        )
+        .add_attribute(
+            "coordinator_pubkey_y",
+            &amaci_return_data.coordinator.y.to_string(),
+        )
+        .add_attribute(
+            "max_vote_options",
+            &amaci_return_data.max_vote_options.to_string(),
+        )
+        .add_attribute(
+            "voice_credit_amount",
+            &amaci_return_data.voice_credit_amount.to_string(),
+        )
+        .add_attribute(
+            "pre_deactivate_root",
+            &amaci_return_data.pre_deactivate_root.to_string(),
+        )
+        .add_attribute(
+            "state_tree_depth",
+            &amaci_return_data.parameters.state_tree_depth.to_string(),
+        )
+        .add_attribute(
+            "int_state_tree_depth",
+            &amaci_return_data
+                .parameters
+                .int_state_tree_depth
+                .to_string(),
+        )
+        .add_attribute(
+            "vote_option_tree_depth",
+            &amaci_return_data
+                .parameters
+                .vote_option_tree_depth
+                .to_string(),
+        )
+        .add_attribute(
+            "message_batch_size",
+            &amaci_return_data.parameters.message_batch_size.to_string(),
+        )
         .set_data(to_json_binary(&data)?);
 
     Ok(resp)
