@@ -235,7 +235,8 @@ pub fn execute_create_round(
     let resp = Response::new()
         .add_submessage(msg)
         // .add_message(msg)
-        .add_attribute("action", "create_maci_round");
+        .add_attribute("action", "create_maci_round")
+        .add_attribute("amaci_code_id", &amaci_code_id.to_string());
 
     Ok(resp)
 }

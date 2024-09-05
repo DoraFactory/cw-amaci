@@ -34,7 +34,6 @@ use cosmwasm_std::{
     attr, coins, to_json_binary, Addr, BankMsg, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
     Reply, Response, StdError, StdResult, SubMsgResponse, Uint128, Uint256,
 };
-use cw_utils::parse_instantiate_response_data;
 
 use bellman_ce_verifier::{prepare_verifying_key, verify_proof as groth16_verify};
 
@@ -279,8 +278,32 @@ pub fn instantiate(
         .add_attribute("caller", &info.sender.to_string())
         .add_attribute("admin", &msg.admin.to_string())
         .add_attribute("operator", &msg.operator.to_string())
-        .add_attribute("start_time", &msg.voting_time.start_time.to_string())
-        .add_attribute("end_time", &msg.voting_time.end_time.to_string()))
+        .add_attribute("voting_start", &msg.voting_time.start_time.to_string())
+        .add_attribute("voting_end", &msg.voting_time.end_time.to_string())
+        .add_attribute("round_title", &msg.round_info.title.to_string())
+        .add_attribute("round_description", &msg.round_info.description.to_string())
+        .add_attribute("round_link", &msg.round_info.link.to_string())
+        .add_attribute("coordinator_pubkey_x", &msg.coordinator.x.to_string())
+        .add_attribute("coordinator_pubkey_y", &msg.coordinator.y.to_string())
+        .add_attribute("max_vote_options", &msg.max_vote_options.to_string())
+        .add_attribute("voice_credit_amount", &msg.voice_credit_amount.to_string())
+        .add_attribute("pre_deactivate_root", &msg.pre_deactivate_root.to_string())
+        .add_attribute(
+            "state_tree_depth",
+            &msg.parameters.state_tree_depth.to_string(),
+        )
+        .add_attribute(
+            "int_state_tree_depth",
+            &msg.parameters.int_state_tree_depth.to_string(),
+        )
+        .add_attribute(
+            "vote_option_tree_depth",
+            &msg.parameters.vote_option_tree_depth.to_string(),
+        )
+        .add_attribute(
+            "message_batch_size",
+            &msg.parameters.message_batch_size.to_string(),
+        ))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
