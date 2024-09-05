@@ -8,7 +8,7 @@ use crate::state::{
 };
 use crate::utils::uint256_from_hex_string;
 use crate::{
-    contract::{execute, instantiate, query, reply},
+    contract::{execute, instantiate, query},
     msg::*,
 };
 

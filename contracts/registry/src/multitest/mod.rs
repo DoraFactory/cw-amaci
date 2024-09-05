@@ -4,14 +4,11 @@ mod tests;
 use anyhow::Result as AnyResult;
 
 use crate::{
-    contract::{execute, instantiate, query},
+    contract::{execute, instantiate, query, reply},
     msg::*,
 };
 use cosmwasm_std::{Addr, Coin, StdResult, Timestamp, Uint128, Uint256};
-use cw_amaci::{
-    msg::InstantiationData,
-    state::{PubKey, RoundInfo, VotingTime},
-};
+use cw_amaci::state::{PubKey, RoundInfo, VotingTime};
 use cw_multi_test::{App, AppResponse, ContractWrapper, Executor};
 
 pub const MOCK_CONTRACT_ADDR: &str = "cosmos2contract";
@@ -68,8 +65,7 @@ pub struct AmaciRegistryCodeId(u64);
 
 impl AmaciRegistryCodeId {
     pub fn store_code(app: &mut App) -> Self {
-        let contract =
-            ContractWrapper::new(execute, instantiate, query).with_reply(cw_amaci::contract::reply);
+        let contract = ContractWrapper::new(execute, instantiate, query).with_reply(reply);
         let code_id = app.store_code(Box::new(contract));
         Self(code_id)
     }

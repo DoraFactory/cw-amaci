@@ -6,12 +6,11 @@ use cw_multi_test::{next_block, App};
 use crate::{
     multitest::{
         contract_address, owner, uint256_from_decimal_string, user1, user2, user3,
-        AmaciRegistryCodeId, DORA_DEMON, MIN_DEPOSIT_AMOUNT,
+        AmaciRegistryCodeId, InstantiationData, DORA_DEMON, MIN_DEPOSIT_AMOUNT,
     },
     ContractError,
 };
 use cw_amaci::{
-    msg::InstantiationData,
     multitest::{create_app, MaciCodeId, MaciContract},
     state::PubKey,
 };

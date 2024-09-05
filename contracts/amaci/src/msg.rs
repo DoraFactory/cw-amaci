@@ -203,8 +203,3 @@ pub enum QueryMsg {
     #[returns(Uint256)]
     QueryPreDeactivateRoot {},
 }
-
-#[cw_serde]
-pub struct InstantiationData {
-    pub addr: Addr,
-}

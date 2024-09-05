@@ -55,4 +55,10 @@ pub enum ContractError {
 
     #[error("No matched-size circuits")]
     NoMatchedSizeCircuit,
+
+    #[error("Un recognized reply id {id}")]
+    UnRecognizedReplyIdErr { id: u64 },
+
+    #[error("Data missing")]
+    DataMissingErr {},
 }

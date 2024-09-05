@@ -1,7 +1,7 @@
 use crate::circuit_params::match_vkeys;
 use crate::error::ContractError;
 use crate::groth16_parser::{parse_groth16_proof, parse_groth16_vkey};
-use crate::msg::{ExecuteMsg, Groth16ProofType, InstantiateMsg, InstantiationData, QueryMsg};
+use crate::msg::{ExecuteMsg, Groth16ProofType, InstantiateMsg, QueryMsg};
 use crate::state::{
     Admin, Groth16ProofStr, MessageData, Period, PeriodStatus, PubKey, QuinaryTreeRoot, RoundInfo,
     StateLeaf, VotingTime, Whitelist, ADMIN, CERTSYSTEM, COORDINATORHASH,
@@ -2029,40 +2029,6 @@ pub fn query_can_sign_up(deps: Deps, sender: String) -> StdResult<bool> {
 // pub fn query_user_balance_of(deps: Deps, sender: String) -> StdResult<Uint256> {
 //     Ok(user_balance_of(deps, &sender)?)
 // }
-#[cfg_attr(not(feature = "library"), entry_point)]
-pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> Result<Response, ContractError> {
-    match reply.id {
-        CREATED_ROUND_REPLY_ID => reply_created_round(deps, env, reply.result.into_result()),
-        id => Err(ContractError::UnRecognizedReplyIdErr { id }),
-    }
-}
-
-pub fn reply_created_round(
-    deps: DepsMut,
-    _env: Env,
-    reply: Result<SubMsgResponse, String>,
-) -> Result<Response, ContractError> {
-    let response = reply.map_err(StdError::generic_err)?;
-    let data = response.data.ok_or(ContractError::DataMissingErr {})?;
-    // let response = parse_instantiate_response_data(&data)?;
-    let response = match parse_instantiate_response_data(&data) {
-        Ok(data) => data,
-        Err(err) => {
-            return Err(ContractError::Std(cosmwasm_std::StdError::generic_err(
-                err.to_string(),
-            )))
-        }
-    };
-
-    let addr = Addr::unchecked(response.contract_address);
-    let data = InstantiationData { addr: addr.clone() };
-    let resp = Response::new()
-        .add_attribute("action", "created_round")
-        .add_attribute("round_addr", addr.to_string())
-        .set_data(to_json_binary(&data)?);
-
-    Ok(resp)
-}
 
 #[cfg(test)]
 mod tests {}

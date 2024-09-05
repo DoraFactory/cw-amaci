@@ -98,3 +98,8 @@ pub struct ConfigResponse {
     pub min_deposit_amount: Uint128,
     pub slash_amount: Uint128,
 }
+
+#[cw_serde]
+pub struct InstantiationData {
+    pub addr: Addr,
+}

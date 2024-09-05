@@ -1,21 +1,22 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    coins, to_json_binary, Addr, BankMsg, Binary, Deps, DepsMut, Env, MessageInfo, Response,
-    StdResult, SubMsg, Uint128, Uint256, WasmMsg,
+    coins, to_json_binary, Addr, BankMsg, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response,
+    StdError, StdResult, SubMsg, SubMsgResponse, Uint128, Uint256, WasmMsg,
 };
 
 use cw2::set_contract_version;
 use cw_amaci::contract::CREATED_ROUND_REPLY_ID;
 
 use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use crate::msg::{ExecuteMsg, InstantiateMsg, InstantiationData, QueryMsg};
 use crate::state::{
     Admin, Config, ADMIN, CONFIG, MACI_DEACTIVATE_MESSAGE, MACI_DEACTIVATE_OPERATOR,
     MACI_OPERATOR_PUBKEY, MACI_OPERATOR_SET, OPERATOR, TOTAL,
 };
 use cw_amaci::msg::InstantiateMsg as AMaciInstantiateMsg;
 use cw_amaci::state::{MaciParameters, PubKey, RoundInfo, VotingTime, Whitelist};
+use cw_utils::parse_instantiate_response_data;
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:cw-amaci-registry";
@@ -349,4 +350,39 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             to_json_binary(&MACI_OPERATOR_PUBKEY.load(deps.storage, &address)?)
         }
     }
+}
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> Result<Response, ContractError> {
+    match reply.id {
+        CREATED_ROUND_REPLY_ID => reply_created_round(deps, env, reply.result.into_result()),
+        id => Err(ContractError::UnRecognizedReplyIdErr { id }),
+    }
+}
+
+pub fn reply_created_round(
+    deps: DepsMut,
+    _env: Env,
+    reply: Result<SubMsgResponse, String>,
+) -> Result<Response, ContractError> {
+    let response = reply.map_err(StdError::generic_err)?;
+    let data = response.data.ok_or(ContractError::DataMissingErr {})?;
+    // let response = parse_instantiate_response_data(&data)?;
+    let response = match parse_instantiate_response_data(&data) {
+        Ok(data) => data,
+        Err(err) => {
+            return Err(ContractError::Std(cosmwasm_std::StdError::generic_err(
+                err.to_string(),
+            )))
+        }
+    };
+
+    let addr = Addr::unchecked(response.contract_address);
+    let data = InstantiationData { addr: addr.clone() };
+    let resp = Response::new()
+        .add_attribute("action", "created_round")
+        .add_attribute("round_addr", addr.to_string())
+        .set_data(to_json_binary(&data)?);
+
+    Ok(resp)
 }
