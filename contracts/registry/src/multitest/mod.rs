@@ -7,8 +7,11 @@ use crate::{
     contract::{execute, instantiate, query},
     msg::*,
 };
-use cosmwasm_std::{Addr, Coin, StdResult, Uint128, Uint256};
-use cw_amaci::state::PubKey;
+use cosmwasm_std::{Addr, Coin, StdResult, Timestamp, Uint128, Uint256};
+use cw_amaci::{
+    msg::InstantiationData,
+    state::{PubKey, RoundInfo, VotingTime},
+};
 use cw_multi_test::{App, AppResponse, ContractWrapper, Executor};
 
 pub const MOCK_CONTRACT_ADDR: &str = "cosmos2contract";
@@ -130,6 +133,39 @@ impl AmaciRegistryContract {
     #[track_caller]
     pub fn deregister(&self, app: &mut App, sender: Addr) -> AnyResult<AppResponse> {
         app.execute_contract(sender, self.addr(), &ExecuteMsg::Deregister {}, &[])
+    }
+
+    #[track_caller]
+    pub fn create_round(
+        &self,
+        app: &mut App,
+        sender: Addr,
+        amaci_code_id: u64,
+        operator: Addr,
+    ) -> AnyResult<Option<InstantiationData>> {
+        // ) -> AnyResult<AppResponse> {
+        let msg = ExecuteMsg::CreateRound {
+            amaci_code_id,
+            operator,
+            max_voter: Uint256::from_u128(5u128),
+            max_option: Uint256::from_u128(5u128),
+            voice_credit_amount: Uint256::from_u128(30u128),
+            round_info: RoundInfo {
+                title: "".to_string(),
+                description: "".to_string(),
+                link: "".to_string(),
+            },
+            voting_time: VotingTime {
+                start_time: Timestamp::from_nanos(1571797424879000000),
+                end_time: Timestamp::from_nanos(1571797429879300000),
+            },
+            whitelist: None,
+            pre_deactivate_root: Uint256::from_u128(0u128),
+        };
+
+        app.execute_contract(sender, self.addr(), &msg, &[])?;
+
+        Ok(None)
     }
 
     // #[track_caller]

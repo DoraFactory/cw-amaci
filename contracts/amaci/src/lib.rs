@@ -6,7 +6,7 @@ pub mod msg;
 pub mod state;
 pub mod utils;
 
-#[cfg(test)]
+#[cfg(any(feature = "mt", test))]
 pub mod multitest;
 
 pub use crate::error::ContractError;

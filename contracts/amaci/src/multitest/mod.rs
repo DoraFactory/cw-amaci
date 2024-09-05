@@ -3,10 +3,8 @@ mod tests;
 
 use anyhow::Result as AnyResult;
 
-use crate::msg::Groth16VKeyType;
 use crate::state::{
-    MaciParameters, MessageData, Period, PubKey, QuinaryTreeRoot, RoundInfo, VotingTime, Whitelist,
-    WhitelistConfig,
+    MaciParameters, MessageData, Period, PubKey, RoundInfo, VotingTime, Whitelist, WhitelistConfig,
 };
 use crate::utils::uint256_from_hex_string;
 use crate::{
@@ -17,11 +15,11 @@ use crate::{
 use cosmwasm_std::testing::{MockApi, MockStorage};
 use cosmwasm_std::{Addr, Coin, Empty, StdResult, Timestamp, Uint128, Uint256};
 // use cosmwasm_std::{Addr, Coin, StdResult, Timestamp, Uint128, Uint256};
+use cw_multi_test::App as DefaultApp;
 use cw_multi_test::{
     no_init, AppBuilder, AppResponse, BankKeeper, ContractWrapper, DistributionKeeper, Executor,
     FailingModule, GovFailingModule, IbcFailingModule, StakeKeeper, StargateAccepting, WasmKeeper,
 };
-// use cw_multi_test::{App, AppResponse, ContractWrapper, Executor};
 use num_bigint::BigUint;
 
 pub fn uint256_from_decimal_string(decimal_string: &str) -> Uint256 {
@@ -65,6 +63,16 @@ pub fn create_app() -> App {
 pub struct MaciCodeId(u64);
 
 impl MaciCodeId {
+    pub fn id(&self) -> u64 {
+        self.0
+    }
+
+    pub fn store_default_code(app: &mut DefaultApp) -> Self {
+        let contract = ContractWrapper::new(execute, instantiate, query);
+        let code_id = app.store_code(Box::new(contract));
+        Self(code_id)
+    }
+
     pub fn store_code(app: &mut App) -> Self {
         let contract = ContractWrapper::new(execute, instantiate, query);
         let code_id = app.store_code(Box::new(contract));

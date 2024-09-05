@@ -14,11 +14,11 @@ use crate::state::{
     STATE_ROOT_BY_DMSG, TOTAL_RESULT, VOICECREDITBALANCE, VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP,
     VOTINGTIME, WHITELIST, ZEROS, ZEROS_H10,
 };
-
-use pairing_ce::bn256::Bn256;
-
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
+use cw2::set_contract_version;
+
+use pairing_ce::bn256::Bn256;
 
 use cosmos_sdk_proto::cosmos::base::v1beta1::Coin as SdkCoin;
 use cosmos_sdk_proto::cosmos::feegrant::v1beta1::{
@@ -55,6 +55,7 @@ pub fn instantiate(
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
+    set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     // Create an admin with the sender address
     let admin = Admin {
         admin: msg.admin.clone(),

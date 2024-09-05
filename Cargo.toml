@@ -17,7 +17,7 @@ resolver = "2"
 # cw-multi-test = "0.16"
 
 
-[profile.release.package.amaci]
+[profile.release.package.cw-amaci]
 codegen-units = 1
 incremental = false
 
