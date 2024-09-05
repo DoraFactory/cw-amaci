@@ -2028,7 +2028,7 @@ pub fn query_can_sign_up(deps: Deps, sender: String) -> StdResult<bool> {
 // pub fn query_user_balance_of(deps: Deps, sender: String) -> StdResult<Uint256> {
 //     Ok(user_balance_of(deps, &sender)?)
 // }
-
+#[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> Result<Response, ContractError> {
     match reply.id {
         CREATED_ROUND_REPLY_ID => reply_created_round(deps, env, reply.result.into_result()),
