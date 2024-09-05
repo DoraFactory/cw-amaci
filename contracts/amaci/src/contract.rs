@@ -1,7 +1,7 @@
-use crate::circuit_params::{match_vkeys, VkeyParams};
+use crate::circuit_params::match_vkeys;
 use crate::error::ContractError;
 use crate::groth16_parser::{parse_groth16_proof, parse_groth16_vkey};
-use crate::msg::{ExecuteMsg, Groth16ProofType, InstantiateMsg, QueryMsg};
+use crate::msg::{ExecuteMsg, Groth16ProofType, InstantiateMsg, InstantiationData, QueryMsg};
 use crate::state::{
     Admin, Groth16ProofStr, MessageData, Period, PeriodStatus, PubKey, QuinaryTreeRoot, RoundInfo,
     StateLeaf, VotingTime, Whitelist, ADMIN, CERTSYSTEM, COORDINATORHASH,
@@ -29,18 +29,24 @@ use cosmos_sdk_proto::traits::TypeUrl;
 use cosmos_sdk_proto::Any;
 use prost_types::Timestamp as SdkTimestamp;
 
-use cosmwasm_std::{
-    attr, coins, to_json_binary, BankMsg, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
-    Response, StdResult, Uint128, Uint256,
-};
-
 use crate::utils::{hash2, hash5, hash_256_uint256_list, uint256_from_hex_string};
+use cosmwasm_std::{
+    attr, coins, to_json_binary, Addr, BankMsg, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
+    Reply, Response, StdError, StdResult, SubMsgResponse, Uint128, Uint256,
+};
+use cw_utils::parse_instantiate_response_data;
 
 use bellman_ce_verifier::{prepare_verifying_key, verify_proof as groth16_verify};
 
 use ff_ce::PrimeField as Fr;
 
 use hex;
+
+// version info for migration info
+const CONTRACT_NAME: &str = "crates.io:cw-amaci";
+const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+pub const CREATED_ROUND_REPLY_ID: u64 = 1;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -50,7 +56,9 @@ pub fn instantiate(
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     // Create an admin with the sender address
-    let admin = Admin { admin: msg.admin };
+    let admin = Admin {
+        admin: msg.admin.clone(),
+    };
     ADMIN.save(deps.storage, &admin)?;
 
     // An error will be thrown if the number of vote options exceeds the circuit’s capacity.
@@ -267,7 +275,8 @@ pub fn instantiate(
 
     Ok(Response::default()
         .add_attribute("action", "instantiate")
-        .add_attribute("creator", &info.sender.to_string())
+        .add_attribute("caller", &info.sender.to_string())
+        .add_attribute("admin", &msg.admin.to_string())
         .add_attribute("operator", &msg.operator.to_string())
         .add_attribute("start_time", &msg.voting_time.start_time.to_string())
         .add_attribute("end_time", &msg.voting_time.end_time.to_string()))
@@ -311,6 +320,9 @@ pub fn execute(
             message,
             enc_pub_key,
         } => execute_publish_deactivate_message(deps, env, info, message, enc_pub_key),
+        ExecuteMsg::UploadDeactivateMessage { deactivate_message } => {
+            execute_upload_deactivate_message(deps, env, info, deactivate_message)
+        }
         ExecuteMsg::ProcessDeactivateMessage {
             size,
             new_deactivate_commitment,
@@ -2016,6 +2028,40 @@ pub fn query_can_sign_up(deps: Deps, sender: String) -> StdResult<bool> {
 // pub fn query_user_balance_of(deps: Deps, sender: String) -> StdResult<Uint256> {
 //     Ok(user_balance_of(deps, &sender)?)
 // }
+
+pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> Result<Response, ContractError> {
+    match reply.id {
+        CREATED_ROUND_REPLY_ID => reply_created_round(deps, env, reply.result.into_result()),
+        id => Err(ContractError::UnRecognizedReplyIdErr { id }),
+    }
+}
+
+pub fn reply_created_round(
+    deps: DepsMut,
+    _env: Env,
+    reply: Result<SubMsgResponse, String>,
+) -> Result<Response, ContractError> {
+    let response = reply.map_err(StdError::generic_err)?;
+    let data = response.data.ok_or(ContractError::DataMissingErr {})?;
+    // let response = parse_instantiate_response_data(&data)?;
+    let response = match parse_instantiate_response_data(&data) {
+        Ok(data) => data,
+        Err(err) => {
+            return Err(ContractError::Std(cosmwasm_std::StdError::generic_err(
+                err.to_string(),
+            )))
+        }
+    };
+
+    let addr = Addr::unchecked(response.contract_address);
+    let data = InstantiationData { addr: addr.clone() };
+    let resp = Response::new()
+        .add_attribute("action", "created_round")
+        .add_attribute("round_addr", addr.to_string())
+        .set_data(to_json_binary(&data)?);
+
+    Ok(resp)
+}
 
 #[cfg(test)]
 mod tests {}

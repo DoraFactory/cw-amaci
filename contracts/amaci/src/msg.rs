@@ -1,6 +1,5 @@
 use crate::state::{
-    MaciParameters, MessageData, PeriodStatus, PubKey, QuinaryTreeRoot, RoundInfo, VotingTime,
-    Whitelist,
+    MaciParameters, MessageData, PeriodStatus, PubKey, RoundInfo, VotingTime, Whitelist,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128, Uint256};
@@ -72,6 +71,9 @@ pub enum ExecuteMsg {
     PublishDeactivateMessage {
         message: MessageData,
         enc_pub_key: PubKey,
+    },
+    UploadDeactivateMessage {
+        deactivate_message: Vec<Vec<Uint256>>,
     },
     ProcessDeactivateMessage {
         size: Uint256,
@@ -200,4 +202,9 @@ pub enum QueryMsg {
 
     #[returns(Uint256)]
     QueryPreDeactivateRoot {},
+}
+
+#[cw_serde]
+pub struct InstantiationData {
+    pub addr: Addr,
 }

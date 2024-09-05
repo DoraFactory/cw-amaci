@@ -1,11 +1,12 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    coins, to_binary, to_json_binary, Addr, BankMsg, Binary, Coin, Deps, DepsMut, Env, MessageInfo,
-    Response, StdResult, SubMsg, Uint128, Uint256, WasmMsg,
+    coins, to_json_binary, Addr, BankMsg, Binary, Deps, DepsMut, Env, MessageInfo, Response,
+    StdResult, SubMsg, Uint128, Uint256, WasmMsg,
 };
 
 use cw2::set_contract_version;
+use cw_amaci::contract::CREATED_ROUND_REPLY_ID;
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
@@ -58,6 +59,30 @@ pub fn execute(
     match msg {
         ExecuteMsg::Register { pubkey } => execute_register(deps, env, info, pubkey),
         ExecuteMsg::Deregister {} => execute_deregister(deps, env, info),
+        ExecuteMsg::CreateRound {
+            amaci_code_id,
+            operator,
+            max_voter,
+            max_option,
+            voice_credit_amount,
+            round_info,
+            voting_time,
+            whitelist,
+            pre_deactivate_root,
+        } => execute_create_round(
+            deps,
+            env,
+            info,
+            amaci_code_id,
+            operator,
+            max_voter,
+            max_option,
+            voice_credit_amount,
+            round_info,
+            voting_time,
+            whitelist,
+            pre_deactivate_root,
+        ),
         // ExecuteMsg::UploadDeactivateMessage {
         //     contract_address,
         //     deactivate_message,
@@ -143,7 +168,7 @@ pub fn execute_deregister(
     }
 }
 
-pub fn create_round(
+pub fn execute_create_round(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
@@ -157,7 +182,7 @@ pub fn create_round(
     whitelist: Option<Whitelist>,
     pre_deactivate_root: Uint256,
 ) -> Result<Response, ContractError> {
-    let mut maci_parameters: MaciParameters;
+    let maci_parameters: MaciParameters;
     if max_voter <= Uint256::from_u128(25u128) && max_option <= Uint256::from_u128(5u128) {
         // state_tree_depth: 2
         // vote_option_tree_depth: 1
@@ -204,11 +229,11 @@ pub fn create_round(
         label: "AMACI".to_string(),
     };
 
-    // let msg = SubMsg::reply_on_success(msg, INITIAL_LOTTERY_INSTANTIATION_REPLY_ID);
+    let msg = SubMsg::reply_on_success(msg, CREATED_ROUND_REPLY_ID);
 
     let resp = Response::new()
-        // .add_submessage(msg)
-        .add_message(msg)
+        .add_submessage(msg)
+        // .add_message(msg)
         .add_attribute("action", "create_maci_round");
 
     Ok(resp)

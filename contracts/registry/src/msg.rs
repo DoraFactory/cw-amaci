@@ -1,7 +1,7 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128, Uint256};
 
-use cw_amaci::state::PubKey;
+use cw_amaci::state::{PubKey, RoundInfo, VotingTime, Whitelist};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -25,10 +25,17 @@ pub enum ExecuteMsg {
         pubkey: PubKey,
     },
     Deregister {},
-    // UploadDeactivateMessage {
-    //     contract_address: Addr,
-    //     deactivate_message: Vec<Vec<Uint256>>,
-    // },
+    CreateRound {
+        amaci_code_id: u64,
+        operator: Addr,
+        max_voter: Uint256,
+        max_option: Uint256,
+        voice_credit_amount: Uint256,
+        round_info: RoundInfo,
+        voting_time: VotingTime,
+        whitelist: Option<Whitelist>,
+        pre_deactivate_root: Uint256,
+    },
     ChangeParams {
         min_deposit_amount: Uint128,
         slash_amount: Uint128,
