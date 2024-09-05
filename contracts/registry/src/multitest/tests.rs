@@ -180,6 +180,5 @@ fn create_round_should_works() {
     let resp = contract
         .create_round(&mut app, user1(), amaci_code_id.id(), user1())
         .unwrap();
-
-    assert!(resp.is_none());
+    println!("{:?}", resp);
 }

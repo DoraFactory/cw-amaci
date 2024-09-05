@@ -68,7 +68,8 @@ pub struct AmaciRegistryCodeId(u64);
 
 impl AmaciRegistryCodeId {
     pub fn store_code(app: &mut App) -> Self {
-        let contract = ContractWrapper::new(execute, instantiate, query);
+        let contract =
+            ContractWrapper::new(execute, instantiate, query).with_reply(cw_amaci::contract::reply);
         let code_id = app.store_code(Box::new(contract));
         Self(code_id)
     }
@@ -142,8 +143,8 @@ impl AmaciRegistryContract {
         sender: Addr,
         amaci_code_id: u64,
         operator: Addr,
-    ) -> AnyResult<Option<InstantiationData>> {
-        // ) -> AnyResult<AppResponse> {
+        // ) -> AnyResult<Option<InstantiationData>> {
+    ) -> AnyResult<AppResponse> {
         let msg = ExecuteMsg::CreateRound {
             amaci_code_id,
             operator,
@@ -163,9 +164,9 @@ impl AmaciRegistryContract {
             pre_deactivate_root: Uint256::from_u128(0u128),
         };
 
-        app.execute_contract(sender, self.addr(), &msg, &[])?;
-
-        Ok(None)
+        app.execute_contract(sender, self.addr(), &msg, &[])
+        // app.execute_contract(sender, self.addr(), &msg, &[])?;
+        // Ok(None)
     }
 
     // #[track_caller]

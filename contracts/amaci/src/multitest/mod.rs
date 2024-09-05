@@ -8,7 +8,7 @@ use crate::state::{
 };
 use crate::utils::uint256_from_hex_string;
 use crate::{
-    contract::{execute, instantiate, query},
+    contract::{execute, instantiate, query, reply},
     msg::*,
 };
 
@@ -68,7 +68,10 @@ impl MaciCodeId {
     }
 
     pub fn store_default_code(app: &mut DefaultApp) -> Self {
-        let contract = ContractWrapper::new(execute, instantiate, query);
+        let contract =
+            ContractWrapper::new_with_empty(execute, instantiate, query).with_reply(reply);
+        // ContractWrapper::new(execute, instantiate, query);
+
         let code_id = app.store_code(Box::new(contract));
         Self(code_id)
     }
