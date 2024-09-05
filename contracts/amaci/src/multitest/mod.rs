@@ -408,6 +408,10 @@ impl MaciContract {
         self.0.clone()
     }
 
+    pub fn new(addr: Addr) -> Self {
+        MaciContract(addr)
+    }
+
     #[allow(clippy::too_many_arguments)]
     #[track_caller]
     pub fn instantiate(
@@ -979,6 +983,21 @@ impl MaciContract {
     pub fn query_total_feegrant(&self, app: &App) -> StdResult<Uint128> {
         app.wrap()
             .query_wasm_smart(self.addr(), &QueryMsg::QueryTotalFeeGrant {})
+    }
+
+    pub fn query_admin(&self, app: &DefaultApp) -> StdResult<Addr> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::Admin {})
+    }
+
+    pub fn query_operator(&self, app: &DefaultApp) -> StdResult<Addr> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::Operator {})
+    }
+
+    pub fn query_round_info(&self, app: &DefaultApp) -> StdResult<RoundInfo> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::GetRoundInfo {})
     }
 }
 

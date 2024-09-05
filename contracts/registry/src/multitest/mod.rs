@@ -152,9 +152,9 @@ impl AmaciRegistryContract {
             max_option: Uint256::from_u128(5u128),
             voice_credit_amount: Uint256::from_u128(30u128),
             round_info: RoundInfo {
-                title: "".to_string(),
-                description: "".to_string(),
-                link: "".to_string(),
+                title: "Hello World".to_string(),
+                description: "Test Description".to_string(),
+                link: "https://dorafactory.org".to_string(),
             },
             voting_time: VotingTime {
                 start_time: Timestamp::from_nanos(1571797424879000000),

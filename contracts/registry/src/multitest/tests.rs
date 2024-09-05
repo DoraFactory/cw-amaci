@@ -1,4 +1,4 @@
-use cosmwasm_std::{coins, Coin, Uint128};
+use cosmwasm_std::{coins, from_binary, from_json, to_json_binary, Coin, Uint128};
 use cw_multi_test::{next_block, App};
 
 // use crate::error::ContractError;
@@ -11,7 +11,8 @@ use crate::{
     ContractError,
 };
 use cw_amaci::{
-    multitest::{create_app, MaciCodeId},
+    msg::InstantiationData,
+    multitest::{create_app, MaciCodeId, MaciContract},
     state::PubKey,
 };
 #[test]
@@ -141,8 +142,6 @@ fn instantiate_should_works() {
 #[test]
 fn create_round_should_works() {
     let user1_coin_amount = 30u128;
-    let user2_coin_amount = 20u128;
-    let user3_coin_amount = 10u128;
     let min_deposit_coin_amount = 20u128;
 
     let mut app = App::new(|router, _api, storage| {
@@ -181,4 +180,18 @@ fn create_round_should_works() {
         .create_round(&mut app, user1(), amaci_code_id.id(), user1())
         .unwrap();
     println!("{:?}", resp);
+
+    let amaci_contract_addr: InstantiationData = from_json(&resp.data.unwrap()).unwrap();
+    println!("{:?}", amaci_contract_addr);
+    let maci_contract = MaciContract::new(amaci_contract_addr.addr);
+    let amaci_admin = maci_contract.query_admin(&app).unwrap();
+    println!("{:?}", amaci_admin);
+    assert_eq!(user1(), amaci_admin);
+
+    let amaci_operator = maci_contract.query_operator(&app).unwrap();
+    println!("{:?}", amaci_operator);
+    assert_eq!(user1(), amaci_operator);
+
+    let amaci_round_info = maci_contract.query_round_info(&app).unwrap();
+    println!("{:?}", amaci_round_info);
 }
