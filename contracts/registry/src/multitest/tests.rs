@@ -5,8 +5,9 @@ use cw_multi_test::{next_block, App};
 // use crate::msg::ClaimsResponse;
 use crate::{
     multitest::{
-        contract_address, owner, uint256_from_decimal_string, user1, user2, user3,
-        AmaciRegistryCodeId, InstantiationData, DORA_DEMON, MIN_DEPOSIT_AMOUNT,
+        contract_address, owner, uint256_from_decimal_string, uint256_from_decimal_string_no_check,
+        user1, user2, user3, AmaciRegistryCodeId, InstantiationData, DORA_DEMON,
+        MIN_DEPOSIT_AMOUNT,
     },
     ContractError,
 };
@@ -43,13 +44,35 @@ fn instantiate_should_works() {
 
     let code_id = AmaciRegistryCodeId::store_code(&mut app);
     let label = "Dora AMaci Registry";
-    let contract = code_id.instantiate(&mut app, owner(), label).unwrap();
+    let contract = code_id.instantiate(&mut app, owner(), 1u64, label).unwrap();
 
     // check winner
     let total = contract.get_total(&app).unwrap();
     assert_eq!(total, 0u128);
     app.update_block(next_block);
 
+    let wrong_length_pubkey = PubKey {
+        x: uint256_from_decimal_string_no_check(
+            "3557592161792765812904087712812111121909518311142005886657252371904276697771",
+        ),
+        y: uint256_from_decimal_string_no_check(
+            "3557592161792765812904087712812111121909518311142005886657252371904276697771123",
+        ),
+    };
+
+    let user1_register_with_wrong_pubkey = contract
+        .register(
+            &mut app,
+            user1(),
+            wrong_length_pubkey.clone(),
+            // Uint128::from(bond_coin_amount),
+            &coins(min_deposit_coin_amount, DORA_DEMON),
+        )
+        .unwrap_err();
+    assert_eq!(
+        ContractError::InvalidPubkeyLength {},
+        user1_register_with_wrong_pubkey.downcast().unwrap()
+    );
     let user1_pubkey = PubKey {
         x: uint256_from_decimal_string(
             "3557592161792765812904087712812111121909518311142005886657252371904276697771",
@@ -75,7 +98,7 @@ fn instantiate_should_works() {
         .register(
             &mut app,
             user1(),
-            user1_pubkey,
+            user1_pubkey.clone(),
             &coins(user1_coin_amount - min_deposit_coin_amount, DORA_DEMON),
         )
         .unwrap_err();
@@ -96,12 +119,25 @@ fn instantiate_should_works() {
         }
     );
 
+    let user3_register_with_user1_pubkey = contract
+        .register(
+            &mut app,
+            user3(),
+            user1_pubkey,
+            &coins(user3_coin_amount, DORA_DEMON),
+        )
+        .unwrap_err();
+    assert_eq!(
+        ContractError::PubkeyExisted {},
+        user3_register_with_user1_pubkey.downcast().unwrap()
+    );
+
     let user3_pubkey = PubKey {
         x: uint256_from_decimal_string(
-            "3557592161792765812904087712812111121909518311142005886657252371904276697771",
+            "4363822302427519764561660537570341277214758164895027920046745209970137856681",
         ),
         y: uint256_from_decimal_string(
-            "4363822302427519764561660537570341277214758164895027920046745209970137856681",
+            "3557592161792765812904087712812111121909518311142005886657252371904276697771",
         ),
     };
 
@@ -155,7 +191,7 @@ fn create_round_should_works() {
 
     let label = "Dora AMaci Registry";
     let contract = register_code_id
-        .instantiate(&mut app, owner(), label)
+        .instantiate(&mut app, owner(), amaci_code_id.id(), label)
         .unwrap();
 
     let user1_pubkey = PubKey {
@@ -174,10 +210,7 @@ fn create_round_should_works() {
         // Uint128::from(bond_coin_amount),
         &coins(min_deposit_coin_amount, DORA_DEMON),
     );
-
-    let resp = contract
-        .create_round(&mut app, user1(), amaci_code_id.id(), user1())
-        .unwrap();
+    let resp = contract.create_round(&mut app, user1(), user1()).unwrap();
     println!("{:?}", resp);
 
     let amaci_contract_addr: InstantiationData = from_json(&resp.data.unwrap()).unwrap();

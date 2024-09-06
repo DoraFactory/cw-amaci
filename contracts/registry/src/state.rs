@@ -27,11 +27,11 @@ impl Admin {
 pub const ADMIN: Item<Admin> = Item::new("admin");
 pub const OPERATOR: Item<Addr> = Item::new("operator");
 pub const CONFIG: Item<Config> = Item::new("config");
+pub const AMACI_CODE_ID: Item<u64> = Item::new("amaci_code_id");
 pub const TOTAL: Item<u128> = Item::new(TOTAL_KEY);
 pub const MACI_OPERATOR_SET: Map<&Addr, Uint128> = Map::new("maci_operator_set");
-pub const MACI_DEACTIVATE_MESSAGE: Map<&Addr, Vec<Vec<String>>> =
-    // contract_address - [["", "", "", "", ""]]
-    Map::new("maci_deactivate_message");
 pub const MACI_DEACTIVATE_OPERATOR: Map<&Addr, Addr> = Map::new("maci_deactivate_operator"); // contract_address - operator_address
 
-pub const MACI_OPERATOR_PUBKEY: Map<&Addr, PubKey> = Map::new("maci_operator_pubkey"); // contract_address - operator_address
+pub const MACI_OPERATOR_PUBKEY: Map<&Addr, PubKey> = Map::new("maci_operator_pubkey"); // operator_address - coordinator_pubkey
+pub const COORDINATOR_PUBKEY_MAP: Map<&(Vec<u8>, Vec<u8>), u64> =
+    Map::new("coordinator_pubkey_map"); //

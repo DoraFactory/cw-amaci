@@ -11,7 +11,7 @@ use cw_amaci::contract::CREATED_ROUND_REPLY_ID;
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, InstantiationData, QueryMsg};
 use crate::state::{
-    Admin, Config, ADMIN, CONFIG, MACI_DEACTIVATE_MESSAGE, MACI_DEACTIVATE_OPERATOR,
+    Admin, Config, ADMIN, AMACI_CODE_ID, CONFIG, COORDINATOR_PUBKEY_MAP, MACI_DEACTIVATE_OPERATOR,
     MACI_OPERATOR_PUBKEY, MACI_OPERATOR_SET, OPERATOR, TOTAL,
 };
 use cw_amaci::msg::{
@@ -46,6 +46,8 @@ pub fn instantiate(
         slash_amount: msg.slash_amount,
     };
     CONFIG.save(deps.storage, &config)?;
+
+    AMACI_CODE_ID.save(deps.storage, &msg.amaci_code_id)?;
     TOTAL.save(deps.storage, &0)?;
 
     Ok(Response::default())
@@ -63,7 +65,6 @@ pub fn execute(
         ExecuteMsg::Register { pubkey } => execute_register(deps, env, info, pubkey),
         ExecuteMsg::Deregister {} => execute_deregister(deps, env, info),
         ExecuteMsg::CreateRound {
-            amaci_code_id,
             operator,
             max_voter,
             max_option,
@@ -76,7 +77,6 @@ pub fn execute(
             deps,
             env,
             info,
-            amaci_code_id,
             operator,
             max_voter,
             max_option,
@@ -96,6 +96,10 @@ pub fn execute(
             min_deposit_amount,
             slash_amount,
         } => execute_change_params(deps, env, info, min_deposit_amount, slash_amount),
+
+        ExecuteMsg::UpdateAmaciCodeId { amaci_code_id } => {
+            execute_update_amaci_code_id(deps, env, info, amaci_code_id)
+        }
         ExecuteMsg::ChangeOperator { address } => execute_change_operator(deps, env, info, address),
     }
 }
@@ -109,6 +113,21 @@ pub fn execute_register(
     if is_operator_set(deps.as_ref(), &info.sender)? {
         Err(ContractError::ExistedMaciOperator {})
     } else {
+        // TODO: need check this func
+        if pubkey.x.to_string().len() != 76 || pubkey.y.to_string().len() != 76 {
+            return Err(ContractError::InvalidPubkeyLength {});
+        }
+
+        if COORDINATOR_PUBKEY_MAP.has(
+            deps.storage,
+            &(
+                pubkey.x.to_be_bytes().to_vec(),
+                pubkey.y.to_be_bytes().to_vec(),
+            ),
+        ) {
+            return Err(ContractError::PubkeyExisted {});
+        }
+
         let cfg = CONFIG.load(deps.storage)?;
 
         let denom = cfg.denom;
@@ -133,6 +152,14 @@ pub fn execute_register(
 
         MACI_OPERATOR_SET.save(deps.storage, &info.sender, &amount)?;
         MACI_OPERATOR_PUBKEY.save(deps.storage, &info.sender, &pubkey)?;
+        COORDINATOR_PUBKEY_MAP.save(
+            deps.storage,
+            &(
+                pubkey.x.to_be_bytes().to_vec(),
+                pubkey.y.to_be_bytes().to_vec(),
+            ),
+            &0u64,
+        )?;
         Ok(Response::new()
             .add_attribute("action", "register")
             .add_attribute("maci_operator", &info.sender.to_string())
@@ -175,7 +202,6 @@ pub fn execute_create_round(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    amaci_code_id: u64,
     operator: Addr,
     max_voter: Uint256,
     max_option: Uint256,
@@ -223,7 +249,7 @@ pub fn execute_create_round(
         whitelist,
         pre_deactivate_root,
     };
-
+    let amaci_code_id = AMACI_CODE_ID.load(deps.storage)?;
     let msg = WasmMsg::Instantiate {
         admin: Some(env.contract.address.to_string()),
         code_id: amaci_code_id,
@@ -261,6 +287,22 @@ pub fn execute_change_params(
             .add_attribute("action", "change_params")
             .add_attribute("min_deposit_amount", &min_deposit_amount.to_string())
             .add_attribute("slash_amount", &slash_amount.to_string()))
+    }
+}
+
+pub fn execute_update_amaci_code_id(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    amaci_code_id: u64,
+) -> Result<Response, ContractError> {
+    if !is_operator(deps.as_ref(), info.sender.as_ref())? {
+        Err(ContractError::Unauthorized {})
+    } else {
+        AMACI_CODE_ID.save(deps.storage, &amaci_code_id)?;
+        Ok(Response::new()
+            .add_attribute("action", "update_amaci_code_id")
+            .add_attribute("amaci_code_id", &amaci_code_id.to_string()))
     }
 }
 
@@ -343,9 +385,9 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             to_json_binary(&MACI_OPERATOR_SET.has(deps.storage, &address))
         }
         QueryMsg::GetConfig {} => to_json_binary(&CONFIG.load(deps.storage)?),
-        QueryMsg::GetMaciDeactivate { contract_address } => {
-            to_json_binary(&MACI_DEACTIVATE_MESSAGE.load(deps.storage, &contract_address)?)
-        }
+        // QueryMsg::GetMaciDeactivate { contract_address } => {
+        //     to_json_binary(&MACI_DEACTIVATE_MESSAGE.load(deps.storage, &contract_address)?)
+        // }
         QueryMsg::GetMaciOperator { contract_address } => {
             to_json_binary(&MACI_DEACTIVATE_OPERATOR.load(deps.storage, &contract_address)?)
         }
@@ -379,6 +421,7 @@ pub fn reply_created_round(
             )))
         }
     };
+    let amaci_code_id = AMACI_CODE_ID.load(deps.storage)?;
 
     let addr = Addr::unchecked(response.clone().contract_address);
     let data = InstantiationData { addr: addr.clone() };
@@ -386,6 +429,7 @@ pub fn reply_created_round(
 
     let resp = Response::new()
         .add_attribute("action", "created_round")
+        .add_attribute("code_id", amaci_code_id.to_string())
         .add_attribute("round_addr", addr.to_string())
         .add_attribute("caller", &amaci_return_data.caller.to_string())
         .add_attribute("admin", &amaci_return_data.admin.to_string())

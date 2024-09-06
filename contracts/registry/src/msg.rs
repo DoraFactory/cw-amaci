@@ -17,6 +17,8 @@ pub struct InstantiateMsg {
 
     // operator can add whitelist address
     pub operator: Addr,
+
+    pub amaci_code_id: u64,
 }
 
 #[cw_serde]
@@ -26,7 +28,6 @@ pub enum ExecuteMsg {
     },
     Deregister {},
     CreateRound {
-        amaci_code_id: u64,
         operator: Addr,
         max_voter: Uint256,
         max_option: Uint256,
@@ -39,6 +40,9 @@ pub enum ExecuteMsg {
     ChangeParams {
         min_deposit_amount: Uint128,
         slash_amount: Uint128,
+    },
+    UpdateAmaciCodeId {
+        amaci_code_id: u64,
     },
     ChangeOperator {
         address: Addr,
@@ -77,9 +81,8 @@ pub enum QueryMsg {
     #[returns(bool)]
     IsMaciOperator { address: Addr },
 
-    #[returns(Vec<Vec<String>>)]
-    GetMaciDeactivate { contract_address: Addr },
-
+    // #[returns(Vec<Vec<String>>)]
+    // GetMaciDeactivate { contract_address: Addr },
     #[returns(Addr)]
     GetMaciOperator { contract_address: Addr },
 

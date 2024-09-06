@@ -33,6 +33,16 @@ pub fn uint256_from_decimal_string(decimal_string: &str) -> Uint256 {
     uint256_from_hex_string(&hex_string)
 }
 
+pub fn uint256_from_decimal_string_no_check(decimal_string: &str) -> Uint256 {
+    let decimal_number = BigUint::parse_bytes(decimal_string.as_bytes(), 10)
+        .expect("Failed to parse decimal string");
+
+    let byte_array = decimal_number.to_bytes_be();
+
+    let hex_string = hex::encode(byte_array);
+    uint256_from_hex_string(&hex_string)
+}
+
 pub fn uint256_from_hex_string(hex_string: &str) -> Uint256 {
     let padded_hex_string = if hex_string.len() < 64 {
         let padding_length = 64 - hex_string.len();
@@ -75,9 +85,10 @@ impl AmaciRegistryCodeId {
         self,
         app: &mut App,
         sender: Addr,
+        amaci_code_id: u64,
         label: &str,
     ) -> AnyResult<AmaciRegistryContract> {
-        AmaciRegistryContract::instantiate(app, self, sender, operator(), label)
+        AmaciRegistryContract::instantiate(app, self, sender, operator(), amaci_code_id, label)
     }
 }
 
@@ -103,6 +114,7 @@ impl AmaciRegistryContract {
         code_id: AmaciRegistryCodeId,
         sender: Addr,
         operator: Addr,
+        amaci_code_id: u64,
         label: &str,
     ) -> AnyResult<Self> {
         let init_msg = InstantiateMsg {
@@ -111,6 +123,7 @@ impl AmaciRegistryContract {
             slash_amount: Uint128::from(SLASH_AMOUNT),
             admin: sender.clone(),
             operator,
+            amaci_code_id,
         };
         app.instantiate_contract(code_id.0, sender, &init_msg, &[], label, None)
             .map(Self::from)
@@ -137,12 +150,10 @@ impl AmaciRegistryContract {
         &self,
         app: &mut App,
         sender: Addr,
-        amaci_code_id: u64,
         operator: Addr,
         // ) -> AnyResult<Option<InstantiationData>> {
     ) -> AnyResult<AppResponse> {
         let msg = ExecuteMsg::CreateRound {
-            amaci_code_id,
             operator,
             max_voter: Uint256::from_u128(5u128),
             max_option: Uint256::from_u128(5u128),
@@ -226,17 +237,6 @@ impl AmaciRegistryContract {
     pub fn is_maci_operator(&self, app: &App, address: Addr) -> StdResult<bool> {
         app.wrap()
             .query_wasm_smart(self.addr(), &QueryMsg::IsMaciOperator { address })
-    }
-
-    pub fn get_deactivate_message(
-        &self,
-        app: &App,
-        contract_address: Addr,
-    ) -> StdResult<Vec<Vec<String>>> {
-        app.wrap().query_wasm_smart(
-            self.addr(),
-            &QueryMsg::GetMaciDeactivate { contract_address },
-        )
     }
 
     pub fn get_maci_operator(&self, app: &App, contract_address: Addr) -> StdResult<Addr> {
