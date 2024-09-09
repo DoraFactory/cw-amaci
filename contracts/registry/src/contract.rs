@@ -162,7 +162,7 @@ pub fn execute_create_round(
     let resp = Response::new()
         .add_submessage(msg)
         // .add_message(msg)
-        .add_attribute("action", "create_maci_round")
+        .add_attribute("action", "create_round")
         .add_attribute("amaci_code_id", &amaci_code_id.to_string());
 
     Ok(resp)
@@ -206,9 +206,9 @@ pub fn execute_set_maci_operator(
     MACI_VALIDATOR_OPERATOR_SET.save(deps.storage, &info.sender, &operator)?;
     MACI_OPERATOR_SET.save(deps.storage, &operator, &Uint128::from(0u128))?;
     Ok(Response::new()
-        .add_attribute("action", "register")
+        .add_attribute("action", "set_maci_operator")
         .add_attribute("validator", &info.sender.to_string())
-        .add_attribute("operator", operator.to_string()))
+        .add_attribute("maci_operator", operator.to_string()))
 }
 
 // validator operator
