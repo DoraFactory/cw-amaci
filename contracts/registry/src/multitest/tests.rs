@@ -5,10 +5,11 @@ use cw_multi_test::{next_block, App};
 // use crate::msg::ClaimsResponse;
 use crate::{
     multitest::{
-        contract_address, owner, uint256_from_decimal_string, uint256_from_decimal_string_no_check,
-        user1, user2, user3, AmaciRegistryCodeId, InstantiationData, DORA_DEMON,
-        MIN_DEPOSIT_AMOUNT,
+        contract_address, operator, operator2, operator3, owner, pubkey1, pubkey2, pubkey3,
+        uint256_from_decimal_string, uint256_from_decimal_string_no_check, user1, user2, user3,
+        AmaciRegistryCodeId, InstantiationData, DORA_DEMON, MIN_DEPOSIT_AMOUNT,
     },
+    state::ValidatorSet,
     ContractError,
 };
 use cw_amaci::{
@@ -46,10 +47,71 @@ fn instantiate_should_works() {
     let label = "Dora AMaci Registry";
     let contract = code_id.instantiate(&mut app, owner(), 1u64, label).unwrap();
 
-    // check winner
-    let total = contract.get_total(&app).unwrap();
-    assert_eq!(total, 0u128);
-    app.update_block(next_block);
+    let not_admin_or_operator_set_validators =
+        contract.set_validators(&mut app, user1()).unwrap_err();
+    assert_eq!(
+        ContractError::Unauthorized {},
+        not_admin_or_operator_set_validators.downcast().unwrap()
+    );
+
+    _ = contract.set_validators(&mut app, owner());
+
+    let validator_set = contract.get_validators(&app).unwrap();
+    assert_eq!(
+        ValidatorSet {
+            addresses: vec![user1(), user2()]
+        },
+        validator_set
+    );
+
+    _ = contract.set_maci_operator(&mut app, user1(), operator());
+    let user1_operator_addr = contract.get_validator_operator(&app, user1()).unwrap();
+    assert_eq!(operator(), user1_operator_addr);
+
+    _ = contract.set_maci_operator_pubkey(&mut app, operator(), pubkey1());
+    let user1_operator_pubkey = contract.get_operator_pubkey(&app, operator()).unwrap();
+    assert_eq!(pubkey1(), user1_operator_pubkey);
+
+    let not_validator_set_operator_error = contract
+        .set_maci_operator(&mut app, user3(), operator())
+        .unwrap_err();
+    assert_eq!(
+        ContractError::Unauthorized {},
+        not_validator_set_operator_error.downcast().unwrap()
+    );
+
+    _ = contract.set_maci_operator(&mut app, user2(), operator2());
+    let user2_operator_addr = contract.get_validator_operator(&app, user2()).unwrap();
+    assert_eq!(operator2(), user2_operator_addr);
+    _ = contract.set_maci_operator_pubkey(&mut app, operator2(), pubkey2());
+    let user2_operator_pubkey = contract.get_operator_pubkey(&app, operator2()).unwrap();
+    assert_eq!(pubkey2(), user2_operator_pubkey);
+    _ = contract.set_maci_operator_pubkey(&mut app, operator2(), pubkey3());
+    let user2_operator_pubkey3 = contract.get_operator_pubkey(&app, operator2()).unwrap();
+    assert_eq!(pubkey3(), user2_operator_pubkey3);
+
+    _ = contract.set_validators_all(&mut app, owner());
+    _ = contract.remove_validator(&mut app, owner(), user2());
+
+    let removed_validator_cannot_set_operator = contract
+        .set_maci_operator(&mut app, user2(), operator3())
+        .unwrap_err();
+    assert_eq!(
+        ContractError::Unauthorized {},
+        removed_validator_cannot_set_operator.downcast().unwrap()
+    );
+
+    let cannot_set_same_operator_address = contract
+        .set_maci_operator(&mut app, user3(), operator())
+        .unwrap_err();
+    assert_eq!(
+        ContractError::ExistedMaciOperator {},
+        cannot_set_same_operator_address.downcast().unwrap()
+    );
+
+    _ = contract.set_maci_operator(&mut app, user3(), operator3());
+    let user3_operator_addr = contract.get_validator_operator(&app, user3()).unwrap();
+    assert_eq!(operator3(), user3_operator_addr);
 
     let wrong_length_pubkey = PubKey {
         x: uint256_from_decimal_string_no_check(
@@ -60,118 +122,25 @@ fn instantiate_should_works() {
         ),
     };
 
-    let user1_register_with_wrong_pubkey = contract
-        .register(
-            &mut app,
-            user1(),
-            wrong_length_pubkey.clone(),
-            // Uint128::from(bond_coin_amount),
-            &coins(min_deposit_coin_amount, DORA_DEMON),
-        )
+    let user3_register_with_wrong_pubkey = contract
+        .set_maci_operator_pubkey(&mut app, operator3(), wrong_length_pubkey.clone())
         .unwrap_err();
     assert_eq!(
         ContractError::InvalidPubkeyLength {},
-        user1_register_with_wrong_pubkey.downcast().unwrap()
-    );
-    let user1_pubkey = PubKey {
-        x: uint256_from_decimal_string(
-            "3557592161792765812904087712812111121909518311142005886657252371904276697771",
-        ),
-        y: uint256_from_decimal_string(
-            "4363822302427519764561660537570341277214758164895027920046745209970137856681",
-        ),
-    };
-
-    _ = contract.register(
-        &mut app,
-        user1(),
-        user1_pubkey.clone(),
-        // Uint128::from(bond_coin_amount),
-        &coins(min_deposit_coin_amount, DORA_DEMON),
-    );
-
-    app.update_block(next_block);
-    let total = contract.get_total(&app).unwrap();
-    assert_eq!(total, min_deposit_coin_amount);
-
-    let user1_register_again_after_registered = contract
-        .register(
-            &mut app,
-            user1(),
-            user1_pubkey.clone(),
-            &coins(user1_coin_amount - min_deposit_coin_amount, DORA_DEMON),
-        )
-        .unwrap_err();
-    assert_eq!(
-        ContractError::ExistedMaciOperator {},
-        user1_register_again_after_registered.downcast().unwrap()
-    );
-
-    let user_1_balance = contract
-        .balance_of(&app, user1().to_string(), DORA_DEMON.to_string())
-        .unwrap();
-
-    assert_eq!(
-        user_1_balance,
-        Coin {
-            amount: Uint128::from(user1_coin_amount - min_deposit_coin_amount),
-            denom: DORA_DEMON.to_string()
-        }
+        user3_register_with_wrong_pubkey.downcast().unwrap()
     );
 
     let user3_register_with_user1_pubkey = contract
-        .register(
-            &mut app,
-            user3(),
-            user1_pubkey,
-            &coins(user3_coin_amount, DORA_DEMON),
-        )
+        .set_maci_operator_pubkey(&mut app, operator3(), pubkey1())
         .unwrap_err();
     assert_eq!(
         ContractError::PubkeyExisted {},
         user3_register_with_user1_pubkey.downcast().unwrap()
     );
 
-    let user3_pubkey = PubKey {
-        x: uint256_from_decimal_string(
-            "4363822302427519764561660537570341277214758164895027920046745209970137856681",
-        ),
-        y: uint256_from_decimal_string(
-            "3557592161792765812904087712812111121909518311142005886657252371904276697771",
-        ),
-    };
-
-    let user3_register_with_not_min_deposit_amount = contract
-        .register(
-            &mut app,
-            user3(),
-            user3_pubkey,
-            &coins(user3_coin_amount, DORA_DEMON),
-        )
-        .unwrap_err();
-    assert_eq!(
-        ContractError::InsufficientDeposit {
-            min_deposit_amount: Uint128::from(MIN_DEPOSIT_AMOUNT)
-        },
-        user3_register_with_not_min_deposit_amount
-            .downcast()
-            .unwrap()
-    );
-    // _ = contract.upload_deactivate_message(
-    //     &mut app,
-    //     user1(),
-    //     contract_address(),
-    //     deactivate_message,
-    // );
-    // let deactivate_message_state = contract
-    //     .get_deactivate_message(&app, contract_address())
-    //     .unwrap();
-    // assert_eq!(deactivate_message_state, deactivate_format_message);
-
-    // let maci_operator = contract
-    //     .get_maci_operator(&app, contract_address())
-    //     .unwrap();
-    // assert_eq!(maci_operator, user1());
+    _ = contract.set_maci_operator_pubkey(&mut app, operator3(), pubkey3());
+    let user3_operator_pubkey = contract.get_operator_pubkey(&app, operator3()).unwrap();
+    assert_eq!(pubkey3(), user3_operator_pubkey);
 }
 
 #[test]
@@ -194,24 +163,32 @@ fn create_round_should_works() {
         .instantiate(&mut app, owner(), amaci_code_id.id(), label)
         .unwrap();
 
-    let user1_pubkey = PubKey {
-        x: uint256_from_decimal_string(
-            "3557592161792765812904087712812111121909518311142005886657252371904276697771",
-        ),
-        y: uint256_from_decimal_string(
-            "4363822302427519764561660537570341277214758164895027920046745209970137856681",
-        ),
-    };
+    _ = contract.set_validators(&mut app, owner());
 
-    _ = contract.register(
-        &mut app,
-        user1(),
-        user1_pubkey.clone(),
-        // Uint128::from(bond_coin_amount),
-        &coins(min_deposit_coin_amount, DORA_DEMON),
+    let validator_set = contract.get_validators(&app).unwrap();
+    assert_eq!(
+        ValidatorSet {
+            addresses: vec![user1(), user2()]
+        },
+        validator_set
     );
-    let resp = contract.create_round(&mut app, user1(), user1()).unwrap();
-    println!("{:?}", resp);
+
+    _ = contract.set_maci_operator(&mut app, user1(), operator());
+    let user1_operator_addr = contract.get_validator_operator(&app, user1()).unwrap();
+    assert_eq!(operator(), user1_operator_addr);
+
+    let user1_check_operator = contract.is_maci_operator(&app, operator()).unwrap();
+
+    assert_eq!(true, user1_check_operator);
+
+    _ = contract.set_maci_operator_pubkey(&mut app, operator(), pubkey1());
+
+    let user1_operator_pubkey = contract.get_operator_pubkey(&app, operator()).unwrap();
+    assert_eq!(pubkey1(), user1_operator_pubkey);
+
+    let resp = contract
+        .create_round(&mut app, user1(), operator())
+        .unwrap();
 
     let amaci_contract_addr: InstantiationData = from_json(&resp.data.unwrap()).unwrap();
     println!("{:?}", amaci_contract_addr);
@@ -222,7 +199,7 @@ fn create_round_should_works() {
 
     let amaci_operator = maci_contract.query_operator(&app).unwrap();
     println!("{:?}", amaci_operator);
-    assert_eq!(user1(), amaci_operator);
+    assert_eq!(operator(), amaci_operator);
 
     let amaci_round_info = maci_contract.query_round_info(&app).unwrap();
     println!("{:?}", amaci_round_info);

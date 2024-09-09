@@ -11,8 +11,9 @@ use cw_amaci::contract::CREATED_ROUND_REPLY_ID;
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, InstantiationData, QueryMsg};
 use crate::state::{
-    Admin, Config, ADMIN, AMACI_CODE_ID, CONFIG, COORDINATOR_PUBKEY_MAP, MACI_DEACTIVATE_OPERATOR,
-    MACI_OPERATOR_PUBKEY, MACI_OPERATOR_SET, OPERATOR, TOTAL,
+    Admin, Config, ValidatorSet, ADMIN, AMACI_CODE_ID, COORDINATOR_PUBKEY_MAP,
+    MACI_OPERATOR_PUBKEY, MACI_OPERATOR_SET, MACI_VALIDATOR_LIST, MACI_VALIDATOR_OPERATOR_SET,
+    OPERATOR,
 };
 use cw_amaci::msg::{
     InstantiateMsg as AMaciInstantiateMsg, InstantiationData as AMaciInstantiationData,
@@ -39,17 +40,7 @@ pub fn instantiate(
     ADMIN.save(deps.storage, &admin)?;
     OPERATOR.save(deps.storage, &msg.operator)?;
 
-    let config = Config {
-        // denom: String::from("peaka"),
-        denom: msg.denom,
-        min_deposit_amount: msg.min_deposit_amount,
-        slash_amount: msg.slash_amount,
-    };
-    CONFIG.save(deps.storage, &config)?;
-
     AMACI_CODE_ID.save(deps.storage, &msg.amaci_code_id)?;
-    TOTAL.save(deps.storage, &0)?;
-
     Ok(Response::default())
 }
 
@@ -62,8 +53,12 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Register { pubkey } => execute_register(deps, env, info, pubkey),
-        ExecuteMsg::Deregister {} => execute_deregister(deps, env, info),
+        ExecuteMsg::SetMaciOperator { operator } => {
+            execute_set_maci_operator(deps, env, info, operator)
+        }
+        ExecuteMsg::SetMaciOperatorPubkey { pubkey } => {
+            execute_set_maci_operator_pubkey(deps, env, info, pubkey)
+        }
         ExecuteMsg::CreateRound {
             operator,
             max_voter,
@@ -86,115 +81,16 @@ pub fn execute(
             whitelist,
             pre_deactivate_root,
         ),
-        // ExecuteMsg::UploadDeactivateMessage {
-        //     contract_address,
-        //     deactivate_message,
-        // } => {
-        //     execute_upload_deactivate_message(deps, env, info, contract_address, deactivate_message)
-        // }
-        ExecuteMsg::ChangeParams {
-            min_deposit_amount,
-            slash_amount,
-        } => execute_change_params(deps, env, info, min_deposit_amount, slash_amount),
-
+        ExecuteMsg::SetValidators { addresses } => {
+            execute_set_validators(deps, env, info, addresses)
+        }
+        ExecuteMsg::RemoveValidator { address } => {
+            execute_remove_validator(deps, env, info, address)
+        }
         ExecuteMsg::UpdateAmaciCodeId { amaci_code_id } => {
             execute_update_amaci_code_id(deps, env, info, amaci_code_id)
         }
         ExecuteMsg::ChangeOperator { address } => execute_change_operator(deps, env, info, address),
-    }
-}
-
-pub fn execute_register(
-    deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
-    pubkey: PubKey, // amount: Uint128,
-) -> Result<Response, ContractError> {
-    if is_operator_set(deps.as_ref(), &info.sender)? {
-        Err(ContractError::ExistedMaciOperator {})
-    } else {
-        // TODO: need check this func
-        if pubkey.x.to_string().len() != 76 || pubkey.y.to_string().len() != 76 {
-            return Err(ContractError::InvalidPubkeyLength {});
-        }
-
-        if COORDINATOR_PUBKEY_MAP.has(
-            deps.storage,
-            &(
-                pubkey.x.to_be_bytes().to_vec(),
-                pubkey.y.to_be_bytes().to_vec(),
-            ),
-        ) {
-            return Err(ContractError::PubkeyExisted {});
-        }
-
-        let cfg = CONFIG.load(deps.storage)?;
-
-        let denom = cfg.denom;
-        let mut amount: Uint128 = Uint128::new(0);
-        // Iterate through the funds and find the amount with the MACI denomination
-        info.funds.iter().for_each(|fund| {
-            if fund.denom == denom {
-                amount = fund.amount;
-            }
-        });
-
-        if amount < cfg.min_deposit_amount {
-            return Err(ContractError::InsufficientDeposit {
-                min_deposit_amount: cfg.min_deposit_amount,
-            });
-        }
-
-        // update total
-        let total = TOTAL.load(deps.storage)?;
-        let new_total = total + amount.u128();
-        TOTAL.save(deps.storage, &new_total)?;
-
-        MACI_OPERATOR_SET.save(deps.storage, &info.sender, &amount)?;
-        MACI_OPERATOR_PUBKEY.save(deps.storage, &info.sender, &pubkey)?;
-        COORDINATOR_PUBKEY_MAP.save(
-            deps.storage,
-            &(
-                pubkey.x.to_be_bytes().to_vec(),
-                pubkey.y.to_be_bytes().to_vec(),
-            ),
-            &0u64,
-        )?;
-        Ok(Response::new()
-            .add_attribute("action", "register")
-            .add_attribute("maci_operator", &info.sender.to_string())
-            .add_attribute("amount", amount.to_string()))
-    }
-}
-
-pub fn execute_deregister(
-    deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
-) -> Result<Response, ContractError> {
-    if !is_operator_set(deps.as_ref(), &info.sender)? {
-        Err(ContractError::Unauthorized {})
-    } else {
-        let operator_bond_amount = MACI_OPERATOR_SET.load(deps.storage, &info.sender)?;
-        let cfg = CONFIG.load(deps.storage)?;
-        let denom = cfg.denom;
-        let amount_res = coins(operator_bond_amount.u128(), denom);
-        let message = BankMsg::Send {
-            to_address: info.sender.to_string(),
-            amount: amount_res,
-        };
-
-        // update total
-        let total = TOTAL.load(deps.storage)?;
-        let new_total = total - operator_bond_amount.u128();
-        TOTAL.save(deps.storage, &new_total)?;
-        MACI_OPERATOR_SET.remove(deps.storage, &info.sender);
-
-        Ok(Response::new()
-            .add_message(message)
-            .add_attribute("action", "deregister")
-            .add_attribute("maci_operator", &info.sender.to_string())
-            .add_attribute("amount", &operator_bond_amount.to_string()))
     }
 }
 
@@ -235,6 +131,9 @@ pub fn execute_create_round(
         return Err(ContractError::NoMatchedSizeCircuit {});
     }
 
+    if !MACI_OPERATOR_PUBKEY.has(deps.storage, &operator) {
+        return Err(ContractError::NotSetOperatorPubkey {});
+    }
     let operator_pubkey = MACI_OPERATOR_PUBKEY.load(deps.storage, &operator)?;
 
     let init_msg = AMaciInstantiateMsg {
@@ -269,24 +168,149 @@ pub fn execute_create_round(
     Ok(resp)
 }
 
-pub fn execute_change_params(
+// validator
+pub fn execute_set_maci_operator(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    min_deposit_amount: Uint128,
-    slash_amount: Uint128,
+    operator: Addr,
+) -> Result<Response, ContractError> {
+    if !is_validator(deps.as_ref(), &info.sender)? {
+        return Err(ContractError::Unauthorized {});
+    }
+    if is_operator_set(deps.as_ref(), &operator)? {
+        return Err(ContractError::ExistedMaciOperator {});
+    }
+
+    if is_validator_operator_set(deps.as_ref(), &info.sender)? {
+        let old_operator = MACI_VALIDATOR_OPERATOR_SET.load(deps.storage, &info.sender)?;
+
+        if MACI_OPERATOR_PUBKEY.has(deps.storage, &old_operator) {
+            let old_operator_pubkey = MACI_OPERATOR_PUBKEY.load(deps.storage, &old_operator)?;
+            COORDINATOR_PUBKEY_MAP.remove(
+                deps.storage,
+                &(
+                    old_operator_pubkey.x.to_be_bytes().to_vec(),
+                    old_operator_pubkey.y.to_be_bytes().to_vec(),
+                ),
+            );
+            MACI_OPERATOR_PUBKEY.remove(deps.storage, &old_operator);
+        }
+
+        MACI_OPERATOR_SET.remove(deps.storage, &old_operator);
+
+        MACI_VALIDATOR_OPERATOR_SET.save(deps.storage, &info.sender, &operator)?;
+        MACI_OPERATOR_SET.save(deps.storage, &operator, &Uint128::from(0u128))?;
+    }
+
+    MACI_VALIDATOR_OPERATOR_SET.save(deps.storage, &info.sender, &operator)?;
+    MACI_OPERATOR_SET.save(deps.storage, &operator, &Uint128::from(0u128))?;
+    Ok(Response::new()
+        .add_attribute("action", "register")
+        .add_attribute("validator", &info.sender.to_string())
+        .add_attribute("operator", operator.to_string()))
+}
+
+// validator operator
+pub fn execute_set_maci_operator_pubkey(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    pubkey: PubKey,
+) -> Result<Response, ContractError> {
+    if !is_operator_set(deps.as_ref(), &info.sender)? {
+        Err(ContractError::Unauthorized {})
+    } else {
+        // TODO: need check this func
+        if pubkey.x.to_string().len() != 76 || pubkey.y.to_string().len() != 76 {
+            return Err(ContractError::InvalidPubkeyLength {});
+        }
+
+        if COORDINATOR_PUBKEY_MAP.has(
+            deps.storage,
+            &(
+                pubkey.x.to_be_bytes().to_vec(),
+                pubkey.y.to_be_bytes().to_vec(),
+            ),
+        ) {
+            return Err(ContractError::PubkeyExisted {});
+        }
+
+        MACI_OPERATOR_PUBKEY.save(deps.storage, &info.sender, &pubkey)?;
+        COORDINATOR_PUBKEY_MAP.save(
+            deps.storage,
+            &(
+                pubkey.x.to_be_bytes().to_vec(),
+                pubkey.y.to_be_bytes().to_vec(),
+            ),
+            &0u64,
+        )?;
+        Ok(Response::new()
+            .add_attribute("action", "set_maci_operator_pubkey")
+            .add_attribute("maci_operator", &info.sender.to_string())
+            .add_attribute("coordinator_pubkey_x", pubkey.x.to_string())
+            .add_attribute("coordinator_pubkey_y", pubkey.y.to_string()))
+    }
+}
+
+pub fn execute_set_validators(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    addresses: ValidatorSet,
 ) -> Result<Response, ContractError> {
     if !is_operator(deps.as_ref(), info.sender.as_ref())? {
         Err(ContractError::Unauthorized {})
     } else {
-        let mut cfg = CONFIG.load(deps.storage)?;
-        cfg.min_deposit_amount = min_deposit_amount;
-        cfg.slash_amount = slash_amount;
-        CONFIG.save(deps.storage, &cfg)?;
+        MACI_VALIDATOR_LIST.save(deps.storage, &addresses)?;
+
         Ok(Response::new()
-            .add_attribute("action", "change_params")
-            .add_attribute("min_deposit_amount", &min_deposit_amount.to_string())
-            .add_attribute("slash_amount", &slash_amount.to_string()))
+            .add_attribute("action", "set_validators")
+            .add_attribute("addresses", format!("{:?}", addresses.addresses)))
+    }
+}
+
+pub fn execute_remove_validator(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    address: Addr,
+) -> Result<Response, ContractError> {
+    if !is_operator(deps.as_ref(), info.sender.as_ref())? {
+        Err(ContractError::Unauthorized {})
+    } else {
+        let mut maci_validator_set = MACI_VALIDATOR_LIST.load(deps.storage)?;
+        maci_validator_set.remove_validator(&address);
+        MACI_VALIDATOR_LIST.save(deps.storage, &maci_validator_set)?;
+
+        let old_operator = MACI_VALIDATOR_OPERATOR_SET.load(deps.storage, &address)?;
+        if MACI_OPERATOR_PUBKEY.has(deps.storage, &old_operator) {
+            let old_operator_pubkey = MACI_OPERATOR_PUBKEY.load(deps.storage, &old_operator)?;
+            COORDINATOR_PUBKEY_MAP.remove(
+                deps.storage,
+                &(
+                    old_operator_pubkey.x.to_be_bytes().to_vec(),
+                    old_operator_pubkey.y.to_be_bytes().to_vec(),
+                ),
+            );
+            MACI_OPERATOR_PUBKEY.remove(deps.storage, &old_operator);
+        }
+
+        MACI_OPERATOR_SET.remove(deps.storage, &old_operator);
+        MACI_VALIDATOR_OPERATOR_SET.remove(deps.storage, &address);
+
+        // pub const MACI_VALIDATOR_LIST: Item<ValidatorSet> = Item::new("maci_validator_list"); // ['val1', 'val2', 'val3']
+        // pub const MACI_VALIDATOR_OPERATOR_SET: Map<&Addr, Addr> = Map::new("maci_validator_operator_set"); // { val1: op1, val2: op2, val3: op3 }
+        // pub const MACI_OPERATOR_SET: Map<&Addr, Uint128> = Map::new("maci_operator_set"); // { op1: pub1, op2: pub2, op3: pub3 }
+
+        // pub const MACI_OPERATOR_PUBKEY: Map<&Addr, PubKey> = Map::new("maci_operator_pubkey"); // operator_address - coordinator_pubkey
+        // pub const COORDINATOR_PUBKEY_MAP: Map<&(Vec<u8>, Vec<u8>), u64> =
+        //     Map::new("coordinator_pubkey_map"); //
+
+        Ok(Response::new()
+            .add_attribute("action", "remove_validator")
+            .add_attribute("validator", address.to_string())
+            .add_attribute("operator", old_operator.to_string()))
     }
 }
 
@@ -323,34 +347,6 @@ pub fn execute_change_operator(
     }
 }
 
-// pub fn execute_upload_deactivate_message(
-//     deps: DepsMut,
-//     _env: Env,
-//     info: MessageInfo,
-//     contract_address: Addr,
-//     deactivate_message: Vec<Vec<Uint256>>,
-// ) -> Result<Response, ContractError> {
-//     if !is_operator_set(deps.as_ref(), &info.sender)? {
-//         Err(ContractError::Unauthorized {})
-//     } else {
-//         let deactivate_format_data: Vec<Vec<String>> = deactivate_message
-//             .iter()
-//             .map(|input| input.iter().map(|f| f.to_string()).collect())
-//             .collect();
-//         MACI_DEACTIVATE_MESSAGE.save(deps.storage, &contract_address, &deactivate_format_data)?;
-//         MACI_DEACTIVATE_OPERATOR.save(deps.storage, &contract_address, &info.sender)?;
-
-//         Ok(Response::new()
-//             .add_attribute("action", "upload_deactivate_message")
-//             .add_attribute("contract_address", &contract_address.to_string())
-//             .add_attribute("maci_operator", &info.sender.to_string())
-//             .add_attribute(
-//                 "deactivate_message",
-//                 format!("{:?}", deactivate_format_data),
-//             ))
-//     }
-// }
-
 // Only admin can execute
 fn is_admin(deps: Deps, sender: &str) -> StdResult<bool> {
     let cfg = ADMIN.load(deps.storage)?;
@@ -370,27 +366,40 @@ fn is_operator(deps: Deps, sender: &str) -> StdResult<bool> {
     Ok(can)
 }
 
+fn is_validator(deps: Deps, sender: &Addr) -> StdResult<bool> {
+    let cfg = MACI_VALIDATOR_LIST.load(deps.storage)?;
+    let can = cfg.is_validator(sender);
+    Ok(can)
+}
+
 fn is_operator_set(deps: Deps, sender: &Addr) -> StdResult<bool> {
     let res = MACI_OPERATOR_SET.has(deps.storage, sender);
+    Ok(res)
+}
+
+fn is_validator_operator_set(deps: Deps, sender: &Addr) -> StdResult<bool> {
+    let res = MACI_VALIDATOR_OPERATOR_SET.has(deps.storage, sender);
     Ok(res)
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::GetTotal {} => to_json_binary(&TOTAL.load(deps.storage)?),
         QueryMsg::Admin {} => to_json_binary(&ADMIN.load(deps.storage)?),
         QueryMsg::Operator {} => to_json_binary(&OPERATOR.load(deps.storage)?),
         QueryMsg::IsMaciOperator { address } => {
             to_json_binary(&MACI_OPERATOR_SET.has(deps.storage, &address))
         }
-        QueryMsg::GetConfig {} => to_json_binary(&CONFIG.load(deps.storage)?),
+        QueryMsg::IsValidator { address } => to_json_binary(&is_validator(deps, &address)?),
+        QueryMsg::GetValidators {} => to_json_binary(&MACI_VALIDATOR_LIST.load(deps.storage)?),
+        QueryMsg::GetValidatorOperator { address } => to_json_binary(
+            &MACI_VALIDATOR_OPERATOR_SET
+                .may_load(deps.storage, &address)
+                .unwrap_or_default(),
+        ),
         // QueryMsg::GetMaciDeactivate { contract_address } => {
         //     to_json_binary(&MACI_DEACTIVATE_MESSAGE.load(deps.storage, &contract_address)?)
         // }
-        QueryMsg::GetMaciOperator { contract_address } => {
-            to_json_binary(&MACI_DEACTIVATE_OPERATOR.load(deps.storage, &contract_address)?)
-        }
         QueryMsg::GetMaciOperatorPubkey { address } => {
             to_json_binary(&MACI_OPERATOR_PUBKEY.load(deps.storage, &address)?)
         }

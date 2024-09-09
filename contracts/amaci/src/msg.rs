@@ -182,7 +182,7 @@ pub enum QueryMsg {
     /// If CanExecute returns true then a call to `Execute` with the same message,
     /// before any further state changes, should also succeed.
     #[returns(bool)]
-    IsWhiteList { sender: String },
+    IsWhiteList { sender: Addr },
 
     // #[returns(Uint256)]
     // WhiteBalanceOf { sender: String },

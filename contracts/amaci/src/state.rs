@@ -235,7 +235,7 @@ pub const QTR_LIB: Item<QuinaryTreeRoot> = Item::new("qtr_lib");
 
 #[cw_serde]
 pub struct WhitelistConfig {
-    pub addr: String,
+    pub addr: Addr,
 }
 
 #[cw_serde]
@@ -244,8 +244,7 @@ pub struct Whitelist {
 }
 
 impl Whitelist {
-    pub fn is_whitelist(&self, addr: impl AsRef<str>) -> bool {
-        let addr = addr.as_ref();
+    pub fn is_whitelist(&self, addr: &Addr) -> bool {
         self.users.iter().any(|a| a.addr == addr)
     }
 }

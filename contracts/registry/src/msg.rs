@@ -3,14 +3,16 @@ use cosmwasm_std::{Addr, Uint128, Uint256};
 
 use cw_amaci::state::{PubKey, RoundInfo, VotingTime, Whitelist};
 
+use crate::state::ValidatorSet;
+
 #[cw_serde]
 pub struct InstantiateMsg {
-    /// denom of the token to stake
-    pub denom: String,
+    // /// denom of the token to stake
+    // pub denom: String,
 
-    pub min_deposit_amount: Uint128,
+    // pub min_deposit_amount: Uint128,
 
-    pub slash_amount: Uint128,
+    // pub slash_amount: Uint128,
 
     // admin can only bond/withdraw token
     pub admin: Addr,
@@ -23,10 +25,12 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    Register {
+    SetMaciOperator {
+        operator: Addr,
+    },
+    SetMaciOperatorPubkey {
         pubkey: PubKey,
     },
-    Deregister {},
     CreateRound {
         operator: Addr,
         max_voter: Uint256,
@@ -37,9 +41,15 @@ pub enum ExecuteMsg {
         whitelist: Option<Whitelist>,
         pre_deactivate_root: Uint256,
     },
-    ChangeParams {
-        min_deposit_amount: Uint128,
-        slash_amount: Uint128,
+    // ChangeParams {
+    //     min_deposit_amount: Uint128,
+    //     slash_amount: Uint128,
+    // },
+    SetValidators {
+        addresses: ValidatorSet,
+    },
+    RemoveValidator {
+        address: Addr,
     },
     UpdateAmaciCodeId {
         amaci_code_id: u64,
@@ -66,26 +76,26 @@ pub enum ReceiveMsg {
 #[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
-    #[returns(ConfigResponse)]
-    GetConfig {},
-
     #[returns(AdminResponse)]
     Admin {},
 
     #[returns(Addr)]
     Operator {},
 
-    #[returns(u128)]
-    GetTotal {},
-
     #[returns(bool)]
     IsMaciOperator { address: Addr },
 
+    #[returns(bool)]
+    IsValidator { address: Addr },
+
+    #[returns(ValidatorSet)]
+    GetValidators {},
+
+    #[returns(Addr)]
+    GetValidatorOperator { address: Addr },
+
     // #[returns(Vec<Vec<String>>)]
     // GetMaciDeactivate { contract_address: Addr },
-    #[returns(Addr)]
-    GetMaciOperator { contract_address: Addr },
-
     #[returns(PubKey)]
     GetMaciOperatorPubkey { address: Addr },
 }

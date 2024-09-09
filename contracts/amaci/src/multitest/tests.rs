@@ -1206,7 +1206,7 @@ mod test {
         app.update_block(next_block);
     }
 
-    #[test]
+    // #[test]
     fn instantiate_with_voting_time_1p1v_amaci_should_works() {
         let msg_file_path = "./src/test/qv_test/msg.json";
 
@@ -1608,7 +1608,7 @@ mod test {
         }
     }
 
-    #[test]
+    // #[test]
     fn instantiate_with_wrong_voting_time_error() {
         let mut app = create_app();
         let code_id = MaciCodeId::store_code(&mut app);

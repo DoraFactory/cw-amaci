@@ -6,11 +6,11 @@ use anyhow::Result as AnyResult;
 use crate::{
     contract::{execute, instantiate, query, reply},
     msg::*,
+    state::ValidatorSet,
 };
 use cosmwasm_std::{Addr, Coin, StdResult, Timestamp, Uint128, Uint256};
 use cw_amaci::state::{PubKey, RoundInfo, VotingTime};
 use cw_multi_test::{App, AppResponse, ContractWrapper, Executor};
-
 pub const MOCK_CONTRACT_ADDR: &str = "cosmos2contract";
 pub const DORA_DEMON: &str = "peaka";
 pub const DORA_DECIMALS: u8 = 18;
@@ -118,9 +118,6 @@ impl AmaciRegistryContract {
         label: &str,
     ) -> AnyResult<Self> {
         let init_msg = InstantiateMsg {
-            denom: DORA_DEMON.to_string(),
-            min_deposit_amount: Uint128::from(MIN_DEPOSIT_AMOUNT),
-            slash_amount: Uint128::from(SLASH_AMOUNT),
             admin: sender.clone(),
             operator,
             amaci_code_id,
@@ -130,19 +127,33 @@ impl AmaciRegistryContract {
     }
 
     #[track_caller]
-    pub fn register(
+    pub fn set_maci_operator(
+        &self,
+        app: &mut App,
+        sender: Addr,
+        operator: Addr,
+    ) -> AnyResult<AppResponse> {
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::SetMaciOperator { operator },
+            &[],
+        )
+    }
+
+    #[track_caller]
+    pub fn set_maci_operator_pubkey(
         &self,
         app: &mut App,
         sender: Addr,
         pubkey: PubKey,
-        sent: &[Coin],
     ) -> AnyResult<AppResponse> {
-        app.execute_contract(sender, self.addr(), &ExecuteMsg::Register { pubkey }, sent)
-    }
-
-    #[track_caller]
-    pub fn deregister(&self, app: &mut App, sender: Addr) -> AnyResult<AppResponse> {
-        app.execute_contract(sender, self.addr(), &ExecuteMsg::Deregister {}, &[])
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::SetMaciOperatorPubkey { pubkey },
+            &[],
+        )
     }
 
     #[track_caller]
@@ -196,20 +207,44 @@ impl AmaciRegistryContract {
     // }
 
     #[track_caller]
-    pub fn change_params(
+    pub fn set_validators(&self, app: &mut App, sender: Addr) -> AnyResult<AppResponse> {
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::SetValidators {
+                addresses: ValidatorSet {
+                    addresses: vec![user1(), user2()],
+                },
+            },
+            &[],
+        )
+    }
+
+    #[track_caller]
+    pub fn set_validators_all(&self, app: &mut App, sender: Addr) -> AnyResult<AppResponse> {
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::SetValidators {
+                addresses: ValidatorSet {
+                    addresses: vec![user1(), user2(), user3()],
+                },
+            },
+            &[],
+        )
+    }
+
+    #[track_caller]
+    pub fn remove_validator(
         &self,
         app: &mut App,
         sender: Addr,
-        min_deposit_amount: Uint128,
-        slash_amount: Uint128,
+        address: Addr,
     ) -> AnyResult<AppResponse> {
         app.execute_contract(
             sender,
             self.addr(),
-            &ExecuteMsg::ChangeParams {
-                min_deposit_amount,
-                slash_amount,
-            },
+            &ExecuteMsg::RemoveValidator { address },
             &[],
         )
     }
@@ -239,18 +274,28 @@ impl AmaciRegistryContract {
             .query_wasm_smart(self.addr(), &QueryMsg::IsMaciOperator { address })
     }
 
-    pub fn get_maci_operator(&self, app: &App, contract_address: Addr) -> StdResult<Addr> {
-        app.wrap()
-            .query_wasm_smart(self.addr(), &QueryMsg::GetMaciOperator { contract_address })
-    }
-
-    pub fn get_total(&self, app: &App) -> StdResult<u128> {
-        app.wrap()
-            .query_wasm_smart(self.addr(), &QueryMsg::GetTotal {})
-    }
-
     pub fn balance_of(&self, app: &App, address: String, denom: String) -> StdResult<Coin> {
         app.wrap().query_balance(address, denom)
+    }
+
+    pub fn is_validator(&self, app: &App, address: Addr) -> StdResult<bool> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::IsValidator { address })
+    }
+
+    pub fn get_validators(&self, app: &App) -> StdResult<ValidatorSet> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::GetValidators {})
+    }
+
+    pub fn get_validator_operator(&self, app: &App, address: Addr) -> StdResult<Addr> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::GetValidatorOperator { address })
+    }
+
+    pub fn get_operator_pubkey(&self, app: &App, address: Addr) -> StdResult<PubKey> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::GetMaciOperatorPubkey { address })
     }
 }
 
@@ -284,14 +329,59 @@ pub fn owner() -> Addr {
     Addr::unchecked("dora1t58t7azqzq26406uwehgnfekal5kzym3m9lz4k")
 }
 
+pub fn validator() -> Addr {
+    Addr::unchecked("validator1")
+}
+
+pub fn validator2() -> Addr {
+    Addr::unchecked("validator2")
+}
+
 pub fn operator() -> Addr {
-    Addr::unchecked("dora1qdagdkg9me4253h9qyvx83sd4gpta6rzh2fa0j")
+    Addr::unchecked("operator1")
 }
 
 pub fn operator2() -> Addr {
-    Addr::unchecked("dora1tuu2qpj0ytj2k7fta7u5fwruzeyyfqj5q4vq23")
+    Addr::unchecked("operator2")
+}
+
+pub fn operator3() -> Addr {
+    Addr::unchecked("operator3")
 }
 
 pub fn contract_address() -> Addr {
     Addr::unchecked("dora1smdzpfsy48kmkzmm4m9hsg4850czdvfncxyxp6d4h3j7qv3m4v0s0530a6")
+}
+
+pub fn pubkey1() -> PubKey {
+    return PubKey {
+        x: uint256_from_decimal_string(
+            "3557592161792765812904087712812111121909518311142005886657252371904276697771",
+        ),
+        y: uint256_from_decimal_string(
+            "4363822302427519764561660537570341277214758164895027920046745209970137856681",
+        ),
+    };
+}
+
+pub fn pubkey2() -> PubKey {
+    return PubKey {
+        x: uint256_from_decimal_string(
+            "4363822302427519764561660537570341277214758164895027920046745209970137856681",
+        ),
+        y: uint256_from_decimal_string(
+            "3557592161792765812904087712812111121909518311142005886657252371904276697771",
+        ),
+    };
+}
+
+pub fn pubkey3() -> PubKey {
+    return PubKey {
+        x: uint256_from_decimal_string(
+            "4363822302427519764561660537570341277214758164895027920046745209970137856681",
+        ),
+        y: uint256_from_decimal_string(
+            "4363822302427519764561660537570341277214758164895027920046745209970137856681",
+        ),
+    };
 }

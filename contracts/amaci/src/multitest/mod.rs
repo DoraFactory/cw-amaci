@@ -126,12 +126,8 @@ impl MaciCodeId {
         };
         let whitelist = Some(Whitelist {
             users: vec![
-                WhitelistConfig {
-                    addr: user1.to_string(),
-                },
-                WhitelistConfig {
-                    addr: user2.to_string(),
-                },
+                WhitelistConfig { addr: user1 },
+                WhitelistConfig { addr: user2 },
             ],
         });
         let voting_time = VotingTime {
@@ -167,12 +163,8 @@ impl MaciCodeId {
         };
         let whitelist = Some(Whitelist {
             users: vec![
-                WhitelistConfig {
-                    addr: user1.to_string(),
-                },
-                WhitelistConfig {
-                    addr: user2.to_string(),
-                },
+                WhitelistConfig { addr: user1 },
+                WhitelistConfig { addr: user2 },
             ],
         });
         let voting_time = VotingTime {
@@ -322,12 +314,8 @@ impl MaciCodeId {
         };
         let whitelist = Some(Whitelist {
             users: vec![
-                WhitelistConfig {
-                    addr: user1.to_string(),
-                },
-                WhitelistConfig {
-                    addr: user2.to_string(),
-                },
+                WhitelistConfig { addr: user1 },
+                WhitelistConfig { addr: user2 },
             ],
         });
         let voting_time = VotingTime {
@@ -364,15 +352,9 @@ impl MaciCodeId {
         };
         let whitelist = Some(Whitelist {
             users: vec![
-                WhitelistConfig {
-                    addr: user1.to_string(),
-                },
-                WhitelistConfig {
-                    addr: user2.to_string(),
-                },
-                WhitelistConfig {
-                    addr: user3.to_string(),
-                },
+                WhitelistConfig { addr: user1 },
+                WhitelistConfig { addr: user2 },
+                WhitelistConfig { addr: user3 },
             ],
         });
         let voting_time = VotingTime {
@@ -698,12 +680,8 @@ impl MaciContract {
             &ExecuteMsg::SetWhitelists {
                 whitelists: Whitelist {
                     users: vec![
-                        WhitelistConfig {
-                            addr: user1().to_string(),
-                        },
-                        WhitelistConfig {
-                            addr: user2().to_string(),
-                        },
+                        WhitelistConfig { addr: user1() },
+                        WhitelistConfig { addr: user2() },
                     ],
                 },
             },

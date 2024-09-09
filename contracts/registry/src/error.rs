@@ -69,4 +69,7 @@ pub enum ContractError {
 
     #[error("This pubkey is already existed.")]
     PubkeyExisted {},
+
+    #[error("Not set operator pubkey.")]
+    NotSetOperatorPubkey,
 }

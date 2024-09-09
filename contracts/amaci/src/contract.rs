@@ -627,7 +627,7 @@ pub fn execute_sign_up(
 ) -> Result<Response, ContractError> {
     let voting_time = VOTINGTIME.load(deps.storage)?;
     check_voting_time(env, voting_time)?;
-    if !can_sign_up(deps.as_ref(), &info.sender.to_string())? {
+    if !can_sign_up(deps.as_ref(), &info.sender)? {
         return Err(ContractError::Unauthorized {});
     }
     // let user_balance = user_balance_of(deps.as_ref(), info.sender.as_ref())?;
@@ -1805,9 +1805,9 @@ fn execute_withdraw(
         .add_attribute("amount", withdraw_amount.to_string()))
 }
 
-fn can_sign_up(deps: Deps, sender: &str) -> StdResult<bool> {
+fn can_sign_up(deps: Deps, sender: &Addr) -> StdResult<bool> {
     let cfg = WHITELIST.load(deps.storage)?;
-    let can = cfg.is_whitelist(&sender);
+    let can = cfg.is_whitelist(sender);
     Ok(can)
 }
 
@@ -2023,7 +2023,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         ),
         QueryMsg::WhiteList {} => to_json_binary::<Whitelist>(&query_white_list(deps)?),
         QueryMsg::IsWhiteList { sender } => {
-            to_json_binary::<bool>(&query_can_sign_up(deps, sender)?)
+            to_json_binary::<bool>(&query_can_sign_up(deps, &sender)?)
         }
         // QueryMsg::WhiteBalanceOf { sender } => {
         //     to_json_binary::<Uint256>(&query_user_balance_of(deps, sender)?)
@@ -2058,7 +2058,7 @@ pub fn query_white_list(deps: Deps) -> StdResult<Whitelist> {
     })
 }
 
-pub fn query_can_sign_up(deps: Deps, sender: String) -> StdResult<bool> {
+pub fn query_can_sign_up(deps: Deps, sender: &Addr) -> StdResult<bool> {
     Ok(can_sign_up(deps, &sender)?)
 }
 
