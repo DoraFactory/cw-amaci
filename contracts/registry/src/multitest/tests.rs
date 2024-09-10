@@ -1,19 +1,19 @@
-use cosmwasm_std::{coins, from_binary, from_json, to_json_binary, Coin, Uint128};
-use cw_multi_test::{next_block, App};
+use cosmwasm_std::{coins, from_json};
+use cw_multi_test::App;
 
 // use crate::error::ContractError;
 // use crate::msg::ClaimsResponse;
 use crate::{
     multitest::{
-        contract_address, operator, operator2, operator3, owner, pubkey1, pubkey2, pubkey3,
-        uint256_from_decimal_string, uint256_from_decimal_string_no_check, user1, user2, user3,
-        user4, AmaciRegistryCodeId, InstantiationData, DORA_DEMON, MIN_DEPOSIT_AMOUNT,
+        operator, operator2, operator3, owner, pubkey1, pubkey2, pubkey3,
+        uint256_from_decimal_string_no_check, user1, user2, user3, user4, AmaciRegistryCodeId,
+        InstantiationData, DORA_DEMON,
     },
     state::ValidatorSet,
     ContractError,
 };
 use cw_amaci::{
-    multitest::{create_app, MaciCodeId, MaciContract},
+    multitest::{MaciCodeId, MaciContract},
     state::PubKey,
 };
 #[test]
@@ -21,7 +21,6 @@ fn instantiate_should_works() {
     let user1_coin_amount = 30u128;
     let user2_coin_amount = 20u128;
     let user3_coin_amount = 10u128;
-    let min_deposit_coin_amount = 20u128;
 
     let mut app = App::new(|router, _api, storage| {
         router
@@ -162,7 +161,6 @@ fn instantiate_should_works() {
 #[test]
 fn create_round_should_works() {
     let user1_coin_amount = 30u128;
-    let min_deposit_coin_amount = 20u128;
 
     let mut app = App::new(|router, _api, storage| {
         router

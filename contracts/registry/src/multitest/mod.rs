@@ -8,7 +8,7 @@ use crate::{
     msg::*,
     state::ValidatorSet,
 };
-use cosmwasm_std::{Addr, Coin, StdResult, Timestamp, Uint128, Uint256};
+use cosmwasm_std::{Addr, Coin, StdResult, Timestamp, Uint256};
 use cw_amaci::state::{PubKey, RoundInfo, VotingTime};
 use cw_multi_test::{App, AppResponse, ContractWrapper, Executor};
 pub const MOCK_CONTRACT_ADDR: &str = "cosmos2contract";
@@ -162,24 +162,25 @@ impl AmaciRegistryContract {
         app: &mut App,
         sender: Addr,
         operator: Addr,
-        // ) -> AnyResult<Option<InstantiationData>> {
     ) -> AnyResult<AppResponse> {
+        let round_info = RoundInfo {
+            title: String::from("HackWasm Berlin"),
+            description: String::from("Hack In Brelin"),
+            link: String::from("https://baidu.com"),
+        };
+
         let msg = ExecuteMsg::CreateRound {
             operator,
             max_voter: Uint256::from_u128(5u128),
             max_option: Uint256::from_u128(5u128),
             voice_credit_amount: Uint256::from_u128(30u128),
-            round_info: RoundInfo {
-                title: "Hello World".to_string(),
-                description: "Test Description".to_string(),
-                link: "https://dorafactory.org".to_string(),
-            },
             voting_time: VotingTime {
                 start_time: Timestamp::from_nanos(1571797424879000000),
                 end_time: Timestamp::from_nanos(1571797429879300000),
             },
             whitelist: None,
             pre_deactivate_root: Uint256::from_u128(0u128),
+            round_info,
         };
 
         app.execute_contract(sender, self.addr(), &msg, &[])

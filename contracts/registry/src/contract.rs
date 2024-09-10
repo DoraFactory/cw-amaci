@@ -1,8 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    coins, from_json, to_json_binary, Addr, BankMsg, Binary, Deps, DepsMut, Env, MessageInfo,
-    Reply, Response, StdError, StdResult, SubMsg, SubMsgResponse, Uint128, Uint256, WasmMsg,
+    attr, from_json, to_json_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Reply,
+    Response, StdError, StdResult, SubMsg, SubMsgResponse, Uint128, Uint256, WasmMsg,
 };
 
 use cw2::set_contract_version;
@@ -11,9 +11,8 @@ use cw_amaci::contract::CREATED_ROUND_REPLY_ID;
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, InstantiationData, QueryMsg};
 use crate::state::{
-    Admin, Config, ValidatorSet, ADMIN, AMACI_CODE_ID, COORDINATOR_PUBKEY_MAP,
-    MACI_OPERATOR_PUBKEY, MACI_OPERATOR_SET, MACI_VALIDATOR_LIST, MACI_VALIDATOR_OPERATOR_SET,
-    OPERATOR,
+    Admin, ValidatorSet, ADMIN, AMACI_CODE_ID, COORDINATOR_PUBKEY_MAP, MACI_OPERATOR_PUBKEY,
+    MACI_OPERATOR_SET, MACI_VALIDATOR_LIST, MACI_VALIDATOR_OPERATOR_SET, OPERATOR,
 };
 use cw_amaci::msg::{
     InstantiateMsg as AMaciInstantiateMsg, InstantiationData as AMaciInstantiationData,
@@ -438,73 +437,81 @@ pub fn reply_created_round(
     let data = InstantiationData { addr: addr.clone() };
     let amaci_return_data: AMaciInstantiationData = from_json(&response.data.unwrap())?;
 
-    let resp = Response::new()
-        .add_attribute("action", "created_round")
-        .add_attribute("code_id", amaci_code_id.to_string())
-        .add_attribute("round_addr", addr.to_string())
-        .add_attribute("caller", &amaci_return_data.caller.to_string())
-        .add_attribute("admin", &amaci_return_data.admin.to_string())
-        .add_attribute("operator", &amaci_return_data.operator.to_string())
-        .add_attribute(
+    let mut attributes = vec![
+        attr("action", "created_round"),
+        attr("code_id", amaci_code_id.to_string()),
+        attr("round_addr", addr.to_string()),
+        attr("caller", &amaci_return_data.caller.to_string()),
+        attr("admin", &amaci_return_data.admin.to_string()),
+        attr("operator", &amaci_return_data.operator.to_string()),
+        attr(
             "voting_start",
             &amaci_return_data.voting_time.start_time.to_string(),
-        )
-        .add_attribute(
+        ),
+        attr(
             "voting_end",
             &amaci_return_data.voting_time.end_time.to_string(),
-        )
-        .add_attribute(
+        ),
+        attr(
             "round_title",
             &amaci_return_data.round_info.title.to_string(),
-        )
-        .add_attribute(
-            "round_description",
-            &amaci_return_data.round_info.description.to_string(),
-        )
-        .add_attribute("round_link", &amaci_return_data.round_info.link.to_string())
-        .add_attribute(
+        ),
+        attr(
             "coordinator_pubkey_x",
             &amaci_return_data.coordinator.x.to_string(),
-        )
-        .add_attribute(
+        ),
+        attr(
             "coordinator_pubkey_y",
             &amaci_return_data.coordinator.y.to_string(),
-        )
-        .add_attribute(
+        ),
+        attr(
             "max_vote_options",
             &amaci_return_data.max_vote_options.to_string(),
-        )
-        .add_attribute(
+        ),
+        attr(
             "voice_credit_amount",
             &amaci_return_data.voice_credit_amount.to_string(),
-        )
-        .add_attribute(
+        ),
+        attr(
             "pre_deactivate_root",
             &amaci_return_data.pre_deactivate_root.to_string(),
-        )
-        .add_attribute(
+        ),
+        attr(
             "state_tree_depth",
             &amaci_return_data.parameters.state_tree_depth.to_string(),
-        )
-        .add_attribute(
+        ),
+        attr(
             "int_state_tree_depth",
             &amaci_return_data
                 .parameters
                 .int_state_tree_depth
                 .to_string(),
-        )
-        .add_attribute(
+        ),
+        attr(
             "vote_option_tree_depth",
             &amaci_return_data
                 .parameters
                 .vote_option_tree_depth
                 .to_string(),
-        )
-        .add_attribute(
+        ),
+        attr(
             "message_batch_size",
             &amaci_return_data.parameters.message_batch_size.to_string(),
-        )
-        .set_data(to_json_binary(&data)?);
+        ),
+    ];
 
-    Ok(resp)
+    if amaci_return_data.round_info.description != "" {
+        attributes.push(attr(
+            "round_description",
+            &amaci_return_data.round_info.description,
+        ));
+    }
+
+    if amaci_return_data.round_info.link != "" {
+        attributes.push(attr("round_link", &amaci_return_data.round_info.link));
+    }
+
+    Ok(Response::new()
+        .add_attributes(attributes)
+        .set_data(to_json_binary(&data)?))
 }

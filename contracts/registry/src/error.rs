@@ -1,5 +1,3 @@
-use std::error;
-
 use cosmwasm_std::{StdError, Uint128};
 use thiserror::Error;
 
