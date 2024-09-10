@@ -213,7 +213,7 @@ impl AmaciRegistryContract {
             self.addr(),
             &ExecuteMsg::SetValidators {
                 addresses: ValidatorSet {
-                    addresses: vec![user1(), user2()],
+                    addresses: vec![user1(), user2(), user4()],
                 },
             },
             &[],

@@ -7,7 +7,7 @@ use crate::{
     multitest::{
         contract_address, operator, operator2, operator3, owner, pubkey1, pubkey2, pubkey3,
         uint256_from_decimal_string, uint256_from_decimal_string_no_check, user1, user2, user3,
-        AmaciRegistryCodeId, InstantiationData, DORA_DEMON, MIN_DEPOSIT_AMOUNT,
+        user4, AmaciRegistryCodeId, InstantiationData, DORA_DEMON, MIN_DEPOSIT_AMOUNT,
     },
     state::ValidatorSet,
     ContractError,
@@ -59,7 +59,7 @@ fn instantiate_should_works() {
     let validator_set = contract.get_validators(&app).unwrap();
     assert_eq!(
         ValidatorSet {
-            addresses: vec![user1(), user2()]
+            addresses: vec![user1(), user2(), user4()]
         },
         validator_set
     );
@@ -71,6 +71,15 @@ fn instantiate_should_works() {
     _ = contract.set_maci_operator_pubkey(&mut app, operator(), pubkey1());
     let user1_operator_pubkey = contract.get_operator_pubkey(&app, operator()).unwrap();
     assert_eq!(pubkey1(), user1_operator_pubkey);
+
+    _ = contract.remove_validator(&mut app, owner(), user4());
+    let validator_set_after_remove_user4 = contract.get_validators(&app).unwrap();
+    assert_eq!(
+        ValidatorSet {
+            addresses: vec![user1(), user2()]
+        },
+        validator_set_after_remove_user4
+    );
 
     let not_validator_set_operator_error = contract
         .set_maci_operator(&mut app, user3(), operator())
@@ -92,6 +101,13 @@ fn instantiate_should_works() {
 
     _ = contract.set_validators_all(&mut app, owner());
     _ = contract.remove_validator(&mut app, owner(), user2());
+    let validator_set_after_remove_user2 = contract.get_validators(&app).unwrap();
+    assert_eq!(
+        ValidatorSet {
+            addresses: vec![user1(), user3()]
+        },
+        validator_set_after_remove_user2
+    );
 
     let removed_validator_cannot_set_operator = contract
         .set_maci_operator(&mut app, user2(), operator3())
@@ -168,7 +184,7 @@ fn create_round_should_works() {
     let validator_set = contract.get_validators(&app).unwrap();
     assert_eq!(
         ValidatorSet {
-            addresses: vec![user1(), user2()]
+            addresses: vec![user1(), user2(), user4()]
         },
         validator_set
     );

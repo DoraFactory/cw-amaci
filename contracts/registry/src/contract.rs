@@ -283,21 +283,24 @@ pub fn execute_remove_validator(
         maci_validator_set.remove_validator(&address);
         MACI_VALIDATOR_LIST.save(deps.storage, &maci_validator_set)?;
 
-        let old_operator = MACI_VALIDATOR_OPERATOR_SET.load(deps.storage, &address)?;
-        if MACI_OPERATOR_PUBKEY.has(deps.storage, &old_operator) {
-            let old_operator_pubkey = MACI_OPERATOR_PUBKEY.load(deps.storage, &old_operator)?;
-            COORDINATOR_PUBKEY_MAP.remove(
-                deps.storage,
-                &(
-                    old_operator_pubkey.x.to_be_bytes().to_vec(),
-                    old_operator_pubkey.y.to_be_bytes().to_vec(),
-                ),
-            );
-            MACI_OPERATOR_PUBKEY.remove(deps.storage, &old_operator);
-        }
+        if MACI_VALIDATOR_OPERATOR_SET.has(deps.storage, &address) {
+            let old_operator = MACI_VALIDATOR_OPERATOR_SET.load(deps.storage, &address)?;
 
-        MACI_OPERATOR_SET.remove(deps.storage, &old_operator);
-        MACI_VALIDATOR_OPERATOR_SET.remove(deps.storage, &address);
+            MACI_VALIDATOR_OPERATOR_SET.remove(deps.storage, &address);
+            MACI_OPERATOR_SET.remove(deps.storage, &old_operator);
+
+            if MACI_OPERATOR_PUBKEY.has(deps.storage, &old_operator) {
+                let old_operator_pubkey = MACI_OPERATOR_PUBKEY.load(deps.storage, &old_operator)?;
+                COORDINATOR_PUBKEY_MAP.remove(
+                    deps.storage,
+                    &(
+                        old_operator_pubkey.x.to_be_bytes().to_vec(),
+                        old_operator_pubkey.y.to_be_bytes().to_vec(),
+                    ),
+                );
+                MACI_OPERATOR_PUBKEY.remove(deps.storage, &old_operator);
+            }
+        }
 
         // pub const MACI_VALIDATOR_LIST: Item<ValidatorSet> = Item::new("maci_validator_list"); // ['val1', 'val2', 'val3']
         // pub const MACI_VALIDATOR_OPERATOR_SET: Map<&Addr, Addr> = Map::new("maci_validator_operator_set"); // { val1: op1, val2: op2, val3: op3 }
@@ -309,8 +312,7 @@ pub fn execute_remove_validator(
 
         Ok(Response::new()
             .add_attribute("action", "remove_validator")
-            .add_attribute("validator", address.to_string())
-            .add_attribute("operator", old_operator.to_string()))
+            .add_attribute("validator", address.to_string()))
     }
 }
 
