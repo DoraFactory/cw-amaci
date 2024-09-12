@@ -5,17 +5,13 @@ use cw_multi_test::App;
 // use crate::msg::ClaimsResponse;
 use crate::{
     multitest::{
-        operator, operator2, operator3, owner, pubkey1, pubkey2, pubkey3,
-        uint256_from_decimal_string_no_check, user1, user2, user3, user4, AmaciRegistryCodeId,
-        InstantiationData, DORA_DEMON,
+        operator, operator2, operator3, owner, pubkey1, pubkey2, pubkey3, user1, user2, user3,
+        user4, AmaciRegistryCodeId, InstantiationData, DORA_DEMON,
     },
     state::ValidatorSet,
     ContractError,
 };
-use cw_amaci::{
-    multitest::{MaciCodeId, MaciContract},
-    state::PubKey,
-};
+use cw_amaci::multitest::{MaciCodeId, MaciContract};
 #[test]
 fn instantiate_should_works() {
     let user1_coin_amount = 30u128;
@@ -127,23 +123,6 @@ fn instantiate_should_works() {
     _ = contract.set_maci_operator(&mut app, user3(), operator3());
     let user3_operator_addr = contract.get_validator_operator(&app, user3()).unwrap();
     assert_eq!(operator3(), user3_operator_addr);
-
-    let wrong_length_pubkey = PubKey {
-        x: uint256_from_decimal_string_no_check(
-            "3557592161792765812904087712812111121909518311142005886657252371904276697771",
-        ),
-        y: uint256_from_decimal_string_no_check(
-            "3557592161792765812904087712812111121909518311142005886657252371904276697771123",
-        ),
-    };
-
-    let user3_register_with_wrong_pubkey = contract
-        .set_maci_operator_pubkey(&mut app, operator3(), wrong_length_pubkey.clone())
-        .unwrap_err();
-    assert_eq!(
-        ContractError::InvalidPubkeyLength {},
-        user3_register_with_wrong_pubkey.downcast().unwrap()
-    );
 
     let user3_register_with_user1_pubkey = contract
         .set_maci_operator_pubkey(&mut app, operator3(), pubkey1())

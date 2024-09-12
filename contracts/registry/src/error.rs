@@ -62,9 +62,6 @@ pub enum ContractError {
     #[error("Data missing")]
     DataMissingErr {},
 
-    #[error("Invalid pubkey length. Must be 33 bytes.")]
-    InvalidPubkeyLength {},
-
     #[error("This pubkey is already existed.")]
     PubkeyExisted {},
 

@@ -220,11 +220,6 @@ pub fn execute_set_maci_operator_pubkey(
     if !is_operator_set(deps.as_ref(), &info.sender)? {
         Err(ContractError::Unauthorized {})
     } else {
-        // TODO: need check this func
-        if pubkey.x.to_string().len() != 76 || pubkey.y.to_string().len() != 76 {
-            return Err(ContractError::InvalidPubkeyLength {});
-        }
-
         if COORDINATOR_PUBKEY_MAP.has(
             deps.storage,
             &(
