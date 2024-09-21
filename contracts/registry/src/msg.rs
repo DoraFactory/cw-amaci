@@ -31,6 +31,9 @@ pub enum ExecuteMsg {
     SetMaciOperatorPubkey {
         pubkey: PubKey,
     },
+    SetMaciOperatorIdentity {
+        identity: String,
+    },
     CreateRound {
         operator: Addr,
         max_voter: Uint256,
@@ -98,6 +101,9 @@ pub enum QueryMsg {
     // GetMaciDeactivate { contract_address: Addr },
     #[returns(PubKey)]
     GetMaciOperatorPubkey { address: Addr },
+
+    #[returns(String)]
+    GetMaciOperatorIdentity { address: Addr },
 }
 
 #[cw_serde]

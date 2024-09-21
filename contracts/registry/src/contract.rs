@@ -11,8 +11,9 @@ use cw_amaci::contract::CREATED_ROUND_REPLY_ID;
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, InstantiationData, QueryMsg};
 use crate::state::{
-    Admin, ValidatorSet, ADMIN, AMACI_CODE_ID, COORDINATOR_PUBKEY_MAP, MACI_OPERATOR_PUBKEY,
-    MACI_OPERATOR_SET, MACI_VALIDATOR_LIST, MACI_VALIDATOR_OPERATOR_SET, OPERATOR,
+    Admin, ValidatorSet, ADMIN, AMACI_CODE_ID, COORDINATOR_PUBKEY_MAP, MACI_OPERATOR_IDENTITY,
+    MACI_OPERATOR_PUBKEY, MACI_OPERATOR_SET, MACI_VALIDATOR_LIST, MACI_VALIDATOR_OPERATOR_SET,
+    OPERATOR,
 };
 use cw_amaci::msg::{
     InstantiateMsg as AMaciInstantiateMsg, InstantiationData as AMaciInstantiationData,
@@ -57,6 +58,9 @@ pub fn execute(
         }
         ExecuteMsg::SetMaciOperatorPubkey { pubkey } => {
             execute_set_maci_operator_pubkey(deps, env, info, pubkey)
+        }
+        ExecuteMsg::SetMaciOperatorIdentity { identity } => {
+            execute_set_maci_operator_identity(deps, env, info, identity)
         }
         ExecuteMsg::CreateRound {
             operator,
@@ -247,6 +251,24 @@ pub fn execute_set_maci_operator_pubkey(
     }
 }
 
+// validator operator
+pub fn execute_set_maci_operator_identity(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    identity: String,
+) -> Result<Response, ContractError> {
+    if !is_operator_set(deps.as_ref(), &info.sender)? {
+        Err(ContractError::Unauthorized {})
+    } else {
+        MACI_OPERATOR_IDENTITY.save(deps.storage, &info.sender, &identity)?;
+        Ok(Response::new()
+            .add_attribute("action", "set_maci_operator_identity")
+            .add_attribute("maci_operator", &info.sender.to_string())
+            .add_attribute("identity", identity.to_string()))
+    }
+}
+
 pub fn execute_set_validators(
     deps: DepsMut,
     _env: Env,
@@ -398,6 +420,9 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         // }
         QueryMsg::GetMaciOperatorPubkey { address } => {
             to_json_binary(&MACI_OPERATOR_PUBKEY.load(deps.storage, &address)?)
+        }
+        QueryMsg::GetMaciOperatorIdentity { address } => {
+            to_json_binary(&MACI_OPERATOR_IDENTITY.load(deps.storage, &address)?)
         }
     }
 }

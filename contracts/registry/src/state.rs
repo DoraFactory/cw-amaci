@@ -54,3 +54,4 @@ pub const MACI_OPERATOR_SET: Map<&Addr, Uint128> = Map::new("maci_operator_set")
 pub const MACI_OPERATOR_PUBKEY: Map<&Addr, PubKey> = Map::new("maci_operator_pubkey"); // operator_address - coordinator_pubkey
 pub const COORDINATOR_PUBKEY_MAP: Map<&(Vec<u8>, Vec<u8>), u64> =
     Map::new("coordinator_pubkey_map"); //
+pub const MACI_OPERATOR_IDENTITY: Map<&Addr, String> = Map::new("maci_operator_identity"); // operator_address - identity
