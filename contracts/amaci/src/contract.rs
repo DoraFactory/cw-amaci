@@ -181,6 +181,12 @@ pub fn instantiate(
     ];
     ZEROS_H10.save(deps.storage, &zeros_h10)?;
 
+    NODES.save(
+        deps.storage,
+        Uint256::from_u128(0u128).to_be_bytes().to_vec(),
+        &Uint256::from_u128(0u128),
+    )?;
+
     // Define an array of zero values
     let zeros: [Uint256; 8] = [
         Uint256::from_u128(0u128),
@@ -291,8 +297,11 @@ pub fn instantiate(
         attr("caller", &info.sender.to_string()),
         attr("admin", &msg.admin.to_string()),
         attr("operator", &msg.operator.to_string()),
-        attr("voting_start", &msg.voting_time.start_time.to_string()),
-        attr("voting_end", &msg.voting_time.end_time.to_string()),
+        attr(
+            "voting_start",
+            &msg.voting_time.start_time.nanos().to_string(),
+        ),
+        attr("voting_end", &msg.voting_time.end_time.nanos().to_string()),
         attr("round_title", &msg.round_info.title.to_string()),
         attr("coordinator_pubkey_x", &msg.coordinator.x.to_string()),
         attr("coordinator_pubkey_y", &msg.coordinator.y.to_string()),
@@ -1616,7 +1625,42 @@ fn execute_stop_tallying_period(
 
     // Load the current tally commitment
     let current_tally_commitment = CURRENT_TALLY_COMMITMENT.load(deps.storage)?;
+    if current_tally_commitment == Uint256::from_u128(0u128) {
+        let mut sum = Uint256::zero();
 
+        // Save the results and calculate the sum
+        for i in 0..results.len() {
+            RESULT.save(
+                deps.storage,
+                Uint256::from_u128(i as u128).to_be_bytes().to_vec(),
+                &results[i],
+            )?;
+            sum += results[i];
+        }
+
+        // Save the total result
+        TOTAL_RESULT.save(deps.storage, &sum)?;
+
+        // Update the period status to Ended
+        let period = Period {
+            status: PeriodStatus::Ended,
+        };
+        PERIOD.save(deps.storage, &period)?;
+
+        return Ok(Response::new()
+            .add_attribute("action", "stop_tallying_period")
+            .add_attribute(
+                "results",
+                format!(
+                    "{:?}",
+                    results
+                        .iter()
+                        .map(|x| x.to_string())
+                        .collect::<Vec<String>>()
+                ),
+            )
+            .add_attribute("all_result", sum.to_string()));
+    }
     // Check that the tally commitment matches the current tally commitment
     assert_eq!(tally_commitment, current_tally_commitment);
 

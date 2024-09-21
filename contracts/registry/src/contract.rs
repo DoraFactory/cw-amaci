@@ -466,11 +466,11 @@ pub fn reply_created_round(
         attr("operator", &amaci_return_data.operator.to_string()),
         attr(
             "voting_start",
-            &amaci_return_data.voting_time.start_time.to_string(),
+            &amaci_return_data.voting_time.start_time.nanos().to_string(),
         ),
         attr(
             "voting_end",
-            &amaci_return_data.voting_time.end_time.to_string(),
+            &amaci_return_data.voting_time.end_time.nanos().to_string(),
         ),
         attr(
             "round_title",
