@@ -43,8 +43,8 @@ pub enum ExecuteMsg {
         voting_time: VotingTime,
         whitelist: Option<Whitelist>,
         pre_deactivate_root: Uint256,
-        circuit_type: u64,
-        certification_system: u64,
+        circuit_type: Uint256,
+        certification_system: Uint256,
     },
     // ChangeParams {
     //     min_deposit_amount: Uint128,

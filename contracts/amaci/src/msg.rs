@@ -25,8 +25,8 @@ pub struct InstantiateMsg {
     pub pre_deactivate_root: Uint256,
 
     // TODO: waiting add qv modal
-    pub circuit_type: u64,         // <0: 1p1v | 1: pv>
-    pub certification_system: u64, // <0: groth16 | 1: plonk>
+    pub circuit_type: Uint256,         // <0: 1p1v | 1: pv>
+    pub certification_system: Uint256, // <0: groth16 | 1: plonk>
 }
 
 #[cw_serde]
@@ -196,10 +196,10 @@ pub enum QueryMsg {
     #[returns(Uint128)]
     QueryTotalFeeGrant {},
 
-    #[returns(u64)]
+    #[returns(Uint256)]
     QueryCircuitType {},
 
-    #[returns(u64)]
+    #[returns(Uint256)]
     QueryCertSystem {},
 
     #[returns(Uint256)]

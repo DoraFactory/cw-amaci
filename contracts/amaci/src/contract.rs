@@ -77,7 +77,7 @@ pub fn instantiate(
     }
 
     // if msg.voting_time.start_time >= msg.voting_time.end_time {
-    //     return Err(ContractError::WrongTimeSet {});
+    // return Err(ContractError::WrongTimeSet {});
     // }
 
     // TODO: check apart time.
@@ -275,16 +275,16 @@ pub fn instantiate(
 
     MACI_OPERATOR.save(deps.storage, &msg.operator)?;
 
-    let circuit_type = match msg.circuit_type {
-        0u64 => "0", // 1p1v
-        // 1u64 => "1", // pv
-        _ => return Err(ContractError::UnsupportedCircuitType {}),
+    let circuit_type = if msg.circuit_type == Uint256::from_u128(0u128) {
+        "0" // 1p1v
+    } else {
+        return Err(ContractError::UnsupportedCircuitType {});
     };
 
-    let certification_system = match msg.certification_system {
-        0u64 => "groth16", // groth16
-        // 1u64 => "plonk", // plonk
-        _ => return Err(ContractError::UnsupportedCertificationSystem {}),
+    let certification_system = if msg.certification_system == Uint256::from_u128(0u128) {
+        "groth16" // groth16
+    } else {
+        return Err(ContractError::UnsupportedCertificationSystem {});
     };
 
     // TODO: wait add qv model.
@@ -1356,14 +1356,12 @@ pub fn execute_process_message(
 
     // TODO: add qv model
     let circuit_type = CIRCUITTYPE.load(deps.storage)?;
-    if circuit_type == 0u64 {
+    if circuit_type == Uint256::from_u128(0u128) {
         // 1p1v
         input[0] = (num_sign_ups << 32) + max_vote_options; // packedVals
-    } else if circuit_type == 1u64 {
+    } else if circuit_type == Uint256::from_u128(1u128) {
         // qv
-        input[0] = (num_sign_ups << 32)
-            + (Uint256::from_u128(circuit_type as u128) << 64)
-            + max_vote_options;
+        input[0] = (num_sign_ups << 32) + (circuit_type << 64) + max_vote_options;
         // packedVals
     }
 
@@ -2112,10 +2110,10 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             to_json_binary::<Uint128>(&FEEGRANTS.may_load(deps.storage)?.unwrap_or_default())
         }
         QueryMsg::QueryCircuitType {} => {
-            to_json_binary::<u64>(&CIRCUITTYPE.may_load(deps.storage)?.unwrap_or_default())
+            to_json_binary::<Uint256>(&CIRCUITTYPE.may_load(deps.storage)?.unwrap_or_default())
         }
         QueryMsg::QueryCertSystem {} => {
-            to_json_binary::<u64>(&CERTSYSTEM.may_load(deps.storage)?.unwrap_or_default())
+            to_json_binary::<Uint256>(&CERTSYSTEM.may_load(deps.storage)?.unwrap_or_default())
         }
         QueryMsg::QueryPreDeactivateRoot {} => to_json_binary::<Uint256>(
             &PRE_DEACTIVATE_ROOT

@@ -1,4 +1,4 @@
-use cosmwasm_std::{coins, from_json};
+use cosmwasm_std::{coins, from_json, Uint256};
 use cw_multi_test::App;
 
 // use crate::error::ContractError;
@@ -181,7 +181,13 @@ fn create_round_should_works() {
     assert_eq!(pubkey1(), user1_operator_pubkey);
 
     let create_round_with_wrong_circuit_type = contract
-        .create_round(&mut app, user1(), operator(), 1u64, 0u64)
+        .create_round(
+            &mut app,
+            user1(),
+            operator(),
+            Uint256::from_u128(1u128),
+            Uint256::from_u128(0u128),
+        )
         .unwrap_err();
     assert_eq!(
         AmaciContractError::UnsupportedCircuitType {},
@@ -189,15 +195,29 @@ fn create_round_should_works() {
     );
 
     let create_round_with_wrong_certification_system = contract
-        .create_round(&mut app, user1(), operator(), 0u64, 1u64)
+        .create_round(
+            &mut app,
+            user1(),
+            operator(),
+            Uint256::from_u128(0u128),
+            Uint256::from_u128(1u128),
+        )
         .unwrap_err();
     assert_eq!(
         AmaciContractError::UnsupportedCertificationSystem {},
-        create_round_with_wrong_certification_system.downcast().unwrap()
+        create_round_with_wrong_certification_system
+            .downcast()
+            .unwrap()
     );
 
     let resp = contract
-        .create_round(&mut app, user1(), operator(), 0u64, 0u64)
+        .create_round(
+            &mut app,
+            user1(),
+            operator(),
+            Uint256::from_u128(0u128),
+            Uint256::from_u128(0u128),
+        )
         .unwrap();
 
     let amaci_contract_addr: InstantiationData = from_json(&resp.data.unwrap()).unwrap();

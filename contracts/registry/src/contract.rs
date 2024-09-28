@@ -113,8 +113,8 @@ pub fn execute_create_round(
     voting_time: VotingTime,
     whitelist: Option<Whitelist>,
     pre_deactivate_root: Uint256,
-    circuit_type: u64,
-    certification_system: u64,
+    circuit_type: Uint256,
+    certification_system: Uint256,
 ) -> Result<Response, ContractError> {
     let maci_parameters: MaciParameters;
     if max_voter <= Uint256::from_u128(25u128) && max_option <= Uint256::from_u128(5u128) {
