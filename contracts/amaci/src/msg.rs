@@ -21,11 +21,12 @@ pub struct InstantiateMsg {
     pub round_info: RoundInfo,
     pub voting_time: VotingTime,
     pub whitelist: Option<Whitelist>,
-    // TODO: waiting add qv modal
-    // pub circuit_type: Uint256, // <0: 1p1v | 1: pv>
 
-    // pub certification_system: Uint256, // <0: groth16 | 1: plonk>
     pub pre_deactivate_root: Uint256,
+
+    // TODO: waiting add qv modal
+    pub circuit_type: u64,         // <0: 1p1v | 1: pv>
+    pub certification_system: u64, // <0: groth16 | 1: plonk>
 }
 
 #[cw_serde]
@@ -195,9 +196,10 @@ pub enum QueryMsg {
     #[returns(Uint128)]
     QueryTotalFeeGrant {},
 
-    // #[returns(Uint256)]
-    // QueryCircuitType {},
-    #[returns(Uint256)]
+    #[returns(u64)]
+    QueryCircuitType {},
+
+    #[returns(u64)]
     QueryCertSystem {},
 
     #[returns(Uint256)]
@@ -216,4 +218,6 @@ pub struct InstantiationData {
     pub round_info: RoundInfo,
     pub voting_time: VotingTime,
     pub pre_deactivate_root: Uint256,
+    pub circuit_type: String,
+    pub certification_system: String,
 }

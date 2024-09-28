@@ -134,7 +134,8 @@ impl MaciCodeId {
             start_time: Timestamp::from_nanos(1571797424879000000),
             end_time: Timestamp::from_nanos(1571797429879300000),
         };
-        let circuit_type = Uint256::from_u128(0u128);
+        let circuit_type = 0u64;
+        let certification_system = 0u64;
         MaciContract::instantiate(
             app,
             self,
@@ -143,6 +144,7 @@ impl MaciCodeId {
             whitelist,
             voting_time,
             circuit_type,
+            certification_system,
             label,
         )
     }
@@ -171,7 +173,8 @@ impl MaciCodeId {
             start_time: Timestamp::from_nanos(1571797429879300000),
             end_time: Timestamp::from_nanos(1571797424879000000),
         };
-        let circuit_type = Uint256::from_u128(0u128);
+        let circuit_type = 0u64;
+        let certification_system = 0u64;
         MaciContract::instantiate(
             app,
             self,
@@ -180,6 +183,7 @@ impl MaciCodeId {
             whitelist,
             voting_time,
             circuit_type,
+            certification_system,
             label,
         )
     }
@@ -285,7 +289,8 @@ impl MaciCodeId {
             end_time: Timestamp::from_nanos(1571797429879300000),
         };
 
-        let circuit_type = Uint256::from_u128(0u128);
+        let circuit_type = 0u64;
+        let certification_system = 0u64;
         MaciContract::instantiate(
             app,
             self,
@@ -294,6 +299,7 @@ impl MaciCodeId {
             None,
             voting_time,
             circuit_type,
+            certification_system,
             label,
         )
     }
@@ -322,7 +328,8 @@ impl MaciCodeId {
             start_time: Timestamp::from_nanos(1571797424879000000),
             end_time: Timestamp::from_nanos(1571797429879300000),
         };
-        let circuit_type = Uint256::from_u128(1u128);
+        let circuit_type = 1u64;
+        let certification_system = 0u64;
         MaciContract::instantiate(
             app,
             self,
@@ -331,6 +338,7 @@ impl MaciCodeId {
             whitelist,
             voting_time,
             circuit_type,
+            certification_system,
             label,
         )
     }
@@ -361,7 +369,8 @@ impl MaciCodeId {
             start_time: Timestamp::from_nanos(1571797424879000000),
             end_time: Timestamp::from_nanos(1571797429879300000),
         };
-        let circuit_type = Uint256::from_u128(0u128);
+        let circuit_type = 0u64;
+        let certification_system = 0u64;
         MaciContract::instantiate_decative_and_add_new_key_zkey(
             app,
             self,
@@ -370,6 +379,7 @@ impl MaciCodeId {
             whitelist,
             voting_time,
             circuit_type,
+            certification_system,
             label,
         )
     }
@@ -403,7 +413,8 @@ impl MaciContract {
         round_info: RoundInfo,
         whitelist: Option<Whitelist>,
         voting_time: VotingTime,
-        circuit_type: Uint256,
+        circuit_type: u64,
+        certification_system: u64,
         label: &str,
     ) -> AnyResult<Self> {
         let parameters = MaciParameters {
@@ -489,7 +500,8 @@ impl MaciContract {
             round_info,
             whitelist,
             voting_time,
-            // circuit_type,
+            circuit_type,
+            certification_system,
             operator: operator(),
             admin: owner(),
         };
@@ -514,7 +526,8 @@ impl MaciContract {
         round_info: RoundInfo,
         whitelist: Option<Whitelist>,
         voting_time: VotingTime,
-        circuit_type: Uint256,
+        circuit_type: u64,
+        certification_system: u64,
         label: &str,
     ) -> AnyResult<Self> {
         let parameters = MaciParameters {
@@ -600,7 +613,8 @@ impl MaciContract {
             round_info,
             whitelist,
             voting_time,
-            // circuit_type,
+            circuit_type,
+            certification_system,
             operator: operator(),
             admin: owner(),
         };

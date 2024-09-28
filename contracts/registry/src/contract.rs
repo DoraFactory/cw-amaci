@@ -6,10 +6,9 @@ use cosmwasm_std::{
 };
 
 use cw2::set_contract_version;
-use cw_amaci::contract::CREATED_ROUND_REPLY_ID;
 
 use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg, InstantiationData, QueryMsg};
+use crate::msg::{ExecuteMsg, InstantiateMsg, InstantiationData, MigrateMsg, QueryMsg};
 use crate::state::{
     Admin, ValidatorSet, ADMIN, AMACI_CODE_ID, COORDINATOR_PUBKEY_MAP, MACI_OPERATOR_IDENTITY,
     MACI_OPERATOR_PUBKEY, MACI_OPERATOR_SET, MACI_VALIDATOR_LIST, MACI_VALIDATOR_OPERATOR_SET,
@@ -24,6 +23,7 @@ use cw_utils::parse_instantiate_response_data;
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:cw-amaci-registry";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const CREATED_GROTH16_1P1V_ROUND_REPLY_ID: u64 = 1;
 
 // Note, you can use StdResult in some functions where you do not
 // make use of the custom errors
@@ -71,6 +71,8 @@ pub fn execute(
             voting_time,
             whitelist,
             pre_deactivate_root,
+            circuit_type,
+            certification_system,
         } => execute_create_round(
             deps,
             env,
@@ -83,6 +85,8 @@ pub fn execute(
             voting_time,
             whitelist,
             pre_deactivate_root,
+            circuit_type,
+            certification_system,
         ),
         ExecuteMsg::SetValidators { addresses } => {
             execute_set_validators(deps, env, info, addresses)
@@ -109,6 +113,8 @@ pub fn execute_create_round(
     voting_time: VotingTime,
     whitelist: Option<Whitelist>,
     pre_deactivate_root: Uint256,
+    circuit_type: u64,
+    certification_system: u64,
 ) -> Result<Response, ContractError> {
     let maci_parameters: MaciParameters;
     if max_voter <= Uint256::from_u128(25u128) && max_option <= Uint256::from_u128(5u128) {
@@ -150,6 +156,8 @@ pub fn execute_create_round(
         voting_time,
         whitelist,
         pre_deactivate_root,
+        circuit_type,
+        certification_system,
     };
     let amaci_code_id = AMACI_CODE_ID.load(deps.storage)?;
     let msg = WasmMsg::Instantiate {
@@ -160,11 +168,10 @@ pub fn execute_create_round(
         label: "AMACI".to_string(),
     };
 
-    let msg = SubMsg::reply_on_success(msg, CREATED_ROUND_REPLY_ID);
+    let msg = SubMsg::reply_on_success(msg, CREATED_GROTH16_1P1V_ROUND_REPLY_ID);
 
     let resp = Response::new()
         .add_submessage(msg)
-        // .add_message(msg)
         .add_attribute("action", "create_round")
         .add_attribute("amaci_code_id", &amaci_code_id.to_string());
 
@@ -415,22 +422,21 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 .may_load(deps.storage, &address)
                 .unwrap_or_default(),
         ),
-        // QueryMsg::GetMaciDeactivate { contract_address } => {
-        //     to_json_binary(&MACI_DEACTIVATE_MESSAGE.load(deps.storage, &contract_address)?)
-        // }
         QueryMsg::GetMaciOperatorPubkey { address } => {
             to_json_binary(&MACI_OPERATOR_PUBKEY.load(deps.storage, &address)?)
         }
         QueryMsg::GetMaciOperatorIdentity { address } => {
             to_json_binary(&MACI_OPERATOR_IDENTITY.load(deps.storage, &address)?)
-        }
+        } // QueryMsg::GetNewState {} => to_json_binary(&MIGRATE_NEW_STATE.load(deps.storage)?),
     }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> Result<Response, ContractError> {
     match reply.id {
-        CREATED_ROUND_REPLY_ID => reply_created_round(deps, env, reply.result.into_result()),
+        CREATED_GROTH16_1P1V_ROUND_REPLY_ID => {
+            reply_created_round(deps, env, reply.result.into_result())
+        }
         id => Err(ContractError::UnRecognizedReplyIdErr { id }),
     }
 }
@@ -518,6 +524,11 @@ pub fn reply_created_round(
             "message_batch_size",
             &amaci_return_data.parameters.message_batch_size.to_string(),
         ),
+        attr("circuit_type", &amaci_return_data.circuit_type.to_string()),
+        attr(
+            "certification_system",
+            &amaci_return_data.certification_system.to_string(),
+        ),
     ];
 
     if amaci_return_data.round_info.description != "" {
@@ -534,4 +545,16 @@ pub fn reply_created_round(
     Ok(Response::new()
         .add_attributes(attributes)
         .set_data(to_json_binary(&data)?))
+}
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
+    // ensure we are migrating from an allowed contract
+    cw2::ensure_from_older_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+
+    // do any desired state migrations here
+    // MIGRATE_NEW_STATE.save(deps.storage, &msg.test)?;
+
+    Ok(Response::default().add_attribute("action", "migrate"))
+    // .add_attribute("new_state", msg.test.to_string()))
 }

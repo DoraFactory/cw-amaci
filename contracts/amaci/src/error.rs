@@ -96,6 +96,12 @@ pub enum ContractError {
         max_allowed: Uint256,
     },
 
+    #[error("Unsupported circuit type.")]
+    UnsupportedCircuitType {},
+
+    #[error("Unsupported certification system.")]
+    UnsupportedCertificationSystem {},
+
     #[error("No matching circuit size.")]
     NotMatchCircuitSize {},
 }

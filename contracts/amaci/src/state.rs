@@ -253,9 +253,9 @@ pub const WHITELIST: Item<Whitelist> = Item::new("whitelist");
 
 pub const FEEGRANTS: Item<Uint128> = Item::new("fee_grants");
 
-// pub const CIRCUITTYPE: Item<Uint256> = Item::new("circuit_type"); // <0: 1p1v | 1: pv>
+pub const CIRCUITTYPE: Item<u64> = Item::new("circuit_type"); // <0: 1p1v | 1: pv>
 
-pub const CERTSYSTEM: Item<Uint256> = Item::new("certification_system"); // <0: groth16 | 1: plonk>
+pub const CERTSYSTEM: Item<u64> = Item::new("certification_system"); // <0: groth16 | 1: plonk>
 
 #[cw_serde]
 pub struct PlonkProofStr {

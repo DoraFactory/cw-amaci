@@ -43,6 +43,8 @@ pub enum ExecuteMsg {
         voting_time: VotingTime,
         whitelist: Option<Whitelist>,
         pre_deactivate_root: Uint256,
+        circuit_type: u64,
+        certification_system: u64,
     },
     // ChangeParams {
     //     min_deposit_amount: Uint128,
@@ -71,10 +73,7 @@ pub enum ExecuteMsg {
 }
 
 #[cw_serde]
-pub enum ReceiveMsg {
-    /// Only valid cw20 message is to bond the tokens
-    Bond {},
-}
+pub struct MigrateMsg {}
 
 #[cw_serde]
 #[derive(QueryResponses)]
@@ -97,13 +96,13 @@ pub enum QueryMsg {
     #[returns(Addr)]
     GetValidatorOperator { address: Addr },
 
-    // #[returns(Vec<Vec<String>>)]
-    // GetMaciDeactivate { contract_address: Addr },
     #[returns(PubKey)]
     GetMaciOperatorPubkey { address: Addr },
 
     #[returns(String)]
     GetMaciOperatorIdentity { address: Addr },
+    // #[returns(u64)]
+    // GetNewState {},
 }
 
 #[cw_serde]

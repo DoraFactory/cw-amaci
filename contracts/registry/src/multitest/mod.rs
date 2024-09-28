@@ -162,6 +162,8 @@ impl AmaciRegistryContract {
         app: &mut App,
         sender: Addr,
         operator: Addr,
+        circuit_type: u64,
+        certification_system: u64,
     ) -> AnyResult<AppResponse> {
         let round_info = RoundInfo {
             title: String::from("HackWasm Berlin"),
@@ -171,6 +173,7 @@ impl AmaciRegistryContract {
 
         let msg = ExecuteMsg::CreateRound {
             operator,
+            round_info,
             max_voter: Uint256::from_u128(5u128),
             max_option: Uint256::from_u128(5u128),
             voice_credit_amount: Uint256::from_u128(30u128),
@@ -180,7 +183,8 @@ impl AmaciRegistryContract {
             },
             whitelist: None,
             pre_deactivate_root: Uint256::from_u128(0u128),
-            round_info,
+            circuit_type,
+            certification_system,
         };
 
         app.execute_contract(sender, self.addr(), &msg, &[])

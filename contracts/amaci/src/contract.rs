@@ -4,7 +4,7 @@ use crate::groth16_parser::{parse_groth16_proof, parse_groth16_vkey};
 use crate::msg::{ExecuteMsg, Groth16ProofType, InstantiateMsg, InstantiationData, QueryMsg};
 use crate::state::{
     Admin, Groth16ProofStr, MessageData, Period, PeriodStatus, PubKey, QuinaryTreeRoot, RoundInfo,
-    StateLeaf, VotingTime, Whitelist, ADMIN, CERTSYSTEM, COORDINATORHASH,
+    StateLeaf, VotingTime, Whitelist, ADMIN, CERTSYSTEM, CIRCUITTYPE, COORDINATORHASH,
     CURRENT_DEACTIVATE_COMMITMENT, CURRENT_STATE_COMMITMENT, CURRENT_TALLY_COMMITMENT,
     DMSG_CHAIN_LENGTH, DMSG_HASHES, DNODES, FEEGRANTS, GROTH16_DEACTIVATE_VKEYS,
     GROTH16_NEWKEY_VKEYS, GROTH16_PROCESS_VKEYS, GROTH16_TALLY_VKEYS, LEAF_IDX_0, MACIPARAMETERS,
@@ -45,8 +45,6 @@ use hex;
 const CONTRACT_NAME: &str = "crates.io:cw-amaci";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub const CREATED_ROUND_REPLY_ID: u64 = 1;
-
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
@@ -78,14 +76,14 @@ pub fn instantiate(
         });
     }
 
-    if msg.voting_time.start_time >= msg.voting_time.end_time {
-        return Err(ContractError::WrongTimeSet {});
-    }
-
-    // // TODO: check apart time.
-    // if msg.voting_time.start_time.plus_minutes(10) >= msg.voting_time.end_time {
+    // if msg.voting_time.start_time >= msg.voting_time.end_time {
     //     return Err(ContractError::WrongTimeSet {});
     // }
+
+    // TODO: check apart time.
+    if msg.voting_time.start_time.plus_minutes(10) >= msg.voting_time.end_time {
+        return Err(ContractError::WrongTimeSet {});
+    }
 
     match msg.whitelist {
         Some(content) => {
@@ -264,8 +262,6 @@ pub fn instantiate(
     }
     VOTEOPTIONMAP.save(deps.storage, &vote_option_map)?;
     ROUNDINFO.save(deps.storage, &msg.round_info)?;
-    // TODO: wait add qv model.
-    // CIRCUITTYPE.save(deps.storage, &msg.circuit_type)?;
 
     VOTINGTIME.save(deps.storage, &msg.voting_time)?;
 
@@ -279,6 +275,22 @@ pub fn instantiate(
 
     MACI_OPERATOR.save(deps.storage, &msg.operator)?;
 
+    let circuit_type = match msg.circuit_type {
+        0u64 => "0", // 1p1v
+        // 1u64 => "1", // pv
+        _ => return Err(ContractError::UnsupportedCircuitType {}),
+    };
+
+    let certification_system = match msg.certification_system {
+        0u64 => "groth16", // groth16
+        // 1u64 => "plonk", // plonk
+        _ => return Err(ContractError::UnsupportedCertificationSystem {}),
+    };
+
+    // TODO: wait add qv model.
+    CIRCUITTYPE.save(deps.storage, &msg.circuit_type)?;
+    CERTSYSTEM.save(deps.storage, &msg.certification_system)?;
+
     let data: InstantiationData = InstantiationData {
         caller: info.sender.clone(),
         parameters: msg.parameters.clone(),
@@ -290,6 +302,8 @@ pub fn instantiate(
         round_info: msg.round_info.clone(),
         voting_time: msg.voting_time.clone(),
         pre_deactivate_root: msg.pre_deactivate_root.clone(),
+        circuit_type: circuit_type.to_string(),
+        certification_system: certification_system.to_string(),
     };
 
     let mut attributes = vec![
@@ -324,6 +338,8 @@ pub fn instantiate(
             "message_batch_size",
             &msg.parameters.message_batch_size.to_string(),
         ),
+        attr("circuit_type", &circuit_type.to_string()),
+        attr("certification_system", &certification_system.to_string()),
     ];
 
     if msg.round_info.description != "" {
@@ -1339,16 +1355,19 @@ pub fn execute_process_message(
     let max_vote_options = MAX_VOTE_OPTIONS.load(deps.storage)?;
 
     // TODO: add qv model
-    // let circuit_type = CIRCUITTYPE.load(deps.storage)?;
-    // if circuit_type == Uint256::from_u128(0u128) {
-    //     // 1p1v
-    //     input[0] = (num_sign_ups << 32) + max_vote_options; // packedVals
-    // } else if circuit_type == Uint256::from_u128(1u128) {
-    //     // qv
-    //     input[0] = (num_sign_ups << 32) + (circuit_type << 64) + max_vote_options;
-    //     // packedVals
+    let circuit_type = CIRCUITTYPE.load(deps.storage)?;
+    if circuit_type == 0u64 {
+        // 1p1v
+        input[0] = (num_sign_ups << 32) + max_vote_options; // packedVals
+    } else if circuit_type == 1u64 {
+        // qv
+        input[0] = (num_sign_ups << 32)
+            + (Uint256::from_u128(circuit_type as u128) << 64)
+            + max_vote_options;
+        // packedVals
+    }
 
-    input[0] = (num_sign_ups << 32) + max_vote_options; // packedVals
+    // input[0] = (num_sign_ups << 32) + max_vote_options; // packedVals
 
     // Load the coordinator's public key hash
     let coordinator_hash = COORDINATORHASH.load(deps.storage)?;
@@ -2092,11 +2111,11 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::QueryTotalFeeGrant {} => {
             to_json_binary::<Uint128>(&FEEGRANTS.may_load(deps.storage)?.unwrap_or_default())
         }
-        // QueryMsg::QueryCircuitType {} => {
-        //     to_json_binary::<Uint256>(&CIRCUITTYPE.may_load(deps.storage)?.unwrap_or_default())
-        // }
+        QueryMsg::QueryCircuitType {} => {
+            to_json_binary::<u64>(&CIRCUITTYPE.may_load(deps.storage)?.unwrap_or_default())
+        }
         QueryMsg::QueryCertSystem {} => {
-            to_json_binary::<Uint256>(&CERTSYSTEM.may_load(deps.storage)?.unwrap_or_default())
+            to_json_binary::<u64>(&CERTSYSTEM.may_load(deps.storage)?.unwrap_or_default())
         }
         QueryMsg::QueryPreDeactivateRoot {} => to_json_binary::<Uint256>(
             &PRE_DEACTIVATE_ROOT

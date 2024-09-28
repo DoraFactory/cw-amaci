@@ -12,6 +12,7 @@ use crate::{
     ContractError,
 };
 use cw_amaci::multitest::{MaciCodeId, MaciContract};
+use cw_amaci::ContractError as AmaciContractError;
 #[test]
 fn instantiate_should_works() {
     let user1_coin_amount = 30u128;
@@ -179,8 +180,24 @@ fn create_round_should_works() {
     let user1_operator_pubkey = contract.get_operator_pubkey(&app, operator()).unwrap();
     assert_eq!(pubkey1(), user1_operator_pubkey);
 
+    let create_round_with_wrong_circuit_type = contract
+        .create_round(&mut app, user1(), operator(), 1u64, 0u64)
+        .unwrap_err();
+    assert_eq!(
+        AmaciContractError::UnsupportedCircuitType {},
+        create_round_with_wrong_circuit_type.downcast().unwrap()
+    );
+
+    let create_round_with_wrong_certification_system = contract
+        .create_round(&mut app, user1(), operator(), 0u64, 1u64)
+        .unwrap_err();
+    assert_eq!(
+        AmaciContractError::UnsupportedCertificationSystem {},
+        create_round_with_wrong_certification_system.downcast().unwrap()
+    );
+
     let resp = contract
-        .create_round(&mut app, user1(), operator())
+        .create_round(&mut app, user1(), operator(), 0u64, 0u64)
         .unwrap();
 
     let amaci_contract_addr: InstantiationData = from_json(&resp.data.unwrap()).unwrap();

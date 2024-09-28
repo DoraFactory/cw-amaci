@@ -1,4 +1,3 @@
-
 [workspace]
 members = ["contracts/amaci", "contracts/registry"]
 resolver = "2"
