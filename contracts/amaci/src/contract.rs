@@ -77,7 +77,7 @@ pub fn instantiate(
     }
 
     // if msg.voting_time.start_time >= msg.voting_time.end_time {
-    // return Err(ContractError::WrongTimeSet {});
+    //     return Err(ContractError::WrongTimeSet {});
     // }
 
     // TODO: check apart time.
@@ -706,7 +706,6 @@ pub fn execute_sign_up(
     num_sign_ups += Uint256::from_u128(1u128);
 
     // Save the updated state index, voice credit balance, and number of sign-ups
-    // STATEIDXINC.save(deps.storage, &info.sender, &num_sign_ups)?;
     // STATEIDXINC.save(deps.storage, &info.sender, &num_sign_ups)?;
     // VOICECREDITBALANCE.save(
     //     deps.storage,
@@ -2100,6 +2099,11 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         // QueryMsg::WhiteBalanceOf { sender } => {
         //     to_json_binary::<Uint256>(&query_user_balance_of(deps, sender)?)
         // }
+        QueryMsg::Signuped { pubkey_x } => to_json_binary::<Uint256>(
+            &SIGNUPED
+                .load(deps.storage, pubkey_x.to_be_bytes().to_vec())
+                .unwrap(),
+        ),
         QueryMsg::VoteOptionMap {} => {
             to_json_binary::<Vec<String>>(&VOTEOPTIONMAP.load(deps.storage).unwrap())
         }

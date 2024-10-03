@@ -1340,11 +1340,20 @@ mod test {
             y: uint256_from_decimal_string(&pubkey_data.pubkeys[1][1]),
         };
 
-        let _ = contract.sign_up(&mut app, Addr::unchecked("0"), pubkey0);
-        let _ = contract.sign_up(&mut app, Addr::unchecked("1"), pubkey1);
+        let _ = contract.sign_up(&mut app, Addr::unchecked("0"), pubkey0.clone());
+        let _ = contract.sign_up(&mut app, Addr::unchecked("1"), pubkey1.clone());
 
         assert_eq!(
             contract.num_sign_up(&app).unwrap(),
+            Uint256::from_u128(2u128)
+        );
+
+        assert_eq!(
+            contract.signuped(&app, pubkey0.x).unwrap(),
+            Uint256::from_u128(1u128)
+        );
+        assert_eq!(
+            contract.signuped(&app, pubkey1.x).unwrap(),
             Uint256::from_u128(2u128)
         );
 
