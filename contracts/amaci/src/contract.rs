@@ -7,12 +7,12 @@ use crate::state::{
     StateLeaf, VotingTime, Whitelist, ADMIN, CERTSYSTEM, CIRCUITTYPE, COORDINATORHASH,
     CURRENT_DEACTIVATE_COMMITMENT, CURRENT_STATE_COMMITMENT, CURRENT_TALLY_COMMITMENT,
     DMSG_CHAIN_LENGTH, DMSG_HASHES, DNODES, FEEGRANTS, GROTH16_DEACTIVATE_VKEYS,
-    GROTH16_NEWKEY_VKEYS, GROTH16_PROCESS_VKEYS, GROTH16_TALLY_VKEYS, LEAF_IDX_0, MACIPARAMETERS,
-    MACI_DEACTIVATE_MESSAGE, MACI_OPERATOR, MAX_LEAVES_COUNT, MAX_VOTE_OPTIONS, MSG_CHAIN_LENGTH,
-    MSG_HASHES, NODES, NULLIFIERS, NUMSIGNUPS, PERIOD, PRE_DEACTIVATE_ROOT, PROCESSED_DMSG_COUNT,
-    PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO, SIGNUPED, STATEIDXINC,
-    STATE_ROOT_BY_DMSG, TOTAL_RESULT, VOICECREDITBALANCE, VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP,
-    VOTINGTIME, WHITELIST, ZEROS, ZEROS_H10,
+    GROTH16_NEWKEY_VKEYS, GROTH16_PROCESS_VKEYS, GROTH16_TALLY_VKEYS, LAST_DMSG_TIMESTAMP,
+    LEAF_IDX_0, MACIPARAMETERS, MACI_DEACTIVATE_MESSAGE, MACI_OPERATOR, MAX_LEAVES_COUNT,
+    MAX_VOTE_OPTIONS, MSG_CHAIN_LENGTH, MSG_HASHES, NODES, NULLIFIERS, NUMSIGNUPS, PERIOD,
+    PRE_DEACTIVATE_ROOT, PROCESSED_DMSG_COUNT, PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB,
+    RESULT, ROUNDINFO, SIGNUPED, STATEIDXINC, STATE_ROOT_BY_DMSG, TOTAL_RESULT, VOICECREDITBALANCE,
+    VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS, ZEROS_H10,
 };
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
@@ -31,8 +31,8 @@ use prost_types::Timestamp as SdkTimestamp;
 
 use crate::utils::{hash2, hash5, hash_256_uint256_list, uint256_from_hex_string};
 use cosmwasm_std::{
-    attr, coins, to_json_binary, Addr, BankMsg, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
-    Response, StdResult, Uint128, Uint256,
+    attr, coins, to_json_binary, Addr, BankMsg, Binary, Coin, CosmosMsg, Deps, DepsMut, Env,
+    MessageInfo, Response, StdResult, Timestamp, Uint128, Uint256,
 };
 
 use bellman_ce_verifier::{prepare_verifying_key, verify_proof as groth16_verify};
@@ -803,7 +803,7 @@ pub fn execute_publish_deactivate_message(
 ) -> Result<Response, ContractError> {
     // Check if the period status is Voting
     let voting_time = VOTINGTIME.load(deps.storage)?;
-    check_voting_time(env, voting_time)?;
+    check_voting_time(env.clone(), voting_time)?;
 
     // Load the scalar field value
     let snark_scalar_field =
@@ -864,6 +864,9 @@ pub fn execute_publish_deactivate_message(
         // Update the message chain length
         dmsg_chain_length += Uint256::from_u128(1u128);
         DMSG_CHAIN_LENGTH.save(deps.storage, &dmsg_chain_length)?;
+
+        // 保存当前时间戳，用于检查operator是否在1小时内处理
+        LAST_DMSG_TIMESTAMP.save(deps.storage, &env.block.time)?;
 
         let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
         // Return a success response
@@ -1714,6 +1717,163 @@ fn execute_stop_tallying_period(
             ),
         )
         .add_attribute("all_result", sum.to_string()))
+}
+
+// 检查operator是否在1小时内处理完所有deactivate message
+pub fn check_operator_process_time(deps: Deps, env: Env) -> Result<bool, ContractError> {
+    let current_time = env.block.time;
+
+    let last_dmsg_timestamp = match LAST_DMSG_TIMESTAMP.may_load(deps.storage)? {
+        Some(timestamp) => timestamp,
+        None => return Ok(true), // 如果没有last_dmsg_timestamp，说明还没有人提交deactivate message
+    };
+    let time_difference = current_time.seconds() - last_dmsg_timestamp.seconds();
+
+    let processed_dmsg_count = PROCESSED_DMSG_COUNT.load(deps.storage)?;
+    let dmsg_chain_length = DMSG_CHAIN_LENGTH.load(deps.storage)?;
+
+    if processed_dmsg_count == dmsg_chain_length {
+        return Ok(true);
+    }
+
+    if time_difference > 3600 {
+        // 3600秒 = 1小时
+        return Ok(false);
+    }
+
+    Ok(true)
+}
+
+// 检查是否在规定时间内完成tally
+fn check_stop_tallying_time(deps: Deps, env: Env) -> Result<bool, ContractError> {
+    let voting_time = VOTINGTIME.load(deps.storage)?;
+    let current_time = env.block.time;
+
+    // 如果当前时间小于等于投票结束时间，说明还在投票时间内。
+    if current_time <= voting_time.end_time {
+        return Ok(true);
+    }
+
+    let period = PERIOD.load(deps.storage)?;
+
+    // 如果period已经是Ended，说明tally已经成功完成
+    if period.status == PeriodStatus::Ended {
+        return Ok(true);
+    }
+
+    // 检查是否在投票结束后6小时内
+    let time_difference = current_time.seconds() - voting_time.end_time.seconds();
+    if time_difference > 6 * 3600 {
+        // 6小时 = 6 * 3600秒
+        return Ok(false);
+    }
+
+    Ok(true)
+}
+
+#[cw_serde]
+pub struct SlashInfo {
+    pub unprocessed_deactivate_count: Uint256,
+    pub deactivate_success: bool,
+    pub tallying_success: bool,
+}
+
+// 汇总方法，判断要slash多少钱
+pub fn calculate_slash_info(deps: Deps, env: Env) -> Result<SlashInfo, ContractError> {
+    let processed_dmsg_count = PROCESSED_DMSG_COUNT.load(deps.storage)?;
+    let dmsg_chain_length = DMSG_CHAIN_LENGTH.load(deps.storage)?;
+    let unprocessed_deactivate_count = dmsg_chain_length - processed_dmsg_count;
+
+    let deactivate_success = check_operator_process_time(deps, env)?;
+    let tallying_success = check_stop_tallying_time(deps, env)?;
+
+    Ok(SlashInfo {
+        unprocessed_deactivate_count,
+        deactivate_success,
+        tallying_success,
+    })
+}
+
+pub fn execute_slash(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+) -> Result<Response, ContractError> {
+    // 获取slash信息
+    let slash_info = calculate_slash_info(deps.as_ref(), env.clone())?;
+
+    // 获取绑定的总金额
+    let bonded_amount = BONDED_AMOUNT.load(deps.storage)?;
+
+    // 计算需要slash的金额
+    let mut slash_amount = Uint128::zero();
+    let mut attributes = vec![
+        attr("action", "slash"),
+        attr("caller", info.sender.to_string()),
+    ];
+
+    // 如果deactivate message没有及时处理
+    if !slash_info.deactivate_success {
+        // 每个未处理的deactivate message罚款1 token
+        let deactivate_slash =
+            Uint128::from(1u128) * Uint128::from(slash_info.unprocessed_deactivate_count);
+        slash_amount += deactivate_slash;
+        attributes.push(attr("deactivate_slash", deactivate_slash.to_string()));
+
+        // 更新最新的deactivate message时间戳
+        let voting_time = VOTINGTIME.load(deps.storage)?;
+        if env.block.time <= voting_time.end_time {
+            LAST_DMSG_TIMESTAMP.save(deps.storage, &env.block.time)?;
+            attributes.push(attr("last_dmsg_timestamp_updated", "true"));
+        }
+    }
+
+    // 如果tally没有及时完成
+    if !slash_info.tallying_success {
+        // 检查是否已经因为tally延迟被slash过
+        let tally_slashed = TALLY_SLASHED.may_load(deps.storage)?.unwrap_or(false);
+        if !tally_slashed {
+            // 罚款绑定金额的10%
+            let tally_slash = bonded_amount / Uint128::from(10u128);
+            slash_amount += tally_slash;
+            attributes.push(attr("tally_slash", tally_slash.to_string()));
+
+            // 标记tally已被slash
+            TALLY_SLASHED.save(deps.storage, &true)?;
+            attributes.push(attr("tally_slashed", "true"));
+        }
+    }
+
+    // 如果没有需要slash的金额，返回错误
+    if slash_amount.is_zero() {
+        return Err(ContractError::NoSlashNeeded {});
+    }
+
+    // 确保slash金额不超过绑定金额
+    if slash_amount > bonded_amount {
+        slash_amount = bonded_amount;
+    }
+
+    // 获取creator地址
+    let creator = ADMIN.load(deps.storage)?.admin;
+
+    // 构建转账消息
+    let transfer_msg = BankMsg::Send {
+        to_address: creator.to_string(),
+        amount: vec![Coin {
+            denom: "peaka".to_string(),
+            amount: slash_amount,
+        }],
+    };
+
+    // 更新绑定金额
+    BONDED_AMOUNT.save(deps.storage, &(bonded_amount - slash_amount))?;
+
+    attributes.push(attr("slashed_amount", slash_amount.to_string()));
+
+    Ok(Response::new()
+        .add_message(transfer_msg)
+        .add_attributes(attributes))
 }
 
 fn execute_grant(

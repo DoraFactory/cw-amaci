@@ -298,6 +298,8 @@ pub const MACI_DEACTIVATE_MESSAGE: Map<&Addr, Vec<Vec<String>>> =
 // registry operator data
 pub const MACI_OPERATOR: Item<Addr> = Item::new("maci_operator");
 
+pub const LAST_DMSG_TIMESTAMP: Item<Timestamp> = Item::new("last_dmsg_timestamp");
+
 #[cfg(test)]
 mod tests {
     use super::*;
