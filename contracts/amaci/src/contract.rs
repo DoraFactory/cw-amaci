@@ -277,6 +277,8 @@ pub fn instantiate(
 
     let circuit_type = if msg.circuit_type == Uint256::from_u128(0u128) {
         "0" // 1p1v
+    } else if msg.circuit_type == Uint256::from_u128(1u128) {
+        "1" // qv
     } else {
         return Err(ContractError::UnsupportedCircuitType {});
     };
@@ -287,7 +289,6 @@ pub fn instantiate(
         return Err(ContractError::UnsupportedCertificationSystem {});
     };
 
-    // TODO: wait add qv model.
     CIRCUITTYPE.save(deps.storage, &msg.circuit_type)?;
     CERTSYSTEM.save(deps.storage, &msg.certification_system)?;
 
@@ -1353,7 +1354,6 @@ pub fn execute_process_message(
     let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
     let max_vote_options = MAX_VOTE_OPTIONS.load(deps.storage)?;
 
-    // TODO: add qv model
     let circuit_type = CIRCUITTYPE.load(deps.storage)?;
     if circuit_type == Uint256::from_u128(0u128) {
         // 1p1v

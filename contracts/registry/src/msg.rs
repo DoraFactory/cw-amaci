@@ -62,14 +62,6 @@ pub enum ExecuteMsg {
     ChangeOperator {
         address: Addr,
     },
-    // // TODO: only operator can slash the token, 不能一直slash token，所以需要设置一个 slash 之后的 状态
-    // // 并且，我们可能需要设置一个定期处理的机制，比如一个月一个epoch
-    // // 另外，关于投票周期，不能太长也不能太短。
-    // Slash {
-    //     operator: Addr,
-    //     amount: Uint128,
-    //     proof: String,
-    // },
 }
 
 #[cw_serde]

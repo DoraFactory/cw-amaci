@@ -24,7 +24,6 @@ pub struct InstantiateMsg {
 
     pub pre_deactivate_root: Uint256,
 
-    // TODO: waiting add qv modal
     pub circuit_type: Uint256,         // <0: 1p1v | 1: pv>
     pub certification_system: Uint256, // <0: groth16 | 1: plonk>
 }
