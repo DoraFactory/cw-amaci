@@ -20,12 +20,22 @@ pub struct InstantiateMsg {
 
     pub round_info: RoundInfo,
     pub voting_time: VotingTime,
-    pub whitelist: Option<Whitelist>,
+    pub whitelist: Option<WhitelistBase>,
 
     pub pre_deactivate_root: Uint256,
 
     pub circuit_type: Uint256,         // <0: 1p1v | 1: pv>
     pub certification_system: Uint256, // <0: groth16 | 1: plonk>
+}
+
+#[cw_serde]
+pub struct WhitelistBaseConfig {
+    pub addr: Addr,
+}
+
+#[cw_serde]
+pub struct WhitelistBase {
+    pub users: Vec<WhitelistBaseConfig>,
 }
 
 #[cw_serde]
@@ -57,7 +67,7 @@ pub enum ExecuteMsg {
         round_info: RoundInfo,
     },
     SetWhitelists {
-        whitelists: Whitelist,
+        whitelists: WhitelistBase,
     },
     SetVoteOptionsMap {
         vote_option_map: Vec<String>,
@@ -182,7 +192,13 @@ pub enum QueryMsg {
     /// If CanExecute returns true then a call to `Execute` with the same message,
     /// before any further state changes, should also succeed.
     #[returns(bool)]
+    CanSignUp { sender: Addr },
+
+    #[returns(bool)]
     IsWhiteList { sender: Addr },
+
+    #[returns(bool)]
+    IsRegister { sender: Addr },
 
     // #[returns(Uint256)]
     // WhiteBalanceOf { sender: String },

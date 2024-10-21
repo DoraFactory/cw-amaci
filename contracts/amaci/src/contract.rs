@@ -1,18 +1,20 @@
 use crate::circuit_params::match_vkeys;
 use crate::error::ContractError;
 use crate::groth16_parser::{parse_groth16_proof, parse_groth16_vkey};
-use crate::msg::{ExecuteMsg, Groth16ProofType, InstantiateMsg, InstantiationData, QueryMsg};
+use crate::msg::{
+    ExecuteMsg, Groth16ProofType, InstantiateMsg, InstantiationData, QueryMsg, WhitelistBase,
+};
 use crate::state::{
     Admin, Groth16ProofStr, MessageData, Period, PeriodStatus, PubKey, QuinaryTreeRoot, RoundInfo,
-    StateLeaf, VotingTime, Whitelist, ADMIN, CERTSYSTEM, CIRCUITTYPE, COORDINATORHASH,
-    CURRENT_DEACTIVATE_COMMITMENT, CURRENT_STATE_COMMITMENT, CURRENT_TALLY_COMMITMENT,
-    DMSG_CHAIN_LENGTH, DMSG_HASHES, DNODES, FEEGRANTS, GROTH16_DEACTIVATE_VKEYS,
-    GROTH16_NEWKEY_VKEYS, GROTH16_PROCESS_VKEYS, GROTH16_TALLY_VKEYS, LEAF_IDX_0, MACIPARAMETERS,
-    MACI_DEACTIVATE_MESSAGE, MACI_OPERATOR, MAX_LEAVES_COUNT, MAX_VOTE_OPTIONS, MSG_CHAIN_LENGTH,
-    MSG_HASHES, NODES, NULLIFIERS, NUMSIGNUPS, PERIOD, PRE_DEACTIVATE_ROOT, PROCESSED_DMSG_COUNT,
-    PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO, SIGNUPED, STATEIDXINC,
-    STATE_ROOT_BY_DMSG, TOTAL_RESULT, VOICECREDITBALANCE, VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP,
-    VOTINGTIME, WHITELIST, ZEROS, ZEROS_H10,
+    StateLeaf, VotingTime, Whitelist, WhitelistConfig, ADMIN, CERTSYSTEM, CIRCUITTYPE,
+    COORDINATORHASH, CURRENT_DEACTIVATE_COMMITMENT, CURRENT_STATE_COMMITMENT,
+    CURRENT_TALLY_COMMITMENT, DMSG_CHAIN_LENGTH, DMSG_HASHES, DNODES, FEEGRANTS,
+    GROTH16_DEACTIVATE_VKEYS, GROTH16_NEWKEY_VKEYS, GROTH16_PROCESS_VKEYS, GROTH16_TALLY_VKEYS,
+    LEAF_IDX_0, MACIPARAMETERS, MACI_DEACTIVATE_MESSAGE, MACI_OPERATOR, MAX_LEAVES_COUNT,
+    MAX_VOTE_OPTIONS, MSG_CHAIN_LENGTH, MSG_HASHES, NODES, NULLIFIERS, NUMSIGNUPS, PERIOD,
+    PRE_DEACTIVATE_ROOT, PROCESSED_DMSG_COUNT, PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB,
+    RESULT, ROUNDINFO, SIGNUPED, STATEIDXINC, STATE_ROOT_BY_DMSG, TOTAL_RESULT, VOICECREDITBALANCE,
+    VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS, ZEROS_H10,
 };
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
@@ -59,7 +61,7 @@ pub fn instantiate(
     };
     ADMIN.save(deps.storage, &admin)?;
 
-    // An error will be thrown if the number of vote options exceeds the circuit’s capacity.
+    // An error will be thrown if the number of vote options exceeds the circuit's capacity.
     let vote_option_max_amount = Uint256::from_u128(
         5u128.pow(
             msg.parameters
@@ -97,7 +99,17 @@ pub fn instantiate(
                 });
             }
 
-            WHITELIST.save(deps.storage, &content)?
+            let mut users: Vec<WhitelistConfig> = Vec::new();
+            for i in 0..content.users.len() {
+                let data = WhitelistConfig {
+                    addr: content.users[i].addr.clone(),
+                    is_register: false,
+                };
+                users.push(data);
+            }
+
+            let whitelists = Whitelist { users };
+            WHITELIST.save(deps.storage, &whitelists)?;
         }
         None => {}
     }
@@ -582,7 +594,7 @@ pub fn execute_set_whitelists(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    whitelists: Whitelist,
+    whitelists: WhitelistBase,
 ) -> Result<Response, ContractError> {
     if FEEGRANTS.exists(deps.storage) {
         return Err(ContractError::FeeGrantAlreadyExists);
@@ -608,7 +620,16 @@ pub fn execute_set_whitelists(
             });
         }
 
-        // WHITELIST.save(deps.storage, &content)?
+        let mut users: Vec<WhitelistConfig> = Vec::new();
+        for i in 0..whitelists.users.len() {
+            let data = WhitelistConfig {
+                addr: whitelists.users[i].addr.clone(),
+                is_register: false,
+            };
+            users.push(data);
+        }
+
+        let whitelists = Whitelist { users };
         WHITELIST.save(deps.storage, &whitelists)?;
         let res = Response::new().add_attribute("action", "set_whitelists");
         Ok(res)
@@ -634,7 +655,7 @@ pub fn execute_set_vote_options_map(
         let max_vote_options = vote_option_map.len() as u128;
         let cfg = MACIPARAMETERS.load(deps.storage)?;
 
-        // An error will be thrown if the number of vote options exceeds the circuit’s capacity.
+        // An error will be thrown if the number of vote options exceeds the circuit's capacity.
         let vote_option_max_amount =
             Uint256::from_u128(5u128.pow(cfg.vote_option_tree_depth.to_string().parse().unwrap()));
         if Uint256::from_u128(max_vote_options) > vote_option_max_amount {
@@ -664,8 +685,12 @@ pub fn execute_sign_up(
 ) -> Result<Response, ContractError> {
     let voting_time = VOTINGTIME.load(deps.storage)?;
     check_voting_time(env, voting_time)?;
-    if !can_sign_up(deps.as_ref(), &info.sender)? {
+    if !is_whitelist(deps.as_ref(), &info.sender)? {
         return Err(ContractError::Unauthorized {});
+    }
+
+    if is_register(deps.as_ref(), &info.sender)? {
+        return Err(ContractError::UserAlreadyRegistered {});
     }
     // let user_balance = user_balance_of(deps.as_ref(), info.sender.as_ref())?;
     // if user_balance == Uint256::from_u128(0u128) {
@@ -716,9 +741,9 @@ pub fn execute_sign_up(
     NUMSIGNUPS.save(deps.storage, &num_sign_ups)?;
     SIGNUPED.save(deps.storage, pubkey.x.to_be_bytes().to_vec(), &num_sign_ups)?;
 
-    // let mut white_curr = WHITELIST.load(deps.storage)?;
-    // // white_curr.register(info.sender);
-    // WHITELIST.save(deps.storage, &white_curr)?;
+    let mut whitelist = WHITELIST.load(deps.storage)?;
+    whitelist.register(&info.sender);
+    WHITELIST.save(deps.storage, &whitelist)?;
 
     Ok(Response::new()
         .add_attribute("action", "sign_up")
@@ -1878,8 +1903,9 @@ fn execute_withdraw(
 
 fn can_sign_up(deps: Deps, sender: &Addr) -> StdResult<bool> {
     let cfg = WHITELIST.load(deps.storage)?;
-    let can = cfg.is_whitelist(sender);
-    Ok(can)
+    let is_whitelist = cfg.is_whitelist(sender);
+    let is_register = cfg.is_register(sender);
+    Ok(is_whitelist && !is_register)
 }
 
 // fn user_balance_of(deps: Deps, sender: &str) -> StdResult<Uint256> {
@@ -2093,12 +2119,11 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 .unwrap_or_default(),
         ),
         QueryMsg::WhiteList {} => to_json_binary::<Whitelist>(&query_white_list(deps)?),
-        QueryMsg::IsWhiteList { sender } => {
+        QueryMsg::CanSignUp { sender } => {
             to_json_binary::<bool>(&query_can_sign_up(deps, &sender)?)
         }
-        // QueryMsg::WhiteBalanceOf { sender } => {
-        //     to_json_binary::<Uint256>(&query_user_balance_of(deps, sender)?)
-        // }
+        QueryMsg::IsWhiteList { sender } => to_json_binary::<bool>(&is_whitelist(deps, &sender)?),
+        QueryMsg::IsRegister { sender } => to_json_binary::<bool>(&is_register(deps, &sender)?),
         QueryMsg::Signuped { pubkey_x } => to_json_binary::<Uint256>(
             &SIGNUPED
                 .load(deps.storage, pubkey_x.to_be_bytes().to_vec())
@@ -2136,6 +2161,18 @@ pub fn query_white_list(deps: Deps) -> StdResult<Whitelist> {
 
 pub fn query_can_sign_up(deps: Deps, sender: &Addr) -> StdResult<bool> {
     Ok(can_sign_up(deps, &sender)?)
+}
+
+pub fn is_whitelist(deps: Deps, sender: &Addr) -> StdResult<bool> {
+    let cfg = WHITELIST.load(deps.storage)?;
+    let is_whitelist = cfg.is_whitelist(sender);
+    Ok(is_whitelist)
+}
+
+pub fn is_register(deps: Deps, sender: &Addr) -> StdResult<bool> {
+    let cfg = WHITELIST.load(deps.storage)?;
+    let is_register = cfg.is_register(sender);
+    Ok(is_register)
 }
 
 // pub fn query_user_balance_of(deps: Deps, sender: String) -> StdResult<Uint256> {

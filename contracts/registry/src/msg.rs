@@ -1,7 +1,10 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128, Uint256};
 
-use cw_amaci::state::{PubKey, RoundInfo, VotingTime, Whitelist};
+use cw_amaci::{
+    msg::WhitelistBase,
+    state::{PubKey, RoundInfo, VotingTime},
+};
 
 use crate::state::ValidatorSet;
 
@@ -41,15 +44,11 @@ pub enum ExecuteMsg {
         voice_credit_amount: Uint256,
         round_info: RoundInfo,
         voting_time: VotingTime,
-        whitelist: Option<Whitelist>,
+        whitelist: Option<WhitelistBase>,
         pre_deactivate_root: Uint256,
         circuit_type: Uint256,
         certification_system: Uint256,
     },
-    // ChangeParams {
-    //     min_deposit_amount: Uint128,
-    //     slash_amount: Uint128,
-    // },
     SetValidators {
         addresses: ValidatorSet,
     },
