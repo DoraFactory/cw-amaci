@@ -107,4 +107,10 @@ pub enum ContractError {
 
     #[error("User already registered.")]
     UserAlreadyRegistered {},
+
+    #[error("Divisor is zero")]
+    DivisorIsZero {},
+
+    #[error("Division by zero")]
+    DivisionByZero {},
 }

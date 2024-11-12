@@ -310,8 +310,9 @@ pub const MACI_DEACTIVATE_MESSAGE: Map<&Addr, Vec<Vec<String>>> =
 
 // registry operator data
 pub const MACI_OPERATOR: Item<Addr> = Item::new("maci_operator");
-
 pub const LAST_DMSG_TIMESTAMP: Item<Timestamp> = Item::new("last_dmsg_timestamp");
+pub const PENALTY_RATE: Item<Uint256> = Item::new("penalty_rate");
+pub const TALLY_WINDOW: Item<Timestamp> = Item::new("tally_window"); // tally window in hours
 
 #[cfg(test)]
 mod tests {
