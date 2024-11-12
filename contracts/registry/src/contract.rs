@@ -16,8 +16,9 @@ use crate::state::{
 };
 use cw_amaci::msg::{
     InstantiateMsg as AMaciInstantiateMsg, InstantiationData as AMaciInstantiationData,
+    WhitelistBase,
 };
-use cw_amaci::state::{MaciParameters, PubKey, RoundInfo, VotingTime, Whitelist};
+use cw_amaci::state::{MaciParameters, PubKey, RoundInfo, VotingTime};
 use cw_utils::parse_instantiate_response_data;
 
 // version info for migration info
@@ -111,7 +112,7 @@ pub fn execute_create_round(
     voice_credit_amount: Uint256,
     round_info: RoundInfo,
     voting_time: VotingTime,
-    whitelist: Option<Whitelist>,
+    whitelist: Option<WhitelistBase>,
     pre_deactivate_root: Uint256,
     circuit_type: Uint256,
     certification_system: Uint256,

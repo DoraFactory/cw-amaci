@@ -104,4 +104,7 @@ pub enum ContractError {
 
     #[error("No matching circuit size.")]
     NotMatchCircuitSize {},
+
+    #[error("User already registered.")]
+    UserAlreadyRegistered {},
 }

@@ -185,7 +185,7 @@ fn create_round_should_works() {
             &mut app,
             user1(),
             operator(),
-            Uint256::from_u128(1u128),
+            Uint256::from_u128(2u128),
             Uint256::from_u128(0u128),
         )
         .unwrap_err();

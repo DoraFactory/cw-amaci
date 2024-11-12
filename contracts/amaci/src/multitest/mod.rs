@@ -124,10 +124,10 @@ impl MaciCodeId {
             description: String::from("Hack In Brelin"),
             link: String::from("https://baidu.com"),
         };
-        let whitelist = Some(Whitelist {
+        let whitelist = Some(WhitelistBase {
             users: vec![
-                WhitelistConfig { addr: user1 },
-                WhitelistConfig { addr: user2 },
+                WhitelistBaseConfig { addr: user1 },
+                WhitelistBaseConfig { addr: user2 },
             ],
         });
         let voting_time = VotingTime {
@@ -163,10 +163,10 @@ impl MaciCodeId {
             description: String::from("Hack In Brelin"),
             link: String::from("https://baidu.com"),
         };
-        let whitelist = Some(Whitelist {
+        let whitelist = Some(WhitelistBase {
             users: vec![
-                WhitelistConfig { addr: user1 },
-                WhitelistConfig { addr: user2 },
+                WhitelistBaseConfig { addr: user1 },
+                WhitelistBaseConfig { addr: user2 },
             ],
         });
         let voting_time = VotingTime {
@@ -318,10 +318,10 @@ impl MaciCodeId {
             description: String::from("Hack In Brelin"),
             link: String::from("https://baidu.com"),
         };
-        let whitelist = Some(Whitelist {
+        let whitelist = Some(WhitelistBase {
             users: vec![
-                WhitelistConfig { addr: user1 },
-                WhitelistConfig { addr: user2 },
+                WhitelistBaseConfig { addr: user1 },
+                WhitelistBaseConfig { addr: user2 },
             ],
         });
         let voting_time = VotingTime {
@@ -358,18 +358,18 @@ impl MaciCodeId {
             description: String::from("Hack In Brelin"),
             link: String::from("https://baidu.com"),
         };
-        let whitelist = Some(Whitelist {
+        let whitelist = Some(WhitelistBase {
             users: vec![
-                WhitelistConfig { addr: user1 },
-                WhitelistConfig { addr: user2 },
-                WhitelistConfig { addr: user3 },
+                WhitelistBaseConfig { addr: user1 },
+                WhitelistBaseConfig { addr: user2 },
+                WhitelistBaseConfig { addr: user3 },
             ],
         });
         let voting_time = VotingTime {
             start_time: Timestamp::from_nanos(1571797424879000000),
             end_time: Timestamp::from_nanos(1571797429879300000),
         };
-        let circuit_type = Uint256::from_u128(0u128);
+        let circuit_type = Uint256::from_u128(1u128);
         let certification_system = Uint256::from_u128(0u128);
         MaciContract::instantiate_decative_and_add_new_key_zkey(
             app,
@@ -411,7 +411,7 @@ impl MaciContract {
         code_id: MaciCodeId,
         sender: Addr,
         round_info: RoundInfo,
-        whitelist: Option<Whitelist>,
+        whitelist: Option<WhitelistBase>,
         voting_time: VotingTime,
         circuit_type: Uint256,
         certification_system: Uint256,
@@ -524,7 +524,7 @@ impl MaciContract {
         code_id: MaciCodeId,
         sender: Addr,
         round_info: RoundInfo,
-        whitelist: Option<Whitelist>,
+        whitelist: Option<WhitelistBase>,
         voting_time: VotingTime,
         circuit_type: Uint256,
         certification_system: Uint256,
@@ -692,10 +692,10 @@ impl MaciContract {
             sender,
             self.addr(),
             &ExecuteMsg::SetWhitelists {
-                whitelists: Whitelist {
+                whitelists: WhitelistBase {
                     users: vec![
-                        WhitelistConfig { addr: user1() },
-                        WhitelistConfig { addr: user2() },
+                        WhitelistBaseConfig { addr: user1() },
+                        WhitelistBaseConfig { addr: user2() },
                     ],
                 },
             },

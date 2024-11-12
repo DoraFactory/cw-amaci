@@ -1207,7 +1207,7 @@ mod test {
     }
 
     #[test]
-    fn instantiate_with_voting_time_1p1v_amaci_should_works() {
+    fn instantiate_with_voting_time_qv_amaci_should_works() {
         let msg_file_path = "./src/test/qv_test/msg.json";
 
         let mut msg_file = fs::File::open(msg_file_path).expect("Failed to open file");
@@ -1341,6 +1341,15 @@ mod test {
         };
 
         let _ = contract.sign_up(&mut app, Addr::unchecked("0"), pubkey0.clone());
+
+        let can_sign_up_error = contract
+            .sign_up(&mut app, Addr::unchecked("0"), pubkey0.clone())
+            .unwrap_err();
+        assert_eq!(
+            ContractError::UserAlreadyRegistered {},
+            can_sign_up_error.downcast().unwrap()
+        );
+
         let _ = contract.sign_up(&mut app, Addr::unchecked("1"), pubkey1.clone());
 
         assert_eq!(
@@ -1400,9 +1409,9 @@ mod test {
                     let new_deactivate_root =
                         uint256_from_decimal_string(&data.new_deactivate_root);
                     let proof = Groth16ProofType {
-                                    a: "07eb1d9b0b358b2e4fe5e051bfd67aa3e57e2ab2f64f10e35d396ffd250b43e50433ae33cf1f829a23b7f326d8d2e4ff947c6f9778b788cf98336a6596ca2d16".to_string(),
-                                    b: "0178e65e73c8e868900a5b439ac9c9f4c5dd7b1648b1f62bd5515a570fbf35a910fe35a737af956348436c2c62f046a08f35c0c7249bdaee25821122d1e3e11805f57494d28352120e88d1f75f560b3f15bea5af48d07e942df098b3e1aa95ff0a2541ae1aec50d71f30d01be5cd3d8a9d86ead1f190fb7d4c723bdcf9b11a51".to_string(),
-                                    c: "1e146ab4c5b7388f8207d8e00c8d44d63786eb9a2deb07674b9e47ecb263541b22109d09c11658954333b6e62dacca8a72c088ddd8ab633765bc46bf88e97cd8".to_string()
+                                    a: "2fac29af2cad382c07952b42c10b282d6ee5c27032548c370fdf40c693965b98239bb54fb0546480075f7e93f7f46acdacfecf3eb40fb3c16f9b13287d15fd7a".to_string(),
+                                    b: "18fb4503928bda6fc6aa377170b80fb3e2c73161c78c936bca222cb233318c7517ca194640de6b7790ec65ea7e46891089567d86a9fe8e419ad5e5d27e2cf96a2cf5383ef516ea8d14754c2e9e132fe566dd32eb23cd0de3543398a03a1c15f02a75014c4db8598d472112b292bbdde2968c409b759dbe76dec21da24b09d1a1".to_string(),
+                                    c: "18f024873175339f2e939c8bc8a369daa56257564f3e23b0cf4b635e5721f0d1285e5d66fc1dd69f581a2b146083267e4ce9a3c21e46f488af2ed9289bd00714".to_string()
                                 };
                     println!("process_deactivate_message proof {:?}", proof);
                     println!(
@@ -1449,9 +1458,9 @@ mod test {
                     let nullifier = uint256_from_decimal_string(&data.nullifier);
 
                     let proof = Groth16ProofType {
-                                    a: "053eb9bf62de01898e5d7049bfeaee4611b78b54f516ff4b0fd93ffcdc491d8b170e2c3de370f8eeec93ebb57e49279adc68fb137f4aafe1b4206d7186592673".to_string(),
-                                    b: "2746ba15cb4478a1a90bd512844cd0e57070357ff17ad90964b699f962f4f24817ce4dcc89d350df5d63ae7f05f0069272c3d352cb92237e682222e68d52da0f00551f58de3a3cac33d6af2fb052e4ff4d42008b5f33b310756a5e7017919087284dc00b9753a3891872ee599467348976ec2d72703d46949a9b8093a97718eb".to_string(),
-                                    c: "1832b7d8607c041bd1437f43fe1d207ad64bea58f346cc91d0c72d9c02bbc4031decf433ecafc3874f4bcedbfae591caaf87834ad6867c7d342b96b6299ddd0a".to_string()
+                                    a: "29eb173553d340b41108fa7581371d1e2eb84962e93e667aff45ee2cc05aa9b91234d82ac4caafd2eaf597e1da25c5982bef8b0a937a7f68b84954f042d4ed0f".to_string(),
+                                    b: "01a6d17acb0c2381082e1c35baee57af4bf393dbd94377bac54bfec15916c0b80197c2a0c0faa491e9b32b32de526c03b2c57a126eeafcb72feae194b3f8a60f0a81e4f7aa16ba2afb45a694dcc5832531b36c060f3ae31a8df0e7c724961e130d5fc5a83a7d658b63611dd37e0790b3602072529743cf727a371f82c3c250b2".to_string(),
+                                    c: "2e18f57e4618cac5b0111a6ca470a193dfbad5f393a455b06be2b2dbd8bb7b8e1c0f4fbb35a51d466d665d7fcfb22ea3717c6503e45f104167c4639fd01a1285".to_string()
                                 };
 
                     println!("add_new_key proof {:?}", proof);
@@ -1533,9 +1542,9 @@ mod test {
                     let new_state_commitment =
                         uint256_from_decimal_string(&data.new_state_commitment);
                     let proof = Groth16ProofType {
-                            a: "1064da3b6dc28c0c1cf5be19ae0d7e653cd6b4fd7fad60fbdf388358e3238a5106cdf7446c0e37a5421ffc98ca27e2ad7c39cbce6bd0828293a18903fb488b11".to_string(),
-                            b: "269766a5e7a27980fa446543f84984ce60f8998f3518f74dff73d1b044323d4f22df42cb66facc4ce30d4e1937abe342cf8fda8d10134a4c21d60ab8ffabcc7029fcf2f5f4870f4d54d807cbd8cde9e4a2c2bc8740d6c63d835045145f1851470c8ba81d9639c83ecbecf5a4495238b4fcc7f8317388422c049dd7874b265b4b".to_string(),
-                            c: "13e4c1882e33e250de25c916d469ef2fe99e2dfd2a89e2c2369ba348903d7bd40cd1b811de0b35c2b2ece3ac156e12cb1e1114819fbd37a670d0f588f4f30bab".to_string()
+                            a: "096d1b959a9d1a4414da11a08220f034cd897b9cdd4cfce9a5427dca6302da15256a4aa11311f51231d905883f2224bdda75e8d1757f701164d11a286dd3831a".to_string(),
+                            b: "1bce75878f05c102f04f23d8033ecbf074420c02d977e312f6e121b1254bfe262e465cd3e76211e75251ee9a1dadfaedbde55c55af20c3b906ee4f360f079f6b069f7aa8774a1fbfcca147a2581d64885a977aa05f5a03b0f8871abc2f0611ad058a4f480bdff6ec3616be5b4f197f8a96c21b206485827f628b1f8ee5f55be4".to_string(),
+                            c: "11d9887f25fb3cac4a4cc9f20031f9be14bb206fe5db157ae2302d23c65ed6ad06af73ef894c43bbd89008b720efded006a0499bc76cdfc5ae8d8bf67360f37e".to_string()
                         };
                     println!("process_message proof {:?}", proof);
                     println!(
@@ -1573,9 +1582,9 @@ mod test {
                         uint256_from_decimal_string(&data.new_tally_commitment);
 
                     let tally_proof = Groth16ProofType {
-                                a: "2223e53e3b01380cc92390be785006738a510e3f371b0ab255a4adc5a77839410537bc9546e50d1b634b45c8607c59d3ff905a64de8de75ea3f43b6b77a569be".to_string(),
-                                b: "1786ccb676689ce648bcb5c9afba636d3bfb15b14c5333802f1006f9338f869a12e033e0a68484c04b9c6f8c6ee01d23a3cc78b13b86ab5282f14961f01f0b8212a89a503e8f2e652c5f00fceca6e1033df0904bb8626a2d6515bd44488e40e4211d1a7f6996e41ee46f81a762af3132174aa4725334783a493a432d1828db80".to_string(),
-                                c: "1e53064534ff278b93ba9c2df8a8d2accac3358f7486072a605990e38544cc292cde5cf0b444f3395b627edeabf892ef3020b2b90edc3936bcef2caa6d68dbcb".to_string()
+                                a: "2a88fe840fa2eb49979acee8b545766fc83f28f128219041d3bf1e900fcf86a219b124cbf9b755a802186c391a154137eadf865a4b604452f5f98c4c533a1652".to_string(),
+                                b: "0b6706904e637f888a9406db1529c84c26d068ad54bbfd3597de3e542f9230302cfdfdcd606e3544a63139b888fa561c2bf5ed928826d68c4f35e0fd07d491da27488896f67e261e8e3c6e33f947700b10eb6029daf6d9ae19add49e19fde2792563eec2f3fa6a43b1ec42c7d2f32b644c2f18e2b48d5dc552958b49c30f80c8".to_string(),
+                                c: "0d4529ea7dd9c686c5673d48ee6a3fb3971a7cf12441f40e0ba6116046d64767288254a628cac0e46ccd3f1d1100ba2cd922d71066ae48b78283773b505665e0".to_string()
                             };
 
                     _ = contract

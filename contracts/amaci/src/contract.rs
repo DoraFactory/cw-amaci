@@ -1,19 +1,23 @@
 use crate::circuit_params::match_vkeys;
 use crate::error::ContractError;
 use crate::groth16_parser::{parse_groth16_proof, parse_groth16_vkey};
-use crate::msg::{ExecuteMsg, Groth16ProofType, InstantiateMsg, InstantiationData, QueryMsg};
+use crate::msg::{
+    ExecuteMsg, Groth16ProofType, InstantiateMsg, InstantiationData, QueryMsg, WhitelistBase,
+};
 use crate::state::{
     Admin, Groth16ProofStr, MessageData, Period, PeriodStatus, PubKey, QuinaryTreeRoot, RoundInfo,
-    StateLeaf, VotingTime, Whitelist, ADMIN, CERTSYSTEM, CIRCUITTYPE, COORDINATORHASH,
-    CURRENT_DEACTIVATE_COMMITMENT, CURRENT_STATE_COMMITMENT, CURRENT_TALLY_COMMITMENT,
-    DMSG_CHAIN_LENGTH, DMSG_HASHES, DNODES, FEEGRANTS, GROTH16_DEACTIVATE_VKEYS,
-    GROTH16_NEWKEY_VKEYS, GROTH16_PROCESS_VKEYS, GROTH16_TALLY_VKEYS, LAST_DMSG_TIMESTAMP,
-    LEAF_IDX_0, MACIPARAMETERS, MACI_DEACTIVATE_MESSAGE, MACI_OPERATOR, MAX_LEAVES_COUNT,
-    MAX_VOTE_OPTIONS, MSG_CHAIN_LENGTH, MSG_HASHES, NODES, NULLIFIERS, NUMSIGNUPS, PERIOD,
-    PRE_DEACTIVATE_ROOT, PROCESSED_DMSG_COUNT, PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB,
-    RESULT, ROUNDINFO, SIGNUPED, STATEIDXINC, STATE_ROOT_BY_DMSG, TOTAL_RESULT, VOICECREDITBALANCE,
-    VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS, ZEROS_H10,
+    StateLeaf, VotingTime, Whitelist, WhitelistConfig, ADMIN, CERTSYSTEM, CIRCUITTYPE,
+    COORDINATORHASH, CURRENT_DEACTIVATE_COMMITMENT, CURRENT_STATE_COMMITMENT,
+    CURRENT_TALLY_COMMITMENT, DMSG_CHAIN_LENGTH, DMSG_HASHES, DNODES, FEEGRANTS,
+    GROTH16_DEACTIVATE_VKEYS, GROTH16_NEWKEY_VKEYS, GROTH16_PROCESS_VKEYS, GROTH16_TALLY_VKEYS,
+    LAST_DMSG_TIMESTAMP, LEAF_IDX_0, MACIPARAMETERS, MACI_DEACTIVATE_MESSAGE, MACI_OPERATOR,
+    MAX_LEAVES_COUNT, MAX_VOTE_OPTIONS, MSG_CHAIN_LENGTH, MSG_HASHES, NODES, NULLIFIERS,
+    NUMSIGNUPS, PERIOD, PRE_DEACTIVATE_ROOT, PROCESSED_DMSG_COUNT, PROCESSED_MSG_COUNT,
+    PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO, SIGNUPED, STATEIDXINC, STATE_ROOT_BY_DMSG,
+    TOTAL_RESULT, VOICECREDITBALANCE, VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP, VOTINGTIME, WHITELIST,
+    ZEROS, ZEROS_H10,
 };
+use cosmwasm_schema::{cw_serde, QueryResponses};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cw2::set_contract_version;
@@ -59,7 +63,7 @@ pub fn instantiate(
     };
     ADMIN.save(deps.storage, &admin)?;
 
-    // An error will be thrown if the number of vote options exceeds the circuit’s capacity.
+    // An error will be thrown if the number of vote options exceeds the circuit's capacity.
     let vote_option_max_amount = Uint256::from_u128(
         5u128.pow(
             msg.parameters
@@ -97,7 +101,17 @@ pub fn instantiate(
                 });
             }
 
-            WHITELIST.save(deps.storage, &content)?
+            let mut users: Vec<WhitelistConfig> = Vec::new();
+            for i in 0..content.users.len() {
+                let data = WhitelistConfig {
+                    addr: content.users[i].addr.clone(),
+                    is_register: false,
+                };
+                users.push(data);
+            }
+
+            let whitelists = Whitelist { users };
+            WHITELIST.save(deps.storage, &whitelists)?;
         }
         None => {}
     }
@@ -277,6 +291,8 @@ pub fn instantiate(
 
     let circuit_type = if msg.circuit_type == Uint256::from_u128(0u128) {
         "0" // 1p1v
+    } else if msg.circuit_type == Uint256::from_u128(1u128) {
+        "1" // qv
     } else {
         return Err(ContractError::UnsupportedCircuitType {});
     };
@@ -287,7 +303,6 @@ pub fn instantiate(
         return Err(ContractError::UnsupportedCertificationSystem {});
     };
 
-    // TODO: wait add qv model.
     CIRCUITTYPE.save(deps.storage, &msg.circuit_type)?;
     CERTSYSTEM.save(deps.storage, &msg.certification_system)?;
 
@@ -581,7 +596,7 @@ pub fn execute_set_whitelists(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    whitelists: Whitelist,
+    whitelists: WhitelistBase,
 ) -> Result<Response, ContractError> {
     if FEEGRANTS.exists(deps.storage) {
         return Err(ContractError::FeeGrantAlreadyExists);
@@ -607,7 +622,16 @@ pub fn execute_set_whitelists(
             });
         }
 
-        // WHITELIST.save(deps.storage, &content)?
+        let mut users: Vec<WhitelistConfig> = Vec::new();
+        for i in 0..whitelists.users.len() {
+            let data = WhitelistConfig {
+                addr: whitelists.users[i].addr.clone(),
+                is_register: false,
+            };
+            users.push(data);
+        }
+
+        let whitelists = Whitelist { users };
         WHITELIST.save(deps.storage, &whitelists)?;
         let res = Response::new().add_attribute("action", "set_whitelists");
         Ok(res)
@@ -633,7 +657,7 @@ pub fn execute_set_vote_options_map(
         let max_vote_options = vote_option_map.len() as u128;
         let cfg = MACIPARAMETERS.load(deps.storage)?;
 
-        // An error will be thrown if the number of vote options exceeds the circuit’s capacity.
+        // An error will be thrown if the number of vote options exceeds the circuit's capacity.
         let vote_option_max_amount =
             Uint256::from_u128(5u128.pow(cfg.vote_option_tree_depth.to_string().parse().unwrap()));
         if Uint256::from_u128(max_vote_options) > vote_option_max_amount {
@@ -663,8 +687,12 @@ pub fn execute_sign_up(
 ) -> Result<Response, ContractError> {
     let voting_time = VOTINGTIME.load(deps.storage)?;
     check_voting_time(env, voting_time)?;
-    if !can_sign_up(deps.as_ref(), &info.sender)? {
+    if !is_whitelist(deps.as_ref(), &info.sender)? {
         return Err(ContractError::Unauthorized {});
+    }
+
+    if is_register(deps.as_ref(), &info.sender)? {
+        return Err(ContractError::UserAlreadyRegistered {});
     }
     // let user_balance = user_balance_of(deps.as_ref(), info.sender.as_ref())?;
     // if user_balance == Uint256::from_u128(0u128) {
@@ -715,9 +743,9 @@ pub fn execute_sign_up(
     NUMSIGNUPS.save(deps.storage, &num_sign_ups)?;
     SIGNUPED.save(deps.storage, pubkey.x.to_be_bytes().to_vec(), &num_sign_ups)?;
 
-    // let mut white_curr = WHITELIST.load(deps.storage)?;
-    // // white_curr.register(info.sender);
-    // WHITELIST.save(deps.storage, &white_curr)?;
+    let mut whitelist = WHITELIST.load(deps.storage)?;
+    whitelist.register(&info.sender);
+    WHITELIST.save(deps.storage, &whitelist)?;
 
     Ok(Response::new()
         .add_attribute("action", "sign_up")
@@ -1356,7 +1384,6 @@ pub fn execute_process_message(
     let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
     let max_vote_options = MAX_VOTE_OPTIONS.load(deps.storage)?;
 
-    // TODO: add qv model
     let circuit_type = CIRCUITTYPE.load(deps.storage)?;
     if circuit_type == Uint256::from_u128(0u128) {
         // 1p1v
@@ -1784,7 +1811,7 @@ pub fn calculate_slash_info(deps: Deps, env: Env) -> Result<SlashInfo, ContractE
     let dmsg_chain_length = DMSG_CHAIN_LENGTH.load(deps.storage)?;
     let unprocessed_deactivate_count = dmsg_chain_length - processed_dmsg_count;
 
-    let deactivate_success = check_operator_process_time(deps, env)?;
+    let deactivate_success = check_operator_process_time(deps, env.clone())?;
     let tallying_success = check_stop_tallying_time(deps, env)?;
 
     Ok(SlashInfo {
@@ -1794,87 +1821,87 @@ pub fn calculate_slash_info(deps: Deps, env: Env) -> Result<SlashInfo, ContractE
     })
 }
 
-pub fn execute_slash(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-) -> Result<Response, ContractError> {
-    // 获取slash信息
-    let slash_info = calculate_slash_info(deps.as_ref(), env.clone())?;
+// pub fn execute_slash(
+//     deps: DepsMut,
+//     env: Env,
+//     info: MessageInfo,
+// ) -> Result<Response, ContractError> {
+//     // 获取slash信息
+//     let slash_info = calculate_slash_info(deps.as_ref(), env.clone())?;
 
-    // 获取绑定的总金额
-    let bonded_amount = BONDED_AMOUNT.load(deps.storage)?;
+//     // 获取绑定的总金额
+//     let bonded_amount = BONDED_AMOUNT.load(deps.storage)?;
 
-    // 计算需要slash的金额
-    let mut slash_amount = Uint128::zero();
-    let mut attributes = vec![
-        attr("action", "slash"),
-        attr("caller", info.sender.to_string()),
-    ];
+//     // 计算需要slash的金额
+//     let mut slash_amount = Uint128::zero();
+//     let mut attributes = vec![
+//         attr("action", "slash"),
+//         attr("caller", info.sender.to_string()),
+//     ];
 
-    // 如果deactivate message没有及时处理
-    if !slash_info.deactivate_success {
-        // 每个未处理的deactivate message罚款1 token
-        let deactivate_slash =
-            Uint128::from(1u128) * Uint128::from(slash_info.unprocessed_deactivate_count);
-        slash_amount += deactivate_slash;
-        attributes.push(attr("deactivate_slash", deactivate_slash.to_string()));
+//     // 如果deactivate message没有及时处理
+//     if !slash_info.deactivate_success {
+//         // 每个未处理的deactivate message罚款1 token
+//         let deactivate_slash =
+//             Uint128::from(1u128) * Uint128::from(slash_info.unprocessed_deactivate_count);
+//         slash_amount += deactivate_slash;
+//         attributes.push(attr("deactivate_slash", deactivate_slash.to_string()));
 
-        // 更新最新的deactivate message时间戳
-        let voting_time = VOTINGTIME.load(deps.storage)?;
-        if env.block.time <= voting_time.end_time {
-            LAST_DMSG_TIMESTAMP.save(deps.storage, &env.block.time)?;
-            attributes.push(attr("last_dmsg_timestamp_updated", "true"));
-        }
-    }
+//         // 更新最新的deactivate message时间戳
+//         let voting_time = VOTINGTIME.load(deps.storage)?;
+//         if env.block.time <= voting_time.end_time {
+//             LAST_DMSG_TIMESTAMP.save(deps.storage, &env.block.time)?;
+//             attributes.push(attr("last_dmsg_timestamp_updated", "true"));
+//         }
+//     }
 
-    // 如果tally没有及时完成
-    if !slash_info.tallying_success {
-        // 检查是否已经因为tally延迟被slash过
-        let tally_slashed = TALLY_SLASHED.may_load(deps.storage)?.unwrap_or(false);
-        if !tally_slashed {
-            // 罚款绑定金额的10%
-            let tally_slash = bonded_amount / Uint128::from(10u128);
-            slash_amount += tally_slash;
-            attributes.push(attr("tally_slash", tally_slash.to_string()));
+//     // 如果tally没有及时完成
+//     if !slash_info.tallying_success {
+//         // 检查是否已经因为tally延迟被slash过
+//         let tally_slashed = TALLY_SLASHED.may_load(deps.storage)?.unwrap_or(false);
+//         if !tally_slashed {
+//             // 罚款绑定金额的10%
+//             let tally_slash = bonded_amount / Uint128::from(10u128);
+//             slash_amount += tally_slash;
+//             attributes.push(attr("tally_slash", tally_slash.to_string()));
 
-            // 标记tally已被slash
-            TALLY_SLASHED.save(deps.storage, &true)?;
-            attributes.push(attr("tally_slashed", "true"));
-        }
-    }
+//             // 标记tally已被slash
+//             TALLY_SLASHED.save(deps.storage, &true)?;
+//             attributes.push(attr("tally_slashed", "true"));
+//         }
+//     }
 
-    // 如果没有需要slash的金额，返回错误
-    if slash_amount.is_zero() {
-        return Err(ContractError::NoSlashNeeded {});
-    }
+//     // 如果没有需要slash的金额，返回错误
+//     if slash_amount.is_zero() {
+//         return Err(ContractError::NoSlashNeeded {});
+//     }
 
-    // 确保slash金额不超过绑定金额
-    if slash_amount > bonded_amount {
-        slash_amount = bonded_amount;
-    }
+//     // 确保slash金额不超过绑定金额
+//     if slash_amount > bonded_amount {
+//         slash_amount = bonded_amount;
+//     }
 
-    // 获取creator地址
-    let creator = ADMIN.load(deps.storage)?.admin;
+//     // 获取creator地址
+//     let creator = ADMIN.load(deps.storage)?.admin;
 
-    // 构建转账消息
-    let transfer_msg = BankMsg::Send {
-        to_address: creator.to_string(),
-        amount: vec![Coin {
-            denom: "peaka".to_string(),
-            amount: slash_amount,
-        }],
-    };
+//     // 构建转账消息
+//     let transfer_msg = BankMsg::Send {
+//         to_address: creator.to_string(),
+//         amount: vec![Coin {
+//             denom: "peaka".to_string(),
+//             amount: slash_amount,
+//         }],
+//     };
 
-    // 更新绑定金额
-    BONDED_AMOUNT.save(deps.storage, &(bonded_amount - slash_amount))?;
+//     // 更新绑定金额
+//     BONDED_AMOUNT.save(deps.storage, &(bonded_amount - slash_amount))?;
 
-    attributes.push(attr("slashed_amount", slash_amount.to_string()));
+//     attributes.push(attr("slashed_amount", slash_amount.to_string()));
 
-    Ok(Response::new()
-        .add_message(transfer_msg)
-        .add_attributes(attributes))
-}
+//     Ok(Response::new()
+//         .add_message(transfer_msg)
+//         .add_attributes(attributes))
+// }
 
 fn execute_grant(
     deps: DepsMut,
@@ -2038,8 +2065,9 @@ fn execute_withdraw(
 
 fn can_sign_up(deps: Deps, sender: &Addr) -> StdResult<bool> {
     let cfg = WHITELIST.load(deps.storage)?;
-    let can = cfg.is_whitelist(sender);
-    Ok(can)
+    let is_whitelist = cfg.is_whitelist(sender);
+    let is_register = cfg.is_register(sender);
+    Ok(is_whitelist && !is_register)
 }
 
 // fn user_balance_of(deps: Deps, sender: &str) -> StdResult<Uint256> {
@@ -2253,12 +2281,11 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 .unwrap_or_default(),
         ),
         QueryMsg::WhiteList {} => to_json_binary::<Whitelist>(&query_white_list(deps)?),
-        QueryMsg::IsWhiteList { sender } => {
+        QueryMsg::CanSignUp { sender } => {
             to_json_binary::<bool>(&query_can_sign_up(deps, &sender)?)
         }
-        // QueryMsg::WhiteBalanceOf { sender } => {
-        //     to_json_binary::<Uint256>(&query_user_balance_of(deps, sender)?)
-        // }
+        QueryMsg::IsWhiteList { sender } => to_json_binary::<bool>(&is_whitelist(deps, &sender)?),
+        QueryMsg::IsRegister { sender } => to_json_binary::<bool>(&is_register(deps, &sender)?),
         QueryMsg::Signuped { pubkey_x } => to_json_binary::<Uint256>(
             &SIGNUPED
                 .load(deps.storage, pubkey_x.to_be_bytes().to_vec())
@@ -2296,6 +2323,18 @@ pub fn query_white_list(deps: Deps) -> StdResult<Whitelist> {
 
 pub fn query_can_sign_up(deps: Deps, sender: &Addr) -> StdResult<bool> {
     Ok(can_sign_up(deps, &sender)?)
+}
+
+pub fn is_whitelist(deps: Deps, sender: &Addr) -> StdResult<bool> {
+    let cfg = WHITELIST.load(deps.storage)?;
+    let is_whitelist = cfg.is_whitelist(sender);
+    Ok(is_whitelist)
+}
+
+pub fn is_register(deps: Deps, sender: &Addr) -> StdResult<bool> {
+    let cfg = WHITELIST.load(deps.storage)?;
+    let is_register = cfg.is_register(sender);
+    Ok(is_register)
 }
 
 // pub fn query_user_balance_of(deps: Deps, sender: String) -> StdResult<Uint256> {
