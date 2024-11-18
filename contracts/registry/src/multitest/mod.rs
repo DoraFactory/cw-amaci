@@ -171,6 +171,9 @@ impl AmaciRegistryContract {
             link: String::from("https://baidu.com"),
         };
 
+        let start_time = Timestamp::from_nanos(1571797424879000000);
+        let end_time = start_time.plus_minutes(11);
+
         let msg = ExecuteMsg::CreateRound {
             operator,
             round_info,
@@ -178,8 +181,8 @@ impl AmaciRegistryContract {
             max_option: Uint256::from_u128(5u128),
             voice_credit_amount: Uint256::from_u128(30u128),
             voting_time: VotingTime {
-                start_time: Timestamp::from_nanos(1571797424879000000),
-                end_time: Timestamp::from_nanos(1571797429879300000),
+                start_time,
+                end_time,
             },
             whitelist: None,
             pre_deactivate_root: Uint256::from_u128(0u128),

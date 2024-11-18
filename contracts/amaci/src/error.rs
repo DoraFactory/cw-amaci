@@ -78,6 +78,9 @@ pub enum ContractError {
     #[error("still have messages left to process.")]
     MsgLeftProcess {},
 
+    #[error("still have deactivate messages left to process.")]
+    DmsgLeftProcess {},
+
     #[error("still have usertally left to process.")]
     UserTallyLeftProcess {},
 

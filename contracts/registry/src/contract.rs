@@ -24,7 +24,7 @@ use cw_utils::parse_instantiate_response_data;
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:cw-amaci-registry";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const CREATED_GROTH16_1P1V_ROUND_REPLY_ID: u64 = 1;
+pub const CREATED_GROTH16_ROUND_REPLY_ID: u64 = 1;
 
 // Note, you can use StdResult in some functions where you do not
 // make use of the custom errors
@@ -169,7 +169,7 @@ pub fn execute_create_round(
         label: "AMACI".to_string(),
     };
 
-    let msg = SubMsg::reply_on_success(msg, CREATED_GROTH16_1P1V_ROUND_REPLY_ID);
+    let msg = SubMsg::reply_on_success(msg, CREATED_GROTH16_ROUND_REPLY_ID);
 
     let resp = Response::new()
         .add_submessage(msg)
@@ -435,7 +435,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> Result<Response, ContractError> {
     match reply.id {
-        CREATED_GROTH16_1P1V_ROUND_REPLY_ID => {
+        CREATED_GROTH16_ROUND_REPLY_ID => {
             reply_created_round(deps, env, reply.result.into_result())
         }
         id => Err(ContractError::UnRecognizedReplyIdErr { id }),
@@ -529,6 +529,15 @@ pub fn reply_created_round(
         attr(
             "certification_system",
             &amaci_return_data.certification_system.to_string(),
+        ),
+        attr("penalty_rate", &amaci_return_data.penalty_rate.to_string()),
+        attr(
+            "deactivate_timeout",
+            &amaci_return_data.deactivate_timeout.seconds().to_string(),
+        ),
+        attr(
+            "tally_timeout",
+            &amaci_return_data.tally_timeout.seconds().to_string(),
         ),
     ];
 

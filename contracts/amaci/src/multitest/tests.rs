@@ -5,8 +5,8 @@ mod test {
     use crate::multitest::{
         create_app, owner, uint256_from_decimal_string, user1, user2, user3, MaciCodeId,
     };
-    use crate::state::{MessageData, Period, PeriodStatus, PubKey};
-    use cosmwasm_std::{coins, Addr, Uint128, Uint256};
+    use crate::state::{DelayRecord, DelayRecords, DelayType, MessageData, Period, PeriodStatus, PubKey};
+    use cosmwasm_std::{coins, Addr, BlockInfo, Timestamp, Uint128, Uint256};
     use cw_multi_test::{next_block, AppBuilder, StargateAccepting};
     use serde::{Deserialize, Serialize};
     use serde_json;
@@ -145,6 +145,11 @@ mod test {
 
     fn deserialize_data<T: serde::de::DeserializeOwned>(data: &serde_json::Value) -> T {
         serde_json::from_value(data.clone()).expect("Unable to deserialize data")
+    }
+
+    pub fn next_block_11_min(block: &mut BlockInfo) {
+        block.time = block.time.plus_minutes(11);
+        block.height += 1;
     }
 
     // #[test] TODO
@@ -1432,17 +1437,6 @@ mod test {
                 "proofAddNewKey" => {
                     let data: ProofAddNewKeyData = deserialize_data(&entry.data);
 
-                    // let pubkey2 = PubKey {
-                    //             x: uint256_from_decimal_string(
-                    //                 "5256799541456598402918482992442121299298063071517271647164800069329014249835",
-                    //             ),
-                    //             y: uint256_from_decimal_string(
-                    //                 "11186376155642197318025761393908801092451283308218533272869916765747906183435",
-                    //             ),
-                    //         };
-
-                    // let _ = contract.sign_up(&mut app, Addr::unchecked("2"), pubkey2);
-
                     let new_key_pub = PubKey {
                         x: uint256_from_decimal_string(&data.pub_key[0]),
                         y: uint256_from_decimal_string(&data.pub_key[1]),
@@ -1493,7 +1487,7 @@ mod test {
                 }
                 "processMessage" => {
                     let data: ProcessMessageData = deserialize_data(&entry.data);
-                    app.update_block(next_block);
+                    app.update_block(next_block_11_min);
 
                     let sign_up_after_voting_end_error = contract
                         .sign_up(
@@ -1603,6 +1597,7 @@ mod test {
                     ];
 
                     let salt = uint256_from_decimal_string(&data.salt);
+                    app.update_block(next_block_11_min);
                     _ = contract.stop_tallying(&mut app, owner(), results, salt);
 
                     let all_result = contract.get_all_result(&app);
@@ -1624,6 +1619,18 @@ mod test {
                 _ => println!("Unknown type: {}", entry.log_type),
             }
         }
+
+        let delay_records = contract.query_delay_records(&app).unwrap();
+        println!("delay_records: {:?}", delay_records);
+        assert_eq!(delay_records, DelayRecords { records: vec![
+            DelayRecord {
+                delay_timestamp: Timestamp::from_nanos(1571798749879305533),
+                delay_duration: 665,
+                delay_reason: String::from("Tallying has timed out after 665 seconds"),
+                delay_process_dmsg_count: Uint256::from_u128(0),
+                delay_type: DelayType::TallyDelay,
+            }
+        ] });
     }
 
     #[test]
@@ -1639,4 +1646,239 @@ mod test {
 
         assert_eq!(ContractError::WrongTimeSet {}, contract.downcast().unwrap());
     }
+
+    #[test]
+    fn test_amaci_process_deactivate_message_delay_data() {
+        
+        let msg_file_path = "./src/test/qv_test/msg.json";
+
+        let mut msg_file = fs::File::open(msg_file_path).expect("Failed to open file");
+        let mut msg_content = String::new();
+
+        msg_file
+            .read_to_string(&mut msg_content)
+            .expect("Failed to read file");
+
+        let data: MsgData = serde_json::from_str(&msg_content).expect("Failed to parse JSON");
+
+        let pubkey_file_path = "./src/test/user_pubkey.json";
+
+        let mut pubkey_file = fs::File::open(pubkey_file_path).expect("Failed to open file");
+        let mut pubkey_content = String::new();
+
+        pubkey_file
+            .read_to_string(&mut pubkey_content)
+            .expect("Failed to read file");
+        let pubkey_data: UserPubkeyData =
+            serde_json::from_str(&pubkey_content).expect("Failed to parse JSON");
+
+        let logs_file_path = "./src/test/amaci_test/logs.json";
+
+        let mut logs_file = fs::File::open(logs_file_path).expect("Failed to open file");
+        let mut logs_content = String::new();
+
+        logs_file
+            .read_to_string(&mut logs_content)
+            .expect("Failed to read file");
+
+        let logs_data: Vec<AMaciLogEntry> =
+            serde_json::from_str(&logs_content).expect("Failed to parse JSON");
+
+        let mut app = create_app();
+        let code_id = MaciCodeId::store_code(&mut app);
+        let label = "Group";
+        let contract = code_id
+            .instantiate_with_voting_time_isqv_amaci(
+                &mut app,
+                owner(),
+                user1(),
+                user2(),
+                user3(),
+                label,
+            )
+            .unwrap();
+
+        // let start_voting_error = contract.start_voting(&mut app, owner()).unwrap_err();
+
+        // assert_eq!(
+        //     ContractError::AlreadySetVotingTime {
+        //         time_name: String::from("start_time")
+        //     },
+        //     start_voting_error.downcast().unwrap()
+        // );
+
+        let num_sign_up = contract.num_sign_up(&app).unwrap();
+        assert_eq!(num_sign_up, Uint256::from_u128(0u128));
+
+        let vote_option_map = contract.vote_option_map(&app).unwrap();
+        let max_vote_options = contract.max_vote_options(&app).unwrap();
+        assert_eq!(vote_option_map, vec!["", "", "", "", ""]);
+        assert_eq!(max_vote_options, Uint256::from_u128(5u128));
+        _ = contract.set_vote_option_map(&mut app, owner());
+        let new_vote_option_map = contract.vote_option_map(&app).unwrap();
+        assert_eq!(
+            new_vote_option_map,
+            vec![
+                String::from("did_not_vote"),
+                String::from("yes"),
+                String::from("no"),
+                String::from("no_with_veto"),
+                String::from("abstain"),
+            ]
+        );
+        // assert_eq!(num_sign_up, Uint256::from_u128(0u128));
+
+        let test_pubkey = PubKey {
+            x: uint256_from_decimal_string(&data.current_state_leaves[0][0]),
+            y: uint256_from_decimal_string(&data.current_state_leaves[0][1]),
+        };
+        let sign_up_error = contract
+            .sign_up(
+                &mut app,
+                Addr::unchecked(0.to_string()),
+                test_pubkey.clone(),
+            )
+            .unwrap_err();
+        assert_eq!(
+            ContractError::PeriodError {},
+            sign_up_error.downcast().unwrap()
+        ); // 不能在voting环节之前进行signup
+
+        _ = contract.set_vote_option_map(&mut app, owner());
+
+        app.update_block(next_block); // Start Voting
+        let set_whitelist_only_in_pending = contract.set_whitelist(&mut app, owner()).unwrap_err();
+        assert_eq!(
+            // 注册之后不能再进行注册
+            ContractError::PeriodError {},
+            set_whitelist_only_in_pending.downcast().unwrap()
+        );
+        let set_vote_option_map_error =
+            contract.set_vote_option_map(&mut app, owner()).unwrap_err();
+        assert_eq!(
+            ContractError::PeriodError {},
+            set_vote_option_map_error.downcast().unwrap()
+        );
+
+        let error_start_process_in_voting = contract.start_process(&mut app, owner()).unwrap_err();
+        assert_eq!(
+            ContractError::PeriodError {},
+            error_start_process_in_voting.downcast().unwrap()
+        );
+        assert_eq!(
+            Period {
+                status: PeriodStatus::Pending
+            },
+            contract.get_period(&app).unwrap()
+        );
+
+        let pubkey0 = PubKey {
+            x: uint256_from_decimal_string(&pubkey_data.pubkeys[0][0]),
+            y: uint256_from_decimal_string(&pubkey_data.pubkeys[0][1]),
+        };
+
+        let pubkey1 = PubKey {
+            x: uint256_from_decimal_string(&pubkey_data.pubkeys[1][0]),
+            y: uint256_from_decimal_string(&pubkey_data.pubkeys[1][1]),
+        };
+
+        let _ = contract.sign_up(&mut app, Addr::unchecked("0"), pubkey0.clone());
+
+        let can_sign_up_error = contract
+            .sign_up(&mut app, Addr::unchecked("0"), pubkey0.clone())
+            .unwrap_err();
+        assert_eq!(
+            ContractError::UserAlreadyRegistered {},
+            can_sign_up_error.downcast().unwrap()
+        );
+
+        let _ = contract.sign_up(&mut app, Addr::unchecked("1"), pubkey1.clone());
+
+        assert_eq!(
+            contract.num_sign_up(&app).unwrap(),
+            Uint256::from_u128(2u128)
+        );
+
+        assert_eq!(
+            contract.signuped(&app, pubkey0.x).unwrap(),
+            Uint256::from_u128(1u128)
+        );
+        assert_eq!(
+            contract.signuped(&app, pubkey1.x).unwrap(),
+            Uint256::from_u128(2u128)
+        );
+
+        for entry in &logs_data {
+            match entry.log_type.as_str() {
+                "publishDeactivateMessage" => {
+                    println!("publishDeactivateMessage =================");
+                    let data: PublishDeactivateMessageData = deserialize_data(&entry.data);
+
+                    let message = MessageData {
+                        data: [
+                            uint256_from_decimal_string(&data.message[0]),
+                            uint256_from_decimal_string(&data.message[1]),
+                            uint256_from_decimal_string(&data.message[2]),
+                            uint256_from_decimal_string(&data.message[3]),
+                            uint256_from_decimal_string(&data.message[4]),
+                            uint256_from_decimal_string(&data.message[5]),
+                            uint256_from_decimal_string(&data.message[6]),
+                        ],
+                    };
+
+                    let enc_pub = PubKey {
+                        x: uint256_from_decimal_string(&data.enc_pub_key[0]),
+                        y: uint256_from_decimal_string(&data.enc_pub_key[1]),
+                    };
+                    _ = contract.publish_deactivate_message(&mut app, user2(), message, enc_pub);
+                }
+                "proofDeactivate" => {
+                    let data: ProofDeactivateData = deserialize_data(&entry.data);
+
+                    assert_eq!(
+                        contract.dmsg_length(&app).unwrap(),
+                        Uint256::from_u128(2u128)
+                    );
+
+                    let size = uint256_from_decimal_string(&data.size);
+                    let new_deactivate_commitment =
+                        uint256_from_decimal_string(&data.new_deactivate_commitment);
+                    let new_deactivate_root =
+                        uint256_from_decimal_string(&data.new_deactivate_root);
+                    let proof = Groth16ProofType {
+                                    a: "2fac29af2cad382c07952b42c10b282d6ee5c27032548c370fdf40c693965b98239bb54fb0546480075f7e93f7f46acdacfecf3eb40fb3c16f9b13287d15fd7a".to_string(),
+                                    b: "18fb4503928bda6fc6aa377170b80fb3e2c73161c78c936bca222cb233318c7517ca194640de6b7790ec65ea7e46891089567d86a9fe8e419ad5e5d27e2cf96a2cf5383ef516ea8d14754c2e9e132fe566dd32eb23cd0de3543398a03a1c15f02a75014c4db8598d472112b292bbdde2968c409b759dbe76dec21da24b09d1a1".to_string(),
+                                    c: "18f024873175339f2e939c8bc8a369daa56257564f3e23b0cf4b635e5721f0d1285e5d66fc1dd69f581a2b146083267e4ce9a3c21e46f488af2ed9289bd00714".to_string()
+                                };
+                    app.update_block(next_block_11_min);
+                    _ = contract
+                        .process_deactivate_message(
+                            &mut app,
+                            owner(),
+                            size,
+                            new_deactivate_commitment,
+                            new_deactivate_root,
+                            proof,
+                        )
+                        .unwrap();
+                }
+                _ => println!("Unknown type: {}", entry.log_type),
+            }
+        }
+
+        let delay_records = contract.query_delay_records(&app).unwrap();
+        println!("============================");
+        println!("delay_records: {:?}", delay_records);
+        assert_eq!(delay_records, DelayRecords { records: vec![
+            DelayRecord {
+                delay_timestamp: Timestamp::from_nanos(1571797424879305533),
+                delay_duration: 660,
+                delay_reason: String::from("Processing of 2 deactivate messages has timed out after 660 seconds"),
+                delay_process_dmsg_count: Uint256::from_u128(2),
+                delay_type: DelayType::DeactivateDelay,
+            }
+        ] });
+    }
+
+    
 }
