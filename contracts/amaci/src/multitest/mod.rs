@@ -4,7 +4,7 @@ mod tests;
 use anyhow::Result as AnyResult;
 
 use crate::state::{
-    DelayRecords, MaciParameters, MessageData, Period, PubKey, RoundInfo, VotingTime, Whitelist, WhitelistConfig
+    DelayRecords, MaciParameters, MessageData, Period, PubKey, RoundInfo, VotingTime,
 };
 use crate::utils::uint256_from_hex_string;
 use crate::{

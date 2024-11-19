@@ -7,7 +7,7 @@ use crate::msg::{
 use crate::state::{
     Admin, DelayRecord, DelayRecords, DelayType, Groth16ProofStr, MessageData, Period,
     PeriodStatus, PubKey, QuinaryTreeRoot, RoundInfo, StateLeaf, VotingTime, Whitelist,
-    WhitelistConfig, ADMIN, CERTSYSTEM, CIRCUITTYPE, COORDINATORHASH,
+    WhitelistConfig, ADMIN, CERTSYSTEM, CIRCUITTYPE, COORDINATORHASH, CREATE_ROUND_WINDOW,
     CURRENT_DEACTIVATE_COMMITMENT, CURRENT_STATE_COMMITMENT, CURRENT_TALLY_COMMITMENT,
     DEACTIVATE_TIMEOUT, DELAY_RECORDS, DMSG_CHAIN_LENGTH, DMSG_HASHES, DNODES, FEEGRANTS,
     FIRST_DMSG_TIMESTAMP, GROTH16_DEACTIVATE_VKEYS, GROTH16_NEWKEY_VKEYS, GROTH16_PROCESS_VKEYS,
@@ -15,10 +15,10 @@ use crate::state::{
     MAX_LEAVES_COUNT, MAX_VOTE_OPTIONS, MSG_CHAIN_LENGTH, MSG_HASHES, NODES, NULLIFIERS,
     NUMSIGNUPS, PENALTY_RATE, PERIOD, PRE_DEACTIVATE_ROOT, PROCESSED_DMSG_COUNT,
     PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO, SIGNUPED, STATEIDXINC,
-    STATE_ROOT_BY_DMSG, TALLY_TIMEOUT, CREATE_ROUND_WINDOW, TOTAL_RESULT, VOICECREDITBALANCE,
-    VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS, ZEROS_H10,
+    STATE_ROOT_BY_DMSG, TALLY_TIMEOUT, TOTAL_RESULT, VOICECREDITBALANCE, VOICE_CREDIT_AMOUNT,
+    VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS, ZEROS_H10,
 };
-use cosmwasm_schema::{cw_serde, QueryResponses};
+use cosmwasm_schema::cw_serde;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cw2::set_contract_version;
@@ -36,8 +36,8 @@ use prost_types::Timestamp as SdkTimestamp;
 
 use crate::utils::{hash2, hash5, hash_256_uint256_list, uint256_from_hex_string};
 use cosmwasm_std::{
-    attr, coins, to_json_binary, Addr, BankMsg, Binary, Coin, CosmosMsg, Deps, DepsMut, Env,
-    MessageInfo, Response, StdResult, Timestamp, Uint128, Uint256,
+    attr, coins, to_json_binary, Addr, BankMsg, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
+    Response, StdResult, Timestamp, Uint128, Uint256,
 };
 
 use bellman_ce_verifier::{prepare_verifying_key, verify_proof as groth16_verify};
@@ -89,7 +89,12 @@ pub fn instantiate(
     CREATE_ROUND_WINDOW.save(deps.storage, &create_round_window)?;
 
     // TODO: check apart time.
-    if msg.voting_time.start_time.plus_seconds(create_round_window.seconds()) >= msg.voting_time.end_time {
+    if msg
+        .voting_time
+        .start_time
+        .plus_seconds(create_round_window.seconds())
+        >= msg.voting_time.end_time
+    {
         return Err(ContractError::WrongTimeSet {});
     }
 
@@ -313,12 +318,12 @@ pub fn instantiate(
     // Init penalty rate and timeout
     let penalty_rate = Uint256::from_u128(80);
     PENALTY_RATE.save(deps.storage, &penalty_rate)?; // 80%
-    // let deactivate_timeout = Timestamp::from_seconds(15 * 60); // 15 minutes
-    // let tally_timeout = Timestamp::from_seconds(1 * 3600); // 1 hour
+                                                     // let deactivate_timeout = Timestamp::from_seconds(15 * 60); // 15 minutes
+                                                     // let tally_timeout = Timestamp::from_seconds(1 * 3600); // 1 hour
 
     let deactivate_timeout = Timestamp::from_seconds(10 * 60); // 10 minutes
     let tally_timeout = Timestamp::from_seconds(10 * 60); // 10 minutes
-    DEACTIVATE_TIMEOUT.save(deps.storage, &deactivate_timeout)?; 
+    DEACTIVATE_TIMEOUT.save(deps.storage, &deactivate_timeout)?;
     TALLY_TIMEOUT.save(deps.storage, &tally_timeout)?;
     DELAY_RECORDS.save(deps.storage, &DelayRecords { records: vec![] })?;
 
@@ -1002,23 +1007,14 @@ pub fn execute_process_deactivate_message(
             "delay_timestamp",
             delay_timestamp.seconds().to_string(),
         ));
-        attributes.push(attr(
-            "delay_duration",
-            delay_duration.to_string(),
-        ));
+        attributes.push(attr("delay_duration", delay_duration.to_string()));
         attributes.push(attr(
             "delay_process_dmsg_count",
             delay_process_dmsg_count.to_string(),
         ));
-        attributes.push(attr(
-            "delay_reason",
-            delay_reason,
-        ));
+        attributes.push(attr("delay_reason", delay_reason));
 
-        attributes.push(attr(
-            "delay_type",
-            "deactivate_delay",
-        ));
+        attributes.push(attr("delay_type", "deactivate_delay"));
     }
 
     Ok(Response::new()
@@ -1643,18 +1639,9 @@ fn execute_stop_tallying_period(
             "delay_timestamp",
             delay_timestamp.seconds().to_string(),
         ));
-        attributes.push(attr(
-            "delay_duration",
-            delay_duration.to_string(),
-        ));
-        attributes.push(attr(
-            "delay_reason",
-            delay_reason,
-        ));
-        attributes.push(attr(
-            "delay_type",
-            "tally_delay",
-        ));
+        attributes.push(attr("delay_duration", delay_duration.to_string()));
+        attributes.push(attr("delay_reason", delay_reason));
+        attributes.push(attr("delay_type", "tally_delay"));
     }
 
     let processed_user_count = PROCESSED_USER_COUNT.load(deps.storage)?;
