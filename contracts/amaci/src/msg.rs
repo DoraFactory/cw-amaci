@@ -1,8 +1,9 @@
 use crate::state::{
-    MaciParameters, MessageData, PeriodStatus, PubKey, RoundInfo, VotingTime, Whitelist,
+    DelayRecords, MaciParameters, MessageData, PeriodStatus, PubKey, RoundInfo, VotingTime,
+    Whitelist,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Uint128, Uint256};
+use cosmwasm_std::{Addr, Timestamp, Uint128, Uint256};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -57,12 +58,6 @@ pub struct Groth16ProofType {
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    // SetParams {
-    //     state_tree_depth: Uint256,
-    //     int_state_tree_depth: Uint256,
-    //     message_batch_size: Uint256,
-    //     vote_option_tree_depth: Uint256,
-    // },
     SetRoundInfo {
         round_info: RoundInfo,
     },
@@ -72,12 +67,10 @@ pub enum ExecuteMsg {
     SetVoteOptionsMap {
         vote_option_map: Vec<String>,
     },
-    // StartVotingPeriod {},
     SignUp {
         pubkey: PubKey, // user's pubkey
     },
     StartProcessPeriod {},
-    // StopVotingPeriod {},
     PublishDeactivateMessage {
         message: MessageData,
         enc_pub_key: PubKey,
@@ -222,6 +215,9 @@ pub enum QueryMsg {
 
     #[returns(Uint256)]
     QueryPreDeactivateRoot {},
+
+    #[returns(DelayRecords)]
+    GetDelayRecords {},
 }
 
 #[cw_serde]
@@ -238,4 +234,7 @@ pub struct InstantiationData {
     pub pre_deactivate_root: Uint256,
     pub circuit_type: String,
     pub certification_system: String,
+    pub penalty_rate: Uint256,
+    pub deactivate_timeout: Timestamp,
+    pub tally_timeout: Timestamp,
 }

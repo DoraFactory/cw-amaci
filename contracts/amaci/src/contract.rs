@@ -5,17 +5,20 @@ use crate::msg::{
     ExecuteMsg, Groth16ProofType, InstantiateMsg, InstantiationData, QueryMsg, WhitelistBase,
 };
 use crate::state::{
-    Admin, Groth16ProofStr, MessageData, Period, PeriodStatus, PubKey, QuinaryTreeRoot, RoundInfo,
-    StateLeaf, VotingTime, Whitelist, WhitelistConfig, ADMIN, CERTSYSTEM, CIRCUITTYPE,
-    COORDINATORHASH, CURRENT_DEACTIVATE_COMMITMENT, CURRENT_STATE_COMMITMENT,
-    CURRENT_TALLY_COMMITMENT, DMSG_CHAIN_LENGTH, DMSG_HASHES, DNODES, FEEGRANTS,
-    GROTH16_DEACTIVATE_VKEYS, GROTH16_NEWKEY_VKEYS, GROTH16_PROCESS_VKEYS, GROTH16_TALLY_VKEYS,
-    LEAF_IDX_0, MACIPARAMETERS, MACI_DEACTIVATE_MESSAGE, MACI_OPERATOR, MAX_LEAVES_COUNT,
-    MAX_VOTE_OPTIONS, MSG_CHAIN_LENGTH, MSG_HASHES, NODES, NULLIFIERS, NUMSIGNUPS, PERIOD,
-    PRE_DEACTIVATE_ROOT, PROCESSED_DMSG_COUNT, PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB,
-    RESULT, ROUNDINFO, SIGNUPED, STATEIDXINC, STATE_ROOT_BY_DMSG, TOTAL_RESULT, VOICECREDITBALANCE,
-    VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS, ZEROS_H10,
+    Admin, DelayRecord, DelayRecords, DelayType, Groth16ProofStr, MessageData, Period,
+    PeriodStatus, PubKey, QuinaryTreeRoot, RoundInfo, StateLeaf, VotingTime, Whitelist,
+    WhitelistConfig, ADMIN, CERTSYSTEM, CIRCUITTYPE, COORDINATORHASH, CREATE_ROUND_WINDOW,
+    CURRENT_DEACTIVATE_COMMITMENT, CURRENT_STATE_COMMITMENT, CURRENT_TALLY_COMMITMENT,
+    DEACTIVATE_TIMEOUT, DELAY_RECORDS, DMSG_CHAIN_LENGTH, DMSG_HASHES, DNODES, FEEGRANTS,
+    FIRST_DMSG_TIMESTAMP, GROTH16_DEACTIVATE_VKEYS, GROTH16_NEWKEY_VKEYS, GROTH16_PROCESS_VKEYS,
+    GROTH16_TALLY_VKEYS, LEAF_IDX_0, MACIPARAMETERS, MACI_DEACTIVATE_MESSAGE, MACI_OPERATOR,
+    MAX_LEAVES_COUNT, MAX_VOTE_OPTIONS, MSG_CHAIN_LENGTH, MSG_HASHES, NODES, NULLIFIERS,
+    NUMSIGNUPS, PENALTY_RATE, PERIOD, PRE_DEACTIVATE_ROOT, PROCESSED_DMSG_COUNT,
+    PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO, SIGNUPED, STATEIDXINC,
+    STATE_ROOT_BY_DMSG, TALLY_TIMEOUT, TOTAL_RESULT, VOICECREDITBALANCE, VOICE_CREDIT_AMOUNT,
+    VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS, ZEROS_H10,
 };
+use cosmwasm_schema::cw_serde;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cw2::set_contract_version;
@@ -34,7 +37,7 @@ use prost_types::Timestamp as SdkTimestamp;
 use crate::utils::{hash2, hash5, hash_256_uint256_list, uint256_from_hex_string};
 use cosmwasm_std::{
     attr, coins, to_json_binary, Addr, BankMsg, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
-    Response, StdResult, Uint128, Uint256,
+    Response, StdResult, Timestamp, Uint128, Uint256,
 };
 
 use bellman_ce_verifier::{prepare_verifying_key, verify_proof as groth16_verify};
@@ -82,8 +85,16 @@ pub fn instantiate(
     //     return Err(ContractError::WrongTimeSet {});
     // }
 
+    let create_round_window = Timestamp::from_seconds(10 * 60); // 10 minutes
+    CREATE_ROUND_WINDOW.save(deps.storage, &create_round_window)?;
+
     // TODO: check apart time.
-    if msg.voting_time.start_time.plus_minutes(10) >= msg.voting_time.end_time {
+    if msg
+        .voting_time
+        .start_time
+        .plus_seconds(create_round_window.seconds())
+        >= msg.voting_time.end_time
+    {
         return Err(ContractError::WrongTimeSet {});
     }
 
@@ -304,6 +315,18 @@ pub fn instantiate(
     CIRCUITTYPE.save(deps.storage, &msg.circuit_type)?;
     CERTSYSTEM.save(deps.storage, &msg.certification_system)?;
 
+    // Init penalty rate and timeout
+    let penalty_rate = Uint256::from_u128(80);
+    PENALTY_RATE.save(deps.storage, &penalty_rate)?; // 80%
+                                                     // let deactivate_timeout = Timestamp::from_seconds(15 * 60); // 15 minutes
+                                                     // let tally_timeout = Timestamp::from_seconds(1 * 3600); // 1 hour
+
+    let deactivate_timeout = Timestamp::from_seconds(5 * 60); // 5 minutes
+    let tally_timeout = Timestamp::from_seconds(30 * 60); // 30 minutes
+    DEACTIVATE_TIMEOUT.save(deps.storage, &deactivate_timeout)?;
+    TALLY_TIMEOUT.save(deps.storage, &tally_timeout)?;
+    DELAY_RECORDS.save(deps.storage, &DelayRecords { records: vec![] })?;
+
     let data: InstantiationData = InstantiationData {
         caller: info.sender.clone(),
         parameters: msg.parameters.clone(),
@@ -317,6 +340,9 @@ pub fn instantiate(
         pre_deactivate_root: msg.pre_deactivate_root.clone(),
         circuit_type: circuit_type.to_string(),
         certification_system: certification_system.to_string(),
+        penalty_rate: penalty_rate.clone(),
+        deactivate_timeout: deactivate_timeout.clone(),
+        tally_timeout: tally_timeout.clone(),
     };
 
     let mut attributes = vec![
@@ -353,6 +379,12 @@ pub fn instantiate(
         ),
         attr("circuit_type", &circuit_type.to_string()),
         attr("certification_system", &certification_system.to_string()),
+        attr("penalty_rate", &penalty_rate.to_string()),
+        attr(
+            "deactivate_timeout",
+            &deactivate_timeout.seconds().to_string(),
+        ),
+        attr("tally_timeout", &tally_timeout.seconds().to_string()),
     ];
 
     if msg.round_info.description != "" {
@@ -376,20 +408,6 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        // ExecuteMsg::SetParams {
-        //     state_tree_depth,
-        //     int_state_tree_depth,
-        //     message_batch_size,
-        //     vote_option_tree_depth,
-        // } => execute_set_parameters(
-        //     deps,
-        //     env,
-        //     info,
-        //     state_tree_depth,
-        //     int_state_tree_depth,
-        //     message_batch_size,
-        //     vote_option_tree_depth,
-        // ),
         ExecuteMsg::SetRoundInfo { round_info } => {
             execute_set_round_info(deps, env, info, round_info)
         }
@@ -458,106 +476,6 @@ pub fn execute(
         ExecuteMsg::Withdraw { amount } => execute_withdraw(deps, env, info, amount),
     }
 }
-
-// pub fn execute_start_voting_period(
-//     deps: DepsMut,
-//     env: Env,
-//     info: MessageInfo,
-// ) -> Result<Response, ContractError> {
-//     let period = PERIOD.load(deps.storage)?;
-
-//     if VOTINGTIME.exists(deps.storage) {
-//         let voting_time = VOTINGTIME.load(deps.storage)?;
-
-//         if let Some(_) = voting_time.start_time {
-//             // if start_time exist，admin can't start round with this command.
-//             return Err(ContractError::AlreadySetVotingTime {
-//                 time_name: String::from("start_time"),
-//             });
-//         } else {
-//             // if start_time isn't exist，admin need start round with this command. (in Pending period can execute)
-//             if period.status != PeriodStatus::Pending {
-//                 return Err(ContractError::PeriodError {});
-//             }
-//         }
-
-//         if let Some(end_time) = voting_time.end_time {
-//             if env.block.time >= end_time {
-//                 // If the end time is set,
-//                 // I need to determine if the current time is before the end time,
-//                 // if it is greater than the end time, it means it is no longer a voting session.
-//                 return Err(ContractError::PeriodError {});
-//             }
-//         } else {
-//             if period.status != PeriodStatus::Pending {
-//                 // If I don't set an end time, I need to determine the current period.
-//                 return Err(ContractError::PeriodError {});
-//             }
-//         }
-//     } else {
-//         // Check if the period status is Voting
-//         if period.status != PeriodStatus::Pending {
-//             return Err(ContractError::PeriodError {});
-//         }
-//     }
-//     // Check if the sender is authorized to execute the function
-//     if !is_admin(deps.as_ref(), info.sender.as_ref())? {
-//         Err(ContractError::Unauthorized {})
-//     } else {
-//         // Update the period status to Processing
-//         let period = Period {
-//             status: PeriodStatus::Voting,
-//         };
-//         PERIOD.save(deps.storage, &period)?;
-//         let start_time = env.block.time;
-//         // let voting_time = VOTINGTIME.may_load(deps.storage)?;
-//         match VOTINGTIME.may_load(deps.storage)? {
-//             Some(time) => {
-//                 let votingtime = VotingTime {
-//                     start_time: Some(start_time),
-//                     end_time: time.end_time,
-//                 };
-//                 VOTINGTIME.save(deps.storage, &votingtime)?;
-//             }
-//             None => {
-//                 let votingtime = VotingTime {
-//                     start_time: Some(start_time),
-//                     end_time: None,
-//                 };
-//                 VOTINGTIME.save(deps.storage, &votingtime)?;
-//             }
-//         }
-
-//         // Return a success response
-//         Ok(Response::new()
-//             .add_attribute("action", "start_voting_period")
-//             .add_attribute("start_time", start_time.nanos().to_string()))
-//     }
-// }
-
-// pub fn execute_set_parameters(
-//     deps: DepsMut,
-//     _env: Env,
-//     info: MessageInfo,
-//     state_tree_depth: Uint256,
-//     int_state_tree_depth: Uint256,
-//     message_batch_size: Uint256,
-//     vote_option_tree_depth: Uint256,
-// ) -> Result<Response, ContractError> {
-//     if !is_admin(deps.as_ref(), info.sender.as_ref())? {
-//         Err(ContractError::Unauthorized {})
-//     } else {
-//         let mut cfg = MACIPARAMETERS.load(deps.storage)?;
-//         cfg.state_tree_depth = state_tree_depth;
-//         cfg.int_state_tree_depth = int_state_tree_depth;
-//         cfg.message_batch_size = message_batch_size;
-//         cfg.vote_option_tree_depth = vote_option_tree_depth;
-
-//         MACIPARAMETERS.save(deps.storage, &cfg)?;
-//         let res = Response::new().add_attribute("action", "set_parameters");
-//         Ok(res)
-//     }
-// }
 
 pub fn execute_set_round_info(
     deps: DepsMut,
@@ -829,7 +747,7 @@ pub fn execute_publish_deactivate_message(
 ) -> Result<Response, ContractError> {
     // Check if the period status is Voting
     let voting_time = VOTINGTIME.load(deps.storage)?;
-    check_voting_time(env, voting_time)?;
+    check_voting_time(env.clone(), voting_time)?;
 
     // Load the scalar field value
     let snark_scalar_field =
@@ -844,7 +762,15 @@ pub fn execute_publish_deactivate_message(
         && enc_pub_key.x < snark_scalar_field
         && enc_pub_key.y < snark_scalar_field
     {
+        let processed_dmsg_count = PROCESSED_DMSG_COUNT.load(deps.storage)?;
         let mut dmsg_chain_length = DMSG_CHAIN_LENGTH.load(deps.storage)?;
+
+        // When the processed_dmsg_count catches up with dmsg_chain_length, it indicates that the previous batch has been processed.
+        // At this point, the new incoming message is the first one of the new batch, and we record the timestamp.
+        if processed_dmsg_count == dmsg_chain_length {
+            FIRST_DMSG_TIMESTAMP.save(deps.storage, &env.block.time)?;
+        }
+
         let old_msg_hashes =
             DMSG_HASHES.load(deps.storage, dmsg_chain_length.to_be_bytes().to_vec())?;
 
@@ -892,7 +818,7 @@ pub fn execute_publish_deactivate_message(
         DMSG_CHAIN_LENGTH.save(deps.storage, &dmsg_chain_length)?;
 
         let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
-        // Return a success response
+
         Ok(Response::new()
             .add_attribute("action", "publish_deactivate_message")
             .add_attribute("dmsg_chain_length", old_chain_length.to_string())
@@ -945,7 +871,7 @@ pub fn execute_upload_deactivate_message(
     }
 }
 
-// in voting
+// all time
 pub fn execute_process_deactivate_message(
     deps: DepsMut,
     env: Env,
@@ -955,9 +881,9 @@ pub fn execute_process_deactivate_message(
     new_deactivate_root: Uint256,
     groth16_proof: Groth16ProofType,
 ) -> Result<Response, ContractError> {
-    // Check if the period status is Voting
-    let voting_time = VOTINGTIME.load(deps.storage)?;
-    check_voting_time(env, voting_time)?;
+    // // Check if the period status is Voting
+    // let voting_time = VOTINGTIME.load(deps.storage)?;
+    // check_voting_time(env, voting_time)?;
 
     let processed_dmsg_count = PROCESSED_DMSG_COUNT.load(deps.storage)?;
     let dmsg_chain_length = DMSG_CHAIN_LENGTH.load(deps.storage)?;
@@ -972,12 +898,7 @@ pub fn execute_process_deactivate_message(
     let batch_size = parameters.message_batch_size;
 
     assert!(size <= batch_size, "size overflow the batchsize");
-    // if size > batch_size {
-    //     // Return an error response for invalid user or encrypted public key
-    //     return Ok(Response::new() // TODO: ERROR
-    //         .add_attribute("action", "process_deactivate_message")
-    //         .add_attribute("event", "error user."));
-    // }
+
     DNODES.save(
         deps.storage,
         Uint256::from_u128(0u128).to_be_bytes().to_vec(),
@@ -1050,13 +971,51 @@ pub fn execute_process_deactivate_message(
         deps.storage,
         &(processed_dmsg_count + batch_end_index - batch_start_index),
     )?;
-    let attributes = vec![
+    let mut attributes = vec![
         attr("zk_verify", is_passed.to_string()),
         attr("commitment", new_deactivate_commitment.to_string()),
         attr("proof", format!("{:?}", groth16_proof)),
         attr("certification_system", "groth16"),
         attr("processed_dmsg_count", processed_dmsg_count.to_string()),
     ];
+
+    let first_dmsg_time: Timestamp = FIRST_DMSG_TIMESTAMP.load(deps.storage)?;
+    let current_time = env.block.time;
+
+    let different_time: u64 = current_time.seconds() - first_dmsg_time.seconds();
+
+    if different_time > DEACTIVATE_TIMEOUT.load(deps.storage)?.seconds() {
+        let mut delay_records = DELAY_RECORDS.load(deps.storage)?;
+        let delay_timestamp = first_dmsg_time;
+        let delay_duration = different_time;
+        let delay_reason = format!(
+            "Processing of {} deactivate messages has timed out after {} seconds",
+            size, different_time
+        );
+        let delay_process_dmsg_count = batch_end_index - batch_start_index;
+        let delay_type = DelayType::DeactivateDelay;
+        let delay_record = DelayRecord {
+            delay_timestamp: delay_timestamp.clone(),
+            delay_duration: delay_duration.clone(),
+            delay_reason: delay_reason.clone(),
+            delay_process_dmsg_count: delay_process_dmsg_count.clone(),
+            delay_type,
+        };
+        delay_records.records.push(delay_record);
+        DELAY_RECORDS.save(deps.storage, &delay_records)?;
+        attributes.push(attr(
+            "delay_timestamp",
+            delay_timestamp.seconds().to_string(),
+        ));
+        attributes.push(attr("delay_duration", delay_duration.to_string()));
+        attributes.push(attr(
+            "delay_process_dmsg_count",
+            delay_process_dmsg_count.to_string(),
+        ));
+        attributes.push(attr("delay_reason", delay_reason));
+
+        attributes.push(attr("delay_type", "deactivate_delay"));
+    }
 
     Ok(Response::new()
         .add_attribute("action", "process_deactivate_message")
@@ -1335,6 +1294,14 @@ pub fn execute_start_process_period(
         }
     }
 
+    let processed_dmsg_count = PROCESSED_DMSG_COUNT.load(deps.storage)?;
+    let dmsg_chain_length = DMSG_CHAIN_LENGTH.load(deps.storage)?;
+
+    // Check that all deactivate messages have been processed
+    if processed_dmsg_count != dmsg_chain_length {
+        return Err(ContractError::DmsgLeftProcess {});
+    }
+
     // Update the period status to Processing
     let period = Period {
         status: PeriodStatus::Processing,
@@ -1506,8 +1473,7 @@ pub fn execute_stop_processing_period(
     if processed_msg_count != msg_chain_length {
         return Err(ContractError::MsgLeftProcess {});
     }
-    // assert!(processed_msg_count == msg_chain_length,);
-    // Update the period status to Tallying
+
     let period = Period {
         status: PeriodStatus::Tallying,
     };
@@ -1633,7 +1599,7 @@ pub fn execute_process_tally(
 
 fn execute_stop_tallying_period(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     _info: MessageInfo,
     results: Vec<Uint256>,
     salt: Uint256,
@@ -1642,6 +1608,40 @@ fn execute_stop_tallying_period(
     // Check if the period status is Tallying
     if period.status != PeriodStatus::Tallying {
         return Err(ContractError::PeriodError {});
+    }
+
+    let tally_timeout = TALLY_TIMEOUT.load(deps.storage)?;
+
+    let voting_time = VOTINGTIME.load(deps.storage)?;
+    let current_time = env.block.time;
+    let different_time = current_time.seconds() - voting_time.end_time.seconds();
+
+    let mut attributes = vec![];
+    if different_time > tally_timeout.seconds() {
+        let delay_timestamp = current_time;
+        let delay_duration = different_time;
+        let delay_reason = format!("Tallying has timed out after {} seconds", different_time);
+        let delay_process_dmsg_count = Uint256::from_u128(0u128);
+        let delay_type = DelayType::TallyDelay;
+
+        let mut delay_records = DELAY_RECORDS.load(deps.storage)?;
+        let delay_record = DelayRecord {
+            delay_timestamp: delay_timestamp.clone(),
+            delay_duration: delay_duration.clone(),
+            delay_reason: delay_reason.clone(),
+            delay_process_dmsg_count,
+            delay_type,
+        };
+        delay_records.records.push(delay_record);
+        DELAY_RECORDS.save(deps.storage, &delay_records)?;
+
+        attributes.push(attr(
+            "delay_timestamp",
+            delay_timestamp.seconds().to_string(),
+        ));
+        attributes.push(attr("delay_duration", delay_duration.to_string()));
+        attributes.push(attr("delay_reason", delay_reason));
+        attributes.push(attr("delay_type", "tally_delay"));
     }
 
     let processed_user_count = PROCESSED_USER_COUNT.load(deps.storage)?;
@@ -1700,7 +1700,8 @@ fn execute_stop_tallying_period(
                         .collect::<Vec<String>>()
                 ),
             )
-            .add_attribute("all_result", sum.to_string()));
+            .add_attribute("all_result", sum.to_string())
+            .add_attributes(attributes));
     }
     // Check that the tally commitment matches the current tally commitment
     assert_eq!(tally_commitment, current_tally_commitment);
@@ -1738,7 +1739,8 @@ fn execute_stop_tallying_period(
                     .collect::<Vec<String>>()
             ),
         )
-        .add_attribute("all_result", sum.to_string()))
+        .add_attribute("all_result", sum.to_string())
+        .add_attributes(attributes))
 }
 
 fn execute_grant(
@@ -1908,12 +1910,6 @@ fn can_sign_up(deps: Deps, sender: &Addr) -> StdResult<bool> {
     Ok(is_whitelist && !is_register)
 }
 
-// fn user_balance_of(deps: Deps, sender: &str) -> StdResult<Uint256> {
-//     let cfg = WHITELIST.load(deps.storage)?;
-//     let balance = cfg.balance_of(&sender);
-//     Ok(balance)
-// }
-
 // Load the root node of the state tree
 fn state_root(deps: Deps) -> Uint256 {
     let root = NODES
@@ -2000,16 +1996,9 @@ fn state_update_at(deps: &mut DepsMut, index: Uint256) -> Result<bool, ContractE
 }
 
 fn check_voting_time(env: Env, voting_time: VotingTime) -> Result<(), ContractError> {
-    // if env.block.time <= voting_time.start_time {
-    //     return Err(ContractError::PeriodError {});
-    // }
-    // if env.block.time >= voting_time.end_time {
-    //     return Err(ContractError::PeriodError {});
-    // }
-
     let current_time = env.block.time;
 
-    // 检查当前时间是否在投票时间范围内（包括开始和结束时间）
+    // Check if the current time is within the voting time range (inclusive of start and end time)
     if current_time < voting_time.start_time || current_time > voting_time.end_time {
         return Err(ContractError::PeriodError {});
     }
@@ -2149,6 +2138,12 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 .may_load(deps.storage)?
                 .unwrap_or_default(),
         ),
+        QueryMsg::GetDelayRecords {} => {
+            let records = DELAY_RECORDS
+                .may_load(deps.storage)?
+                .unwrap_or(DelayRecords { records: vec![] });
+            to_json_binary(&records)
+        }
     }
 }
 
@@ -2181,3 +2176,123 @@ pub fn is_register(deps: Deps, sender: &Addr) -> StdResult<bool> {
 
 #[cfg(test)]
 mod tests {}
+
+// Check if the operator has processed all deactivate messages within 15 minutes
+pub fn check_operator_process_time(deps: Deps, env: Env) -> Result<bool, ContractError> {
+    let current_time = env.block.time;
+
+    let first_dmsg_time = match FIRST_DMSG_TIMESTAMP.may_load(deps.storage)? {
+        Some(timestamp) => timestamp,
+        None => return Ok(true), // 如果没有第一条消息的时间戳,说明还没有deactivate消息需要处理
+    };
+
+    let processed_dmsg_count = PROCESSED_DMSG_COUNT.load(deps.storage)?;
+    let dmsg_chain_length = DMSG_CHAIN_LENGTH.load(deps.storage)?;
+
+    // 如果当前批次已经处理完,返回true
+    if processed_dmsg_count == dmsg_chain_length {
+        return Ok(true);
+    }
+
+    let time_difference = current_time.seconds() - first_dmsg_time.seconds();
+
+    let deactivate_timeout = DEACTIVATE_TIMEOUT.load(deps.storage)?;
+    if time_difference > deactivate_timeout.seconds() {
+        return Ok(false);
+    }
+
+    Ok(true)
+}
+
+// Check if tally is completed within 6 hours after the voting end time
+fn check_stop_tallying_time(deps: Deps, env: Env) -> Result<bool, ContractError> {
+    let voting_time = VOTINGTIME.load(deps.storage)?;
+    let current_time = env.block.time;
+
+    // If the current time is less than or equal to the voting end time, it means we're still in the voting period.
+    if current_time <= voting_time.end_time {
+        return Ok(true);
+    }
+
+    let period = PERIOD.load(deps.storage)?;
+
+    // If the period is already Ended, it means tally has been successfully completed
+    if period.status == PeriodStatus::Ended {
+        return Ok(true);
+    }
+    let tally_timeout = TALLY_TIMEOUT.load(deps.storage)?;
+
+    // Check if we're within the tally window after the voting end time
+    let time_difference = current_time.seconds() - voting_time.end_time.seconds();
+    if time_difference > tally_timeout.seconds() {
+        return Ok(false);
+    }
+
+    Ok(true)
+}
+
+#[cw_serde]
+pub struct OperatorPerformance {
+    pub unprocessed_deactivate_count: Uint256,
+    pub delay_process_count: Uint256,
+    pub deactivate_processing_complete: bool,
+    pub tally_processing_complete: bool,
+    pub period: PeriodStatus,
+    pub miss_rate: Uint256, // Changed from Decimal to Uint256
+}
+
+pub fn calculate_operator_performance(
+    deps: Deps,
+    env: Env,
+) -> Result<OperatorPerformance, ContractError> {
+    let penalty_rate = PENALTY_RATE.load(deps.storage)?;
+
+    let voting_time = VOTINGTIME.load(deps.storage)?;
+    let current_time = env.block.time;
+    let processed_dmsg_count = PROCESSED_DMSG_COUNT.load(deps.storage)?;
+    let dmsg_chain_length = DMSG_CHAIN_LENGTH.load(deps.storage)?;
+
+    // Check if the divisor is zero
+    if dmsg_chain_length.is_zero() {
+        return Err(ContractError::DivisionByZero {});
+    }
+    let delay_records = DELAY_RECORDS.load(deps.storage)?;
+    let delay_process_count = Uint256::from_u128(delay_records.records.len() as u128);
+    let unprocessed_deactivate_count = dmsg_chain_length - processed_dmsg_count;
+
+    // Calculate base miss rate as percentage (0-100)
+    let base_miss_rate = if dmsg_chain_length.is_zero() {
+        Uint256::zero()
+    } else {
+        unprocessed_deactivate_count.multiply_ratio(Uint256::from(100u128), dmsg_chain_length)
+    };
+
+    let (period, miss_rate) = if current_time < voting_time.start_time {
+        (PeriodStatus::Pending, Uint256::zero())
+    } else if current_time <= voting_time.end_time {
+        (PeriodStatus::Voting, base_miss_rate)
+    } else {
+        let period_state = PERIOD.load(deps.storage)?;
+        let final_miss_rate = if check_stop_tallying_time(deps, env.clone())? {
+            base_miss_rate
+        } else {
+            // If base_miss_rate is less than PENALTY_RATE, set it to 0 (maximum penalty)
+            // Otherwise, increase the penalty by PENALTY_RATE
+            if base_miss_rate <= penalty_rate {
+                Uint256::zero()
+            } else {
+                base_miss_rate - penalty_rate
+            }
+        };
+        (period_state.status, final_miss_rate)
+    };
+
+    Ok(OperatorPerformance {
+        unprocessed_deactivate_count,
+        delay_process_count,
+        deactivate_processing_complete: check_operator_process_time(deps, env.clone())?,
+        tally_processing_complete: check_stop_tallying_time(deps, env)?,
+        period,
+        miss_rate,
+    })
+}

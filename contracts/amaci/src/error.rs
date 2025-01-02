@@ -78,6 +78,9 @@ pub enum ContractError {
     #[error("still have messages left to process.")]
     MsgLeftProcess {},
 
+    #[error("still have deactivate messages left to process.")]
+    DmsgLeftProcess {},
+
     #[error("still have usertally left to process.")]
     UserTallyLeftProcess {},
 
@@ -107,4 +110,10 @@ pub enum ContractError {
 
     #[error("User already registered.")]
     UserAlreadyRegistered {},
+
+    #[error("Divisor is zero")]
+    DivisorIsZero {},
+
+    #[error("Division by zero")]
+    DivisionByZero {},
 }

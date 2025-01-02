@@ -310,6 +310,36 @@ pub const MACI_DEACTIVATE_MESSAGE: Map<&Addr, Vec<Vec<String>>> =
 
 // registry operator data
 pub const MACI_OPERATOR: Item<Addr> = Item::new("maci_operator");
+pub const PENALTY_RATE: Item<Uint256> = Item::new("penalty_rate");
+pub const CREATE_ROUND_WINDOW: Item<Timestamp> = Item::new("create_round_window");
+
+pub const DEACTIVATE_TIMEOUT: Item<Timestamp> = Item::new("deactivate_timeout"); // deactivate timeout in seconds
+pub const TALLY_TIMEOUT: Item<Timestamp> = Item::new("tally_timeout"); // tally timeout in seconds
+
+pub const FIRST_DMSG_TIMESTAMP: Item<Timestamp> = Item::new("first_dmsg_timestamp");
+
+
+#[cw_serde]
+pub enum DelayType {
+    DeactivateDelay = 0,
+    TallyDelay = 1,
+}
+
+#[cw_serde]
+pub struct DelayRecord {
+    pub delay_timestamp: Timestamp,
+    pub delay_duration: u64, // 延迟时间(秒)
+    pub delay_reason: String,
+    pub delay_process_dmsg_count: Uint256, // 延迟处理的消息数量
+    pub delay_type: DelayType,
+}
+
+#[cw_serde]
+pub struct DelayRecords {
+    pub records: Vec<DelayRecord>,
+}
+
+pub const DELAY_RECORDS: Item<DelayRecords> = Item::new("delay_records");
 
 #[cfg(test)]
 mod tests {
