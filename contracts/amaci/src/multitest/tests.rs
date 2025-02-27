@@ -5,7 +5,9 @@ mod test {
     use crate::multitest::{
         create_app, owner, uint256_from_decimal_string, user1, user2, user3, MaciCodeId,
     };
-    use crate::state::{DelayRecord, DelayRecords, DelayType, MessageData, Period, PeriodStatus, PubKey};
+    use crate::state::{
+        DelayRecord, DelayRecords, DelayType, MessageData, Period, PeriodStatus, PubKey,
+    };
     use cosmwasm_std::{coins, Addr, BlockInfo, Timestamp, Uint128, Uint256};
     use cw_multi_test::{next_block, AppBuilder, StargateAccepting};
     use serde::{Deserialize, Serialize};
@@ -1622,15 +1624,18 @@ mod test {
 
         let delay_records = contract.query_delay_records(&app).unwrap();
         println!("delay_records: {:?}", delay_records);
-        assert_eq!(delay_records, DelayRecords { records: vec![
-            DelayRecord {
-                delay_timestamp: Timestamp::from_nanos(1571798749879305533),
-                delay_duration: 665,
-                delay_reason: String::from("Tallying has timed out after 665 seconds"),
-                delay_process_dmsg_count: Uint256::from_u128(0),
-                delay_type: DelayType::TallyDelay,
+        assert_eq!(
+            delay_records,
+            DelayRecords {
+                records: vec![DelayRecord {
+                    delay_timestamp: Timestamp::from_nanos(1571798084879000000),
+                    delay_duration: 665,
+                    delay_reason: String::from("Tallying has timed out after 665 seconds"),
+                    delay_process_dmsg_count: Uint256::from_u128(0),
+                    delay_type: DelayType::TallyDelay,
+                }]
             }
-        ] });
+        );
     }
 
     #[test]
@@ -1649,7 +1654,6 @@ mod test {
 
     #[test]
     fn test_amaci_process_deactivate_message_delay_data() {
-        
         let msg_file_path = "./src/test/qv_test/msg.json";
 
         let mut msg_file = fs::File::open(msg_file_path).expect("Failed to open file");
@@ -1869,16 +1873,19 @@ mod test {
         let delay_records = contract.query_delay_records(&app).unwrap();
         println!("============================");
         println!("delay_records: {:?}", delay_records);
-        assert_eq!(delay_records, DelayRecords { records: vec![
-            DelayRecord {
-                delay_timestamp: Timestamp::from_nanos(1571797424879305533),
-                delay_duration: 660,
-                delay_reason: String::from("Processing of 2 deactivate messages has timed out after 660 seconds"),
-                delay_process_dmsg_count: Uint256::from_u128(2),
-                delay_type: DelayType::DeactivateDelay,
+        assert_eq!(
+            delay_records,
+            DelayRecords {
+                records: vec![DelayRecord {
+                    delay_timestamp: Timestamp::from_nanos(1571797424879305533),
+                    delay_duration: 660,
+                    delay_reason: String::from(
+                        "Processing of 2 deactivate messages has timed out after 660 seconds"
+                    ),
+                    delay_process_dmsg_count: Uint256::from_u128(2),
+                    delay_type: DelayType::DeactivateDelay,
+                }]
             }
-        ] });
+        );
     }
-
-    
 }

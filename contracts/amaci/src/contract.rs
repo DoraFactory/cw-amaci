@@ -321,6 +321,9 @@ pub fn instantiate(
                                                      // let deactivate_timeout = Timestamp::from_seconds(15 * 60); // 15 minutes
                                                      // let tally_timeout = Timestamp::from_seconds(1 * 3600); // 1 hour
 
+    // let deactivate_timeout = Timestamp::from_seconds(5); // for test
+    //     let tally_timeout = Timestamp::from_seconds(30); // for test
+
     let deactivate_timeout = Timestamp::from_seconds(5 * 60); // 5 minutes
     let tally_timeout = Timestamp::from_seconds(30 * 60); // 30 minutes
     DEACTIVATE_TIMEOUT.save(deps.storage, &deactivate_timeout)?;
@@ -1618,7 +1621,7 @@ fn execute_stop_tallying_period(
 
     let mut attributes = vec![];
     if different_time > tally_timeout.seconds() {
-        let delay_timestamp = current_time;
+        let delay_timestamp = voting_time.end_time;
         let delay_duration = different_time;
         let delay_reason = format!("Tallying has timed out after {} seconds", different_time);
         let delay_process_dmsg_count = Uint256::from_u128(0u128);
