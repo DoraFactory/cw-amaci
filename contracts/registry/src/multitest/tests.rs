@@ -234,3 +234,89 @@ fn create_round_should_works() {
     let amaci_round_info = maci_contract.query_round_info(&app).unwrap();
     println!("{:?}", amaci_round_info);
 }
+
+// #[test]
+// fn test_operator_reward_curve() {
+//     let user1_coin_amount = 30u128;
+
+//     let mut app = App::new(|router, _api, storage| {
+//         router
+//             .bank
+//             .init_balance(storage, &user1(), coins(user1_coin_amount, DORA_DEMON))
+//             .unwrap();
+//     });
+
+//     let register_code_id = AmaciRegistryCodeId::store_code(&mut app);
+//     let amaci_code_id = MaciCodeId::store_default_code(&mut app);
+
+//     let label = "Dora AMaci Registry";
+//     let contract = register_code_id
+//         .instantiate(&mut app, owner(), amaci_code_id.id(), label)
+//         .unwrap();
+
+//     _ = contract.set_validators(&mut app, owner());
+
+//     let validator_set = contract.get_validators(&app).unwrap();
+//     assert_eq!(
+//         ValidatorSet {
+//             addresses: vec![user1(), user2(), user4()]
+//         },
+//         validator_set
+//     );
+
+//     _ = contract.set_maci_operator(&mut app, user1(), operator());
+//     let user1_operator_addr = contract.get_validator_operator(&app, user1()).unwrap();
+//     assert_eq!(operator(), user1_operator_addr);
+
+//     let user1_check_operator = contract.is_maci_operator(&app, operator()).unwrap();
+
+//     assert_eq!(true, user1_check_operator);
+
+//     _ = contract.set_maci_operator_pubkey(&mut app, operator(), pubkey1());
+
+//     let user1_operator_pubkey = contract.get_operator_pubkey(&app, operator()).unwrap();
+//     assert_eq!(pubkey1(), user1_operator_pubkey);
+
+//     let resp = contract
+//         .create_round(
+//             &mut app,
+//             user1(),
+//             operator(),
+//             Uint256::from_u128(0u128),
+//             Uint256::from_u128(0u128),
+//         )
+//         .unwrap();
+
+//     // 模拟创建第一个round
+//     let current_time = Timestamp::from_seconds(1000);
+//     let voting_end = current_time.plus_days(1);
+//     let unlock_start = voting_end.plus_days(3);
+//     let unlock_end = voting_end.plus_days(7);
+
+//     let operator = Addr::unchecked("operator1");
+//     let required_fee = Uint128::from(1000u128);
+
+//     // 检查初始状态
+//     let curve = OPERATOR_REWARD_CURVE.load(deps.as_ref().storage, &operator)?;
+//     assert_eq!(curve.total_amount, required_fee);
+//     assert_eq!(curve.locked_amount, required_fee);
+//     assert_eq!(curve.claimed_amount, Uint128::zero());
+
+//     // 模拟时间推进到解锁期中间
+//     env.block.time = unlock_start.plus_days(2);
+//     execute_claim_operator_rewards(deps.as_mut(), env.clone(), mock_info("operator1", &[]))?;
+
+//     // 检查部分解锁
+//     let curve = OPERATOR_REWARD_CURVE.load(deps.as_ref().storage, &operator)?;
+//     assert!(curve.locked_amount < required_fee);
+//     assert!(curve.locked_amount > Uint128::zero());
+
+//     // 模拟时间推进到完全解锁后
+//     env.block.time = unlock_end.plus_days(1);
+//     execute_claim_operator_rewards(deps.as_mut(), env.clone(), mock_info("operator1", &[]))?;
+
+//     // 检查完全解锁
+//     let curve = OPERATOR_REWARD_CURVE.load(deps.as_ref().storage, &operator)?;
+//     assert_eq!(curve.locked_amount, Uint128::zero());
+//     assert_eq!(curve.claimed_amount, curve.total_amount);
+// }

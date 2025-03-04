@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Uint128, Timestamp, Decimal};
 use cw_amaci::state::PubKey;
 use cw_storage_plus::{Item, Map};
 
@@ -55,3 +55,28 @@ pub const MACI_OPERATOR_PUBKEY: Map<&Addr, PubKey> = Map::new("maci_operator_pub
 pub const COORDINATOR_PUBKEY_MAP: Map<&(Vec<u8>, Vec<u8>), u64> =
     Map::new("coordinator_pubkey_map"); //
 pub const MACI_OPERATOR_IDENTITY: Map<&Addr, String> = Map::new("maci_operator_identity"); // operator_address - identity
+
+
+#[cw_serde]
+pub struct CircuitChargeConfig {
+    // small circuit fee (max_voter <= 25, max_option <= 5)
+    pub small_circuit_fee: Uint128,
+    // medium circuit fee (max_voter <= 625, max_option <= 25) 
+    pub medium_circuit_fee: Uint128,
+    // fee rate for admin (e.g., 0.001 means 0.1% of the fee goes to admin)
+    pub fee_rate: Decimal,
+}
+
+pub const CIRCUIT_CHARGE_CONFIG: Item<CircuitChargeConfig> = Item::new("circuit_charge_config");
+
+#[cw_serde]
+pub struct RewardCurve {
+    pub total_amount: Uint128,        // 总奖励金额
+    pub claimed_amount: Uint128,      // 已领取金额
+    pub last_update_time: Timestamp,  // 上次更新曲线的时间
+    pub unlock_rate: Decimal,         // 每秒解锁速率(使用Decimal提高精度)
+    pub locked_amount: Uint128,       // 当前锁定金额
+    pub unlock_end_time: Timestamp,   // 最后一个解锁周期的结束时间
+}
+
+pub const OPERATOR_REWARD_CURVE: Map<&Addr, RewardCurve> = Map::new("operator_reward_curve");

@@ -1,4 +1,4 @@
-use cosmwasm_std::{StdError, Uint128};
+use cosmwasm_std::{StdError, Uint128, OverflowError};
 use thiserror::Error;
 
 use cw_controllers::{AdminError, HookError};
@@ -7,6 +7,9 @@ use cw_controllers::{AdminError, HookError};
 pub enum ContractError {
     #[error("{0}")]
     Std(#[from] StdError),
+
+    #[error("{0}")]
+    Overflow(#[from] OverflowError),
 
     #[error("expected {expected} but got {actual}")]
     InvalidAmount { expected: u128, actual: u128 },
@@ -67,4 +70,10 @@ pub enum ContractError {
 
     #[error("Not set operator pubkey.")]
     NotSetOperatorPubkey,
+
+    #[error("Insufficient fee provided. Required: {required}, provided: {provided}")]
+    InsufficientFee { required: Uint128, provided: Uint128 },
+
+    #[error("No claimable rewards")]
+    NoClaimableRewards {},
 }

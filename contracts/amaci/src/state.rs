@@ -318,7 +318,6 @@ pub const TALLY_TIMEOUT: Item<Timestamp> = Item::new("tally_timeout"); // tally 
 
 pub const FIRST_DMSG_TIMESTAMP: Item<Timestamp> = Item::new("first_dmsg_timestamp");
 
-
 #[cw_serde]
 pub enum DelayType {
     DeactivateDelay = 0,

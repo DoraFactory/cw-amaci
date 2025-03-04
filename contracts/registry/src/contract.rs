@@ -1,8 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    attr, from_json, to_json_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Reply,
-    Response, StdError, StdResult, SubMsg, SubMsgResponse, Uint128, Uint256, WasmMsg,
+    attr, coins, from_json, to_json_binary, Addr, BankMsg, Binary, Deps, DepsMut, Env, MessageInfo,
+    Reply, Response, StdError, StdResult, SubMsg, SubMsgResponse, Uint128, Uint256, WasmMsg,
 };
 
 use cw2::set_contract_version;
@@ -10,16 +10,19 @@ use cw2::set_contract_version;
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, InstantiationData, MigrateMsg, QueryMsg};
 use crate::state::{
-    Admin, ValidatorSet, ADMIN, AMACI_CODE_ID, COORDINATOR_PUBKEY_MAP, MACI_OPERATOR_IDENTITY,
-    MACI_OPERATOR_PUBKEY, MACI_OPERATOR_SET, MACI_VALIDATOR_LIST, MACI_VALIDATOR_OPERATOR_SET,
-    OPERATOR,
+    Admin, CircuitChargeConfig, RewardCurve, ValidatorSet, ADMIN, AMACI_CODE_ID,
+    CIRCUIT_CHARGE_CONFIG, COORDINATOR_PUBKEY_MAP, MACI_OPERATOR_IDENTITY, MACI_OPERATOR_PUBKEY,
+    MACI_OPERATOR_SET, MACI_VALIDATOR_LIST, MACI_VALIDATOR_OPERATOR_SET, OPERATOR,
+    OPERATOR_REWARD_CURVE,
 };
+use cosmwasm_std::Decimal;
 use cw_amaci::msg::{
     InstantiateMsg as AMaciInstantiateMsg, InstantiationData as AMaciInstantiationData,
     WhitelistBase,
 };
 use cw_amaci::state::{MaciParameters, PubKey, RoundInfo, VotingTime};
 use cw_utils::parse_instantiate_response_data;
+use std::cmp::{max, min};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:cw-amaci-registry";
@@ -99,6 +102,7 @@ pub fn execute(
             execute_update_amaci_code_id(deps, env, info, amaci_code_id)
         }
         ExecuteMsg::ChangeOperator { address } => execute_change_operator(deps, env, info, address),
+        ExecuteMsg::ClaimOperatorRewards {} => execute_claim_operator_rewards(deps, env, info),
     }
 }
 
@@ -118,6 +122,9 @@ pub fn execute_create_round(
     certification_system: Uint256,
 ) -> Result<Response, ContractError> {
     let maci_parameters: MaciParameters;
+    let required_fee: Uint128;
+    let circuit_charge_config = CIRCUIT_CHARGE_CONFIG.load(deps.storage)?;
+
     if max_voter <= Uint256::from_u128(25u128) && max_option <= Uint256::from_u128(5u128) {
         // state_tree_depth: 2
         // vote_option_tree_depth: 1
@@ -126,7 +133,8 @@ pub fn execute_create_round(
             int_state_tree_depth: Uint256::from_u128(1u128),
             vote_option_tree_depth: Uint256::from_u128(1u128),
             message_batch_size: Uint256::from_u128(5u128),
-        }
+        };
+        required_fee = circuit_charge_config.small_circuit_fee;
     } else if max_voter <= Uint256::from_u128(625u128) && max_option <= Uint256::from_u128(25u128) {
         // state_tree_depth: 4
         // vote_option_tree_depth: 2
@@ -135,16 +143,78 @@ pub fn execute_create_round(
             int_state_tree_depth: Uint256::from_u128(2u128),
             vote_option_tree_depth: Uint256::from_u128(2u128),
             message_batch_size: Uint256::from_u128(25u128),
-        }
-        // } else if max_voter <= 15625 && max_option <= 125 {
+        };
+        required_fee = circuit_charge_config.medium_circuit_fee;
     } else {
         return Err(ContractError::NoMatchedSizeCircuit {});
+    }
+
+    let admin = ADMIN.load(deps.storage)?.admin;
+    let admin_fee = circuit_charge_config.fee_rate * required_fee;
+    let operator_fee = required_fee - admin_fee;
+
+    let denom = "peaka".to_string();
+    let mut amount: Uint128 = Uint128::new(0);
+    info.funds.iter().for_each(|fund| {
+        if fund.denom == denom {
+            amount = fund.amount;
+        }
+    });
+
+    // check user's payment
+    if amount < required_fee {
+        return Err(ContractError::InsufficientFee {
+            required: required_fee,
+            provided: amount,
+        });
     }
 
     if !MACI_OPERATOR_PUBKEY.has(deps.storage, &operator) {
         return Err(ContractError::NotSetOperatorPubkey {});
     }
     let operator_pubkey = MACI_OPERATOR_PUBKEY.load(deps.storage, &operator)?;
+
+    let current_time = env.block.time;
+    let unlock_start = voting_time.end_time.plus_days(3);
+    let unlock_end = voting_time.end_time.plus_days(7);
+    let unlock_duration = Uint128::from((unlock_end.seconds() - unlock_start.seconds()) as u128);
+
+    // 计算这个round的解锁速率(使用Decimal提高精度)
+    let new_unlock_rate = Decimal::from_ratio(operator_fee, unlock_duration);
+
+    // 更新operator的奖励曲线
+    OPERATOR_REWARD_CURVE.update(deps.storage, &operator, |existing| -> StdResult<_> {
+        match existing {
+            Some(mut curve) => {
+                // 先结算当前曲线到现在的解锁量
+                let time_passed = Uint128::from(
+                    (current_time.seconds() - curve.last_update_time.seconds()) as u128,
+                );
+                let unlocked = curve.unlock_rate * time_passed;
+
+                // 确保不会因为舍入误差导致超额解锁
+                let actual_unlocked = min(unlocked, curve.locked_amount);
+                curve.locked_amount = curve.locked_amount.checked_sub(actual_unlocked)?;
+
+                // 添加新的奖励
+                curve.total_amount += operator_fee;
+                curve.locked_amount += operator_fee;
+                curve.unlock_rate += new_unlock_rate;
+                curve.last_update_time = current_time;
+                curve.unlock_end_time = max(curve.unlock_end_time, unlock_end);
+
+                Ok(curve)
+            }
+            None => Ok(RewardCurve {
+                total_amount: operator_fee,
+                claimed_amount: Uint128::zero(),
+                last_update_time: current_time,
+                unlock_rate: new_unlock_rate,
+                locked_amount: operator_fee,
+                unlock_end_time: unlock_end,
+            }),
+        }
+    })?;
 
     let init_msg = AMaciInstantiateMsg {
         parameters: maci_parameters,
@@ -161,20 +231,30 @@ pub fn execute_create_round(
         certification_system,
     };
     let amaci_code_id = AMACI_CODE_ID.load(deps.storage)?;
-    let msg = WasmMsg::Instantiate {
-        admin: Some(env.contract.address.to_string()),
-        code_id: amaci_code_id,
-        msg: to_json_binary(&init_msg)?,
-        funds: vec![],
-        label: "AMACI".to_string(),
+    let instantiate_msg = SubMsg::reply_on_success(
+        WasmMsg::Instantiate {
+            admin: Some(env.contract.address.to_string()),
+            code_id: amaci_code_id,
+            msg: to_json_binary(&init_msg)?,
+            funds: vec![],
+            label: "AMACI".to_string(),
+        },
+        CREATED_GROTH16_ROUND_REPLY_ID,
+    );
+
+    // 添加转账admin_fee给admin的消息
+    let send_admin_fee = BankMsg::Send {
+        to_address: admin.to_string(),
+        amount: coins(admin_fee.u128(), "peaka"),
     };
 
-    let msg = SubMsg::reply_on_success(msg, CREATED_GROTH16_ROUND_REPLY_ID);
-
     let resp = Response::new()
-        .add_submessage(msg)
+        .add_submessage(instantiate_msg)
+        .add_message(send_admin_fee)
         .add_attribute("action", "create_round")
-        .add_attribute("amaci_code_id", &amaci_code_id.to_string());
+        .add_attribute("amaci_code_id", &amaci_code_id.to_string())
+        .add_attribute("admin_fee", admin_fee.to_string())
+        .add_attribute("operator_fee", operator_fee.to_string());
 
     Ok(resp)
 }
@@ -373,6 +453,85 @@ pub fn execute_change_operator(
     }
 }
 
+pub fn execute_change_charge_config(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    config: CircuitChargeConfig,
+) -> Result<Response, ContractError> {
+    if !is_admin(deps.as_ref(), info.sender.as_ref())? {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    CIRCUIT_CHARGE_CONFIG.save(deps.storage, &config)?;
+
+    Ok(Response::new()
+        .add_attribute("action", "change_charge_config")
+        .add_attribute("small_circuit_fee", config.small_circuit_fee.to_string())
+        .add_attribute("medium_circuit_fee", config.medium_circuit_fee.to_string()))
+}
+
+
+pub fn execute_claim_operator_rewards(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+) -> Result<Response, ContractError> {
+    let operator = info.sender.clone();
+    let mut curve = OPERATOR_REWARD_CURVE.load(deps.storage, &operator)?;
+    let current_time = env.block.time;
+    let claimable_amount;
+
+    // 如果已经超过最后解锁时间,直接解锁所有
+    if current_time >= curve.unlock_end_time {
+        claimable_amount = curve
+            .total_amount
+            .checked_sub(curve.claimed_amount)
+            .unwrap_or(Uint128::zero());
+        curve.locked_amount = Uint128::zero();
+    } else {
+        // 计算从上次更新到现在解锁的金额
+        let time_passed =
+            Uint128::from((current_time.seconds() - curve.last_update_time.seconds()) as u128);
+        let unlocked = curve.unlock_rate * time_passed;
+
+        // 确保不会超额解锁
+        let actual_unlocked = min(unlocked, curve.locked_amount);
+        curve.locked_amount = curve
+            .locked_amount
+            .checked_sub(actual_unlocked)
+            .unwrap_or(Uint128::zero());
+
+        // 计算可领取金额
+        claimable_amount = curve
+            .total_amount
+            .checked_sub(curve.locked_amount)
+            .unwrap_or(Uint128::zero())
+            .checked_sub(curve.claimed_amount)
+            .unwrap_or(Uint128::zero());
+    }
+
+    if claimable_amount.is_zero() {
+        return Err(ContractError::NoClaimableRewards {});
+    }
+
+    // 更新状态
+    curve.claimed_amount += claimable_amount;
+    curve.last_update_time = current_time;
+    OPERATOR_REWARD_CURVE.save(deps.storage, &operator, &curve)?;
+
+    let amount_res = coins(claimable_amount.u128(), "peaka");
+    let message = BankMsg::Send {
+        to_address: info.sender.to_string(),
+        amount: amount_res,
+    };
+
+    Ok(Response::new()
+        .add_message(message)
+        .add_attribute("action", "claim_operator_rewards")
+        .add_attribute("amount", claimable_amount.to_string()))
+}
+
 // Only admin can execute
 fn is_admin(deps: Deps, sender: &str) -> StdResult<bool> {
     let cfg = ADMIN.load(deps.storage)?;
@@ -562,9 +721,22 @@ pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, C
     // ensure we are migrating from an allowed contract
     cw2::ensure_from_older_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    // do any desired state migrations here
-    // MIGRATE_NEW_STATE.save(deps.storage, &msg.test)?;
+    let circuit_charge_config = CircuitChargeConfig {
+        small_circuit_fee: Uint128::from(50000000000000000000u128), // 50 DORA
+        medium_circuit_fee: Uint128::from(100000000000000000000u128), // 100 DORA
+        fee_rate: Decimal::from_ratio(1u128, 1000u128), // 0.1%
+    };
 
-    Ok(Response::default().add_attribute("action", "migrate"))
-    // .add_attribute("new_state", msg.test.to_string()))
+    CIRCUIT_CHARGE_CONFIG.save(deps.storage, &circuit_charge_config)?;
+
+    Ok(Response::default()
+        .add_attribute("action", "migrate")
+        .add_attribute(
+            "small_circuit_fee",
+            circuit_charge_config.small_circuit_fee.to_string(),
+        )
+        .add_attribute(
+            "medium_circuit_fee",
+            circuit_charge_config.medium_circuit_fee.to_string(),
+        ))
 }

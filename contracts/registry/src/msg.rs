@@ -61,6 +61,7 @@ pub enum ExecuteMsg {
     ChangeOperator {
         address: Addr,
     },
+    ClaimOperatorRewards {},
 }
 
 #[cw_serde]
