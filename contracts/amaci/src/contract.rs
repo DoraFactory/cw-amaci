@@ -9,14 +9,14 @@ use crate::state::{
     PeriodStatus, PubKey, QuinaryTreeRoot, RoundInfo, StateLeaf, VotingTime, Whitelist,
     WhitelistConfig, ADMIN, CERTSYSTEM, CIRCUITTYPE, COORDINATORHASH, CREATE_ROUND_WINDOW,
     CURRENT_DEACTIVATE_COMMITMENT, CURRENT_STATE_COMMITMENT, CURRENT_TALLY_COMMITMENT,
-    DEACTIVATE_TIMEOUT, DELAY_RECORDS, DMSG_CHAIN_LENGTH, DMSG_HASHES, DNODES, FEEGRANTS,
-    FIRST_DMSG_TIMESTAMP, GROTH16_DEACTIVATE_VKEYS, GROTH16_NEWKEY_VKEYS, GROTH16_PROCESS_VKEYS,
-    GROTH16_TALLY_VKEYS, LEAF_IDX_0, MACIPARAMETERS, MACI_DEACTIVATE_MESSAGE, MACI_OPERATOR,
-    MAX_LEAVES_COUNT, MAX_VOTE_OPTIONS, MSG_CHAIN_LENGTH, MSG_HASHES, NODES, NULLIFIERS,
-    NUMSIGNUPS, PENALTY_RATE, PERIOD, PRE_DEACTIVATE_ROOT, PROCESSED_DMSG_COUNT,
-    PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO, SIGNUPED, STATEIDXINC,
-    STATE_ROOT_BY_DMSG, TALLY_TIMEOUT, TOTAL_RESULT, VOICECREDITBALANCE, VOICE_CREDIT_AMOUNT,
-    VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS, ZEROS_H10,
+    DEACTIVATE_COUNT, DEACTIVATE_TIMEOUT, DELAY_RECORDS, DMSG_CHAIN_LENGTH, DMSG_HASHES, DNODES,
+    FEEGRANTS, FIRST_DMSG_TIMESTAMP, GROTH16_DEACTIVATE_VKEYS, GROTH16_NEWKEY_VKEYS,
+    GROTH16_PROCESS_VKEYS, GROTH16_TALLY_VKEYS, LEAF_IDX_0, MACIPARAMETERS,
+    MACI_DEACTIVATE_MESSAGE, MACI_OPERATOR, MAX_LEAVES_COUNT, MAX_VOTE_OPTIONS, MSG_CHAIN_LENGTH,
+    MSG_HASHES, NODES, NULLIFIERS, NUMSIGNUPS, PENALTY_RATE, PERIOD, PRE_DEACTIVATE_ROOT,
+    PROCESSED_DMSG_COUNT, PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO,
+    SIGNUPED, STATEIDXINC, STATE_ROOT_BY_DMSG, TALLY_TIMEOUT, TOTAL_RESULT, VOICECREDITBALANCE,
+    VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS, ZEROS_H10,
 };
 use cosmwasm_schema::cw_serde;
 #[cfg(not(feature = "library"))]
@@ -24,15 +24,6 @@ use cosmwasm_std::entry_point;
 use cw2::set_contract_version;
 
 use pairing_ce::bn256::Bn256;
-
-use cosmos_sdk_proto::cosmos::base::v1beta1::Coin as SdkCoin;
-use cosmos_sdk_proto::cosmos::feegrant::v1beta1::{
-    AllowedMsgAllowance, BasicAllowance, MsgGrantAllowance, MsgRevokeAllowance,
-};
-use cosmos_sdk_proto::prost::Message;
-use cosmos_sdk_proto::traits::TypeUrl;
-use cosmos_sdk_proto::Any;
-use prost_types::Timestamp as SdkTimestamp;
 
 use crate::utils::{hash2, hash5, hash_256_uint256_list, uint256_from_hex_string};
 use cosmwasm_std::{
@@ -247,6 +238,7 @@ pub fn instantiate(
 
     PROCESSED_DMSG_COUNT.save(deps.storage, &Uint256::from_u128(0u128))?;
     DMSG_CHAIN_LENGTH.save(deps.storage, &Uint256::from_u128(0u128))?;
+    DEACTIVATE_COUNT.save(deps.storage, &0u128)?;
 
     let current_dcommitment = &hash2([
         zeros[msg
@@ -473,10 +465,8 @@ pub fn execute(
         ExecuteMsg::StopTallyingPeriod { results, salt } => {
             execute_stop_tallying_period(deps, env, info, results, salt)
         }
-        ExecuteMsg::Grant { max_amount } => execute_grant(deps, env, info, max_amount),
-        ExecuteMsg::Revoke {} => execute_revoke(deps, env, info),
         ExecuteMsg::Bond {} => execute_bond(deps, env, info),
-        ExecuteMsg::Withdraw { amount } => execute_withdraw(deps, env, info, amount),
+        ExecuteMsg::Withdraw {} => execute_withdraw(deps, env, info),
     }
 }
 
@@ -819,6 +809,10 @@ pub fn execute_publish_deactivate_message(
         // Update the message chain length
         dmsg_chain_length += Uint256::from_u128(1u128);
         DMSG_CHAIN_LENGTH.save(deps.storage, &dmsg_chain_length)?;
+
+        let mut deactivate_count = DEACTIVATE_COUNT.load(deps.storage)?;
+        deactivate_count += 1u128;
+        DEACTIVATE_COUNT.save(deps.storage, &deactivate_count)?;
 
         let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
 
@@ -1746,117 +1740,6 @@ fn execute_stop_tallying_period(
         .add_attributes(attributes))
 }
 
-fn execute_grant(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    max_amount: Uint128,
-) -> Result<Response, ContractError> {
-    // Check if the sender is authorized to execute the function
-    if !is_admin(deps.as_ref(), info.sender.as_ref())? {
-        return Err(ContractError::Unauthorized {});
-    }
-
-    let voting_time = VOTINGTIME.load(deps.storage)?;
-    check_voting_time(env.clone(), voting_time.clone())?;
-
-    if FEEGRANTS.exists(deps.storage) {
-        return Err(ContractError::FeeGrantAlreadyExists {});
-    }
-
-    let denom = "peaka".to_string();
-
-    let mut amount: Uint128 = Uint128::new(0);
-    // Iterate through the funds and find the amount with the MACI denomination
-    info.funds.iter().for_each(|fund| {
-        if fund.denom == denom {
-            amount = fund.amount;
-        }
-    });
-    FEEGRANTS.save(deps.storage, &max_amount)?;
-
-    let whitelist = WHITELIST.load(deps.storage)?;
-
-    let base_amount = max_amount / Uint128::from(whitelist.users.len() as u128);
-
-    let expiration_time = Some(SdkTimestamp {
-        seconds: voting_time.end_time.seconds() as i64,
-        nanos: 0,
-    });
-
-    let allowance = BasicAllowance {
-        spend_limit: vec![SdkCoin {
-            denom: denom,
-            amount: base_amount.to_string(),
-        }],
-        expiration: expiration_time,
-    };
-
-    let allowed_allowance = AllowedMsgAllowance {
-        allowance: Some(Any {
-            type_url: BasicAllowance::TYPE_URL.to_string(),
-            value: allowance.encode_to_vec(),
-        }),
-        allowed_messages: vec!["/cosmwasm.wasm.v1.MsgExecuteContract".to_string()],
-    };
-
-    let mut messages = vec![];
-    for i in 0..whitelist.users.len() {
-        let grant_msg = MsgGrantAllowance {
-            granter: env.contract.address.to_string(),
-            grantee: whitelist.users[i].addr.to_string(),
-            allowance: Some(Any {
-                type_url: AllowedMsgAllowance::TYPE_URL.to_string(),
-                value: allowed_allowance.encode_to_vec(),
-            }),
-        };
-
-        let message = CosmosMsg::Stargate {
-            type_url: MsgGrantAllowance::TYPE_URL.to_string(),
-            value: grant_msg.encode_to_vec().into(),
-        };
-        messages.push(message);
-    }
-
-    Ok(Response::default().add_messages(messages).add_attributes([
-        ("action", "grant"),
-        ("max_amount", max_amount.to_string().as_str()),
-        ("base_amount", base_amount.to_string().as_str()),
-        ("bond_amount", amount.to_string().as_str()),
-    ]))
-}
-
-fn execute_revoke(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
-    // Check if the sender is authorized to execute the function
-    if !is_admin(deps.as_ref(), info.sender.as_ref())? {
-        return Err(ContractError::Unauthorized {});
-    }
-
-    if !FEEGRANTS.exists(deps.storage) {
-        return Err(ContractError::FeeGrantIsNotExists {});
-    }
-
-    let whitelist = WHITELIST.load(deps.storage)?;
-
-    let mut messages = vec![];
-    for i in 0..whitelist.users.len() {
-        let revoke_msg = MsgRevokeAllowance {
-            granter: env.contract.address.to_string(),
-            grantee: whitelist.users[i].addr.to_string(),
-        };
-        let message = CosmosMsg::Stargate {
-            type_url: MsgRevokeAllowance::TYPE_URL.to_string(),
-            value: revoke_msg.encode_to_vec().into(),
-        };
-        messages.push(message);
-    }
-    FEEGRANTS.remove(deps.storage);
-
-    Ok(Response::default()
-        .add_messages(messages)
-        .add_attributes([("action", "revoke")]))
-}
-
 fn execute_bond(deps: DepsMut, _env: Env, info: MessageInfo) -> Result<Response, ContractError> {
     if !is_admin(deps.as_ref(), info.sender.as_ref())? {
         return Err(ContractError::Unauthorized {});
@@ -1879,31 +1762,81 @@ fn execute_bond(deps: DepsMut, _env: Env, info: MessageInfo) -> Result<Response,
 fn execute_withdraw(
     deps: DepsMut,
     env: Env,
-    info: MessageInfo,
-    amount: Option<Uint128>,
+    _info: MessageInfo,
 ) -> Result<Response, ContractError> {
-    if !is_admin(deps.as_ref(), info.sender.as_ref())? {
-        return Err(ContractError::Unauthorized {});
+    let period = PERIOD.load(deps.storage)?;
+    let voting_time: VotingTime = VOTINGTIME.load(deps.storage)?;
+    let current_time = env.block.time;
+    let admin = ADMIN.load(deps.storage)?.admin;
+    let operator = MACI_OPERATOR.load(deps.storage)?;
+
+    // 检查是否已过投票结束3天
+    if current_time < voting_time.end_time.plus_days(3) {
+        return Err(ContractError::WithdrawalMustAfterThirdDay {});
     }
 
     let denom = "peaka".to_string();
-    let contract_balance = deps.querier.query_balance(env.contract.address, &denom)?;
-    let mut withdraw_amount = amount.map_or_else(|| contract_balance.amount.u128(), |am| am.u128());
+    // 克隆env.contract.address以避免所有权移动
+    let contract_address = env.contract.address.clone();
+    let contract_balance = deps.querier.query_balance(contract_address, &denom)?;
+    let contract_balance_amount = contract_balance.amount.u128();
 
-    if withdraw_amount > contract_balance.amount.u128() {
-        withdraw_amount = contract_balance.amount.u128();
+    // 如果超过3天还未结束,全部返还给admin
+    if period.status != PeriodStatus::Ended {
+        let message = BankMsg::Send {
+            to_address: admin.to_string(),
+            amount: coins(contract_balance_amount, denom),
+        };
+
+        return Ok(Response::new()
+            .add_message(message)
+            .add_attribute("action", "withdraw_to_admin")
+            .add_attribute("amount", contract_balance_amount.to_string()));
     }
 
-    let amount_res = coins(withdraw_amount, denom);
-    let message = BankMsg::Send {
-        to_address: info.sender.to_string(),
-        amount: amount_res,
-    };
+    // 计算operator表现
+    let performance = calculate_operator_performance(deps.as_ref(), env)?;
+
+    let withdraw_amount = Uint256::from_u128(contract_balance_amount);
+    // 根据miss_rate计算扣除比例
+    let penalty_amount =
+        withdraw_amount.multiply_ratio(performance.miss_rate, Uint256::from_u128(100u128));
+
+    // operator获得的奖励
+    let operator_reward = withdraw_amount - penalty_amount;
+
+    let mut messages: Vec<CosmosMsg> = vec![];
+    let penalty_u128_amount = penalty_amount
+        .try_into() // Uint256 -> Uint128
+        .map(|x: Uint128| x.u128()) // Uint128 -> u128
+        .map_err(|_| ContractError::ValueTooLarge {})?;
+    // 发送扣除的金额给admin
+    if !penalty_amount.is_zero() {
+        messages.push(CosmosMsg::Bank(BankMsg::Send {
+            to_address: admin.to_string(),
+            amount: coins(penalty_u128_amount, denom.clone()),
+        }));
+    }
+
+    let operator_reward_u128_amount = operator_reward
+        .try_into()
+        .map(|x: Uint128| x.u128())
+        .map_err(|_| ContractError::ValueTooLarge {})?;
+
+    // 发送剩余奖励给operator
+    if !operator_reward.is_zero() {
+        messages.push(CosmosMsg::Bank(BankMsg::Send {
+            to_address: operator.to_string(),
+            amount: coins(operator_reward_u128_amount, denom.clone()),
+        }));
+    }
 
     Ok(Response::new()
-        .add_message(message)
+        .add_messages(messages)
         .add_attribute("action", "withdraw")
-        .add_attribute("amount", withdraw_amount.to_string()))
+        .add_attribute("operator_reward", operator_reward_u128_amount.to_string())
+        .add_attribute("penalty_amount", penalty_u128_amount.to_string())
+        .add_attribute("miss_rate", performance.miss_rate.to_string()))
 }
 
 fn can_sign_up(deps: Deps, sender: &Addr) -> StdResult<bool> {

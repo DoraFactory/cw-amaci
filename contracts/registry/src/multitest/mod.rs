@@ -6,7 +6,7 @@ use anyhow::Result as AnyResult;
 use crate::{
     contract::{execute, instantiate, query, reply},
     msg::*,
-    state::ValidatorSet,
+    state::{CircuitChargeConfig, ValidatorSet},
 };
 use cosmwasm_std::{Addr, Coin, StdResult, Timestamp, Uint256};
 use cw_amaci::state::{PubKey, RoundInfo, VotingTime};
@@ -132,12 +132,13 @@ impl AmaciRegistryContract {
         app: &mut App,
         sender: Addr,
         operator: Addr,
+        send_funds: &[Coin],
     ) -> AnyResult<AppResponse> {
         app.execute_contract(
             sender,
             self.addr(),
             &ExecuteMsg::SetMaciOperator { operator },
-            &[],
+            send_funds,
         )
     }
 
@@ -164,6 +165,7 @@ impl AmaciRegistryContract {
         operator: Addr,
         circuit_type: Uint256,
         certification_system: Uint256,
+        send_funds: &[Coin],
     ) -> AnyResult<AppResponse> {
         let round_info = RoundInfo {
             title: String::from("HackWasm Berlin"),
@@ -190,9 +192,7 @@ impl AmaciRegistryContract {
             certification_system,
         };
 
-        app.execute_contract(sender, self.addr(), &msg, &[])
-        // app.execute_contract(sender, self.addr(), &msg, &[])?;
-        // Ok(None)
+        app.execute_contract(sender, self.addr(), &msg, send_funds)
     }
 
     // #[track_caller]
@@ -280,6 +280,11 @@ impl AmaciRegistryContract {
     pub fn is_maci_operator(&self, app: &App, address: Addr) -> StdResult<bool> {
         app.wrap()
             .query_wasm_smart(self.addr(), &QueryMsg::IsMaciOperator { address })
+    }
+
+    pub fn get_circuit_charge_config(&self, app: &App) -> StdResult<CircuitChargeConfig> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::GetCircuitChargeConfig {})
     }
 
     pub fn balance_of(&self, app: &App, address: String, denom: String) -> StdResult<Coin> {

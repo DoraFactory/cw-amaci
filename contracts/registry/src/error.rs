@@ -76,4 +76,10 @@ pub enum ContractError {
 
     #[error("No claimable rewards")]
     NoClaimableRewards {},
+
+    #[error("Insufficient stake amount. Required: {required}, provided: {provided}")]
+    InsufficientStake { required: Uint128, provided: Uint128 },
+
+    #[error("Operator {operator} is not healthy")]
+    UnhealthyOperator { operator: String },
 }

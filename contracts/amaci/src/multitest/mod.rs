@@ -648,36 +648,31 @@ impl MaciContract {
         )
     }
 
-    #[track_caller]
-    pub fn grant(&self, app: &mut App, sender: Addr, sent: &[Coin]) -> AnyResult<AppResponse> {
-        app.execute_contract(
-            sender,
-            self.addr(),
-            &ExecuteMsg::Grant {
-                max_amount: Uint128::from(10000000000000u128),
-            },
-            sent,
-        )
-    }
+    // #[track_caller]
+    // pub fn grant(&self, app: &mut App, sender: Addr, sent: &[Coin]) -> AnyResult<AppResponse> {
+    //     app.execute_contract(
+    //         sender,
+    //         self.addr(),
+    //         &ExecuteMsg::Grant {
+    //             max_amount: Uint128::from(10000000000000u128),
+    //         },
+    //         sent,
+    //     )
+    // }
 
-    #[track_caller]
-    pub fn revoke(&self, app: &mut App, sender: Addr) -> AnyResult<AppResponse> {
-        app.execute_contract(sender, self.addr(), &ExecuteMsg::Revoke {}, &[])
-    }
+    // #[track_caller]
+    // pub fn revoke(&self, app: &mut App, sender: Addr) -> AnyResult<AppResponse> {
+    //     app.execute_contract(sender, self.addr(), &ExecuteMsg::Revoke {}, &[])
+    // }
 
-    #[track_caller]
-    pub fn bond(&self, app: &mut App, sender: Addr, sent: &[Coin]) -> AnyResult<AppResponse> {
-        app.execute_contract(sender, self.addr(), &ExecuteMsg::Bond {}, sent)
-    }
+    // #[track_caller]
+    // pub fn bond(&self, app: &mut App, sender: Addr, sent: &[Coin]) -> AnyResult<AppResponse> {
+    //     app.execute_contract(sender, self.addr(), &ExecuteMsg::Bond {}, sent)
+    // }
 
     #[track_caller]
     pub fn withdraw(&self, app: &mut App, sender: Addr) -> AnyResult<AppResponse> {
-        app.execute_contract(
-            sender,
-            self.addr(),
-            &ExecuteMsg::Withdraw { amount: None },
-            &[],
-        )
+        app.execute_contract(sender, self.addr(), &ExecuteMsg::Withdraw {}, &[])
     }
 
     pub fn msg_length(&self, app: &App) -> StdResult<Uint256> {

@@ -80,3 +80,21 @@ pub struct RewardCurve {
 }
 
 pub const OPERATOR_REWARD_CURVE: Map<&Addr, RewardCurve> = Map::new("operator_reward_curve");
+
+#[cw_serde]
+pub struct OperatorConfig {
+    pub min_stake_amount: Uint128,     // 最小质押金额
+    pub healthy_stake_threshold: Uint128, // 健康质押阈值
+}
+
+#[cw_serde]
+pub struct OperatorInfo {
+    pub validator: Addr,           // 关联的验证人
+    pub staked_amount: Uint128,    // 质押金额
+}
+
+// operator配置
+pub const OPERATOR_CONFIG: Item<OperatorConfig> = Item::new("operator_config");
+
+// operator地址 -> operator信息
+pub const OPERATOR_INFO: Map<&Addr, OperatorInfo> = Map::new("operator_info");

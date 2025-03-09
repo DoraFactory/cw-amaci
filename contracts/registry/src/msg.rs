@@ -6,7 +6,7 @@ use cw_amaci::{
     state::{PubKey, RoundInfo, VotingTime},
 };
 
-use crate::state::ValidatorSet;
+use crate::state::{CircuitChargeConfig, OperatorConfig, OperatorInfo, ValidatorSet};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -61,7 +61,10 @@ pub enum ExecuteMsg {
     ChangeOperator {
         address: Addr,
     },
-    ClaimOperatorRewards {},
+    AddStake {},
+    WithdrawStake {
+        amount: Uint128,
+    },
 }
 
 #[cw_serde]
@@ -93,8 +96,15 @@ pub enum QueryMsg {
 
     #[returns(String)]
     GetMaciOperatorIdentity { address: Addr },
-    // #[returns(u64)]
-    // GetNewState {},
+
+    #[returns(OperatorConfig)]
+    GetOperatorConfig {},
+
+    #[returns(OperatorInfo)]
+    GetOperatorInfo { operator: Addr },
+
+    #[returns(CircuitChargeConfig)]
+    GetCircuitChargeConfig {},
 }
 
 #[cw_serde]

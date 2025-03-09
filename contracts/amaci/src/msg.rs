@@ -113,14 +113,8 @@ pub enum ExecuteMsg {
         results: Vec<Uint256>,
         salt: Uint256,
     },
-    Grant {
-        max_amount: Uint128,
-    },
-    Revoke {},
     Bond {},
-    Withdraw {
-        amount: Option<Uint128>,
-    },
+    Withdraw {},
 }
 
 #[cw_serde]
