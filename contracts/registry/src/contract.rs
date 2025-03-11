@@ -107,6 +107,9 @@ pub fn execute(
             execute_update_amaci_code_id(deps, env, info, amaci_code_id)
         }
         ExecuteMsg::ChangeOperator { address } => execute_change_operator(deps, env, info, address),
+        ExecuteMsg::ChangeChargeConfig { config } => {
+            execute_change_charge_config(deps, env, info, config)
+        }
     }
 }
 
@@ -424,7 +427,7 @@ pub fn execute_change_charge_config(
     info: MessageInfo,
     config: CircuitChargeConfig,
 ) -> Result<Response, ContractError> {
-    if !is_admin(deps.as_ref(), info.sender.as_ref())? {
+    if !is_operator(deps.as_ref(), info.sender.as_ref())? {
         return Err(ContractError::Unauthorized {});
     }
 

@@ -61,6 +61,9 @@ pub enum ExecuteMsg {
     ChangeOperator {
         address: Addr,
     },
+    ChangeChargeConfig {
+        config: CircuitChargeConfig,
+    },
 }
 
 #[cw_serde]
