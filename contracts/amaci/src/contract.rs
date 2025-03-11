@@ -313,11 +313,11 @@ pub fn instantiate(
                                                      // let deactivate_timeout = Timestamp::from_seconds(15 * 60); // 15 minutes
                                                      // let tally_timeout = Timestamp::from_seconds(1 * 3600); // 1 hour
 
-    let deactivate_timeout = Timestamp::from_seconds(5); // for test
-    let tally_timeout = Timestamp::from_seconds(30); // for test
+    // let deactivate_timeout = Timestamp::from_seconds(5); // for test
+    // let tally_timeout = Timestamp::from_seconds(30); // for test
 
-    // let deactivate_timeout = Timestamp::from_seconds(5 * 60); // 5 minutes
-    // let tally_timeout = Timestamp::from_seconds(30 * 60); // 30 minutes
+    let deactivate_timeout = Timestamp::from_seconds(5 * 60); // 5 minutes
+    let tally_timeout = Timestamp::from_seconds(30 * 60); // 30 minutes
     DEACTIVATE_TIMEOUT.save(deps.storage, &deactivate_timeout)?;
     TALLY_TIMEOUT.save(deps.storage, &tally_timeout)?;
     DELAY_RECORDS.save(deps.storage, &DelayRecords { records: vec![] })?;
@@ -1739,11 +1739,7 @@ fn execute_stop_tallying_period(
         .add_attributes(attributes))
 }
 
-fn execute_claim(
-    deps: DepsMut,
-    env: Env,
-    _info: MessageInfo,
-) -> Result<Response, ContractError> {
+fn execute_claim(deps: DepsMut, env: Env, _info: MessageInfo) -> Result<Response, ContractError> {
     let period = PERIOD.load(deps.storage)?;
     let voting_time: VotingTime = VOTINGTIME.load(deps.storage)?;
     let current_time = env.block.time;
