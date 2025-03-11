@@ -117,8 +117,8 @@ pub enum ContractError {
     #[error("Division by zero")]
     DivisionByZero {},
 
-    #[error("Withdrawal must be after the third day of voting end time")]
-    WithdrawalMustAfterThirdDay {},
+    #[error("Claim must be after the third day of voting end time")]
+    ClaimMustAfterThirdDay {},
 
     #[error("Value too large")]
     ValueTooLarge {},

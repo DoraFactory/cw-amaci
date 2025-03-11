@@ -113,7 +113,7 @@ pub enum ExecuteMsg {
         results: Vec<Uint256>,
         salt: Uint256,
     },
-    Withdraw {},
+    Claim {},
 }
 
 #[cw_serde]

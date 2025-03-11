@@ -980,9 +980,9 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
 
                 let salt = uint256_from_decimal_string(&data.salt);
 
-                let withdraw_error = maci_contract.amaci_withdraw(&mut app, owner()).unwrap_err();
+                let withdraw_error = maci_contract.amaci_claim(&mut app, owner()).unwrap_err();
                 assert_eq!(
-                    AmaciContractError::WithdrawalMustAfterThirdDay {},
+                    AmaciContractError::ClaimMustAfterThirdDay {},
                     withdraw_error.downcast().unwrap()
                 );
 
@@ -1036,7 +1036,7 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
         }
     );
 
-    let round_balance_before_withdraw = contract
+    let round_balance_before_claim = contract
         .balance_of(
             &app,
             maci_contract.addr().to_string(),
@@ -1044,31 +1044,31 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
         )
         .unwrap();
     println!(
-        "round_balance_before_withdraw: {:?}",
-        round_balance_before_withdraw
+        "round_balance_before_claim: {:?}",
+        round_balance_before_claim
     );
-    // assert_eq!(round_balance_before_withdraw.amount, operator_fee.amount);
+    // assert_eq!(round_balance_before_claim.amount, operator_fee.amount);
 
-    let owner_balance_before_withdraw = contract
+    let owner_balance_before_claim = contract
         .balance_of(&app, owner().to_string(), DORA_DEMON.to_string())
         .unwrap();
     println!(
-        "owner_balance_before_withdraw: {:?}",
-        owner_balance_before_withdraw
+        "owner_balance_before_claim: {:?}",
+        owner_balance_before_claim
     );
     // assert_eq!(owner_balance.amount, round_balance_before_withdraw.amount + Uint128::from(delay));
 
-    let operator_balance_before_withdraw = contract
+    let operator_balance_before_claim = contract
         .balance_of(&app, operator().to_string(), DORA_DEMON.to_string())
         .unwrap();
     println!(
-        "operator_balance_before_withdraw: {:?}",
-        operator_balance_before_withdraw
+        "operator_balance_before_claim: {:?}",
+        operator_balance_before_claim
     );
     // assert_eq!(operator_balance.amount, Uint128::from(0u128));
 
     app.update_block(next_block_3_days);
-    _ = maci_contract.amaci_withdraw(&mut app, owner());
+    _ = maci_contract.amaci_claim(&mut app, owner());
     let owner_balance = contract
         .balance_of(&app, owner().to_string(), DORA_DEMON.to_string())
         .unwrap();
@@ -1081,7 +1081,7 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
     println!("operator_balance: {:?}", operator_balance);
     // assert_eq!(operator_balance.amount, Uint128::from(0u128));
 
-    let round_balance_after_withdraw = contract
+    let round_balance_after_claim = contract
         .balance_of(
             &app,
             maci_contract.addr().to_string(),
@@ -1089,27 +1089,27 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
         )
         .unwrap();
     println!(
-        "round_balance_after_withdraw: {:?}",
-        round_balance_after_withdraw
+        "round_balance_after_claim: {:?}",
+        round_balance_after_claim
     );
-    // assert_eq!(round_balance_after_withdraw.amount, Uint128::from(0u128));
+    // assert_eq!(round_balance_after_claim.amount, Uint128::from(0u128));
 
-    let withdraw_amount = Uint128::from(round_balance_before_withdraw.amount);
-    let operator_reward = withdraw_amount.multiply_ratio(100u128 - (50u128 + 5u128 * 2), 100u128);
-    let penalty_amount = withdraw_amount - operator_reward;
+    let claim_amount = Uint128::from(round_balance_before_claim.amount);
+    let operator_reward = claim_amount.multiply_ratio(100u128 - (50u128 + 5u128 * 2), 100u128);
+    let penalty_amount = claim_amount - operator_reward;
     println!("operator_reward: {:?}", operator_reward);
     println!("penalty_amount: {:?}", penalty_amount);
     assert_eq!(
         operator_balance.amount,
-        operator_reward + operator_balance_before_withdraw.amount
+        operator_reward + operator_balance_before_claim.amount
     );
     assert_eq!(
         owner_balance.amount,
-        penalty_amount + owner_balance_before_withdraw.amount
+        penalty_amount + owner_balance_before_claim.amount
     );
     assert_eq!(
-        round_balance_after_withdraw.amount,
-        round_balance_before_withdraw.amount - withdraw_amount
+        round_balance_after_claim.amount,
+        round_balance_before_claim.amount - claim_amount
     );
-    assert_eq!(round_balance_after_withdraw.amount, Uint128::from(0u128));
+    assert_eq!(round_balance_after_claim.amount, Uint128::from(0u128));
 }

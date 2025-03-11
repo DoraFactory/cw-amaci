@@ -649,8 +649,8 @@ impl MaciContract {
     }
 
     #[track_caller]
-    pub fn withdraw(&self, app: &mut App, sender: Addr) -> AnyResult<AppResponse> {
-        app.execute_contract(sender, self.addr(), &ExecuteMsg::Withdraw {}, &[])
+    pub fn claim(&self, app: &mut App, sender: Addr) -> AnyResult<AppResponse> {
+        app.execute_contract(sender, self.addr(), &ExecuteMsg::Claim {}, &[])
     }
 
     pub fn msg_length(&self, app: &App) -> StdResult<Uint256> {
@@ -1006,8 +1006,8 @@ impl MaciContract {
     }
 
     #[track_caller]
-    pub fn amaci_withdraw(&self, app: &mut DefaultApp, sender: Addr) -> AnyResult<AppResponse> {
-        app.execute_contract(sender, self.addr(), &ExecuteMsg::Withdraw {}, &[])
+    pub fn amaci_claim(&self, app: &mut DefaultApp, sender: Addr) -> AnyResult<AppResponse> {
+        app.execute_contract(sender, self.addr(), &ExecuteMsg::Claim {}, &[])
     }
 
     pub fn amaci_msg_length(&self, app: &DefaultApp) -> StdResult<Uint256> {

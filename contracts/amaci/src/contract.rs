@@ -313,11 +313,11 @@ pub fn instantiate(
                                                      // let deactivate_timeout = Timestamp::from_seconds(15 * 60); // 15 minutes
                                                      // let tally_timeout = Timestamp::from_seconds(1 * 3600); // 1 hour
 
-    // let deactivate_timeout = Timestamp::from_seconds(5); // for test
-    // let tally_timeout = Timestamp::from_seconds(30); // for test
+    let deactivate_timeout = Timestamp::from_seconds(5); // for test
+    let tally_timeout = Timestamp::from_seconds(30); // for test
 
-    let deactivate_timeout = Timestamp::from_seconds(5 * 60); // 5 minutes
-    let tally_timeout = Timestamp::from_seconds(30 * 60); // 30 minutes
+    // let deactivate_timeout = Timestamp::from_seconds(5 * 60); // 5 minutes
+    // let tally_timeout = Timestamp::from_seconds(30 * 60); // 30 minutes
     DEACTIVATE_TIMEOUT.save(deps.storage, &deactivate_timeout)?;
     TALLY_TIMEOUT.save(deps.storage, &tally_timeout)?;
     DELAY_RECORDS.save(deps.storage, &DelayRecords { records: vec![] })?;
@@ -465,7 +465,7 @@ pub fn execute(
         ExecuteMsg::StopTallyingPeriod { results, salt } => {
             execute_stop_tallying_period(deps, env, info, results, salt)
         }
-        ExecuteMsg::Withdraw {} => execute_withdraw(deps, env, info),
+        ExecuteMsg::Claim {} => execute_claim(deps, env, info),
     }
 }
 
@@ -1739,7 +1739,7 @@ fn execute_stop_tallying_period(
         .add_attributes(attributes))
 }
 
-fn execute_withdraw(
+fn execute_claim(
     deps: DepsMut,
     env: Env,
     _info: MessageInfo,
@@ -1750,10 +1750,10 @@ fn execute_withdraw(
     let admin = ADMIN.load(deps.storage)?.admin;
     let operator = MACI_OPERATOR.load(deps.storage)?;
 
-    // If status is Ended, you can withdraw immediately
-    // If status is not Ended, then you need to wait 3 days before you can withdraw
+    // If status is Ended, you can claim immediately
+    // If status is not Ended, then you need to wait 3 days before you can claim
     if period.status != PeriodStatus::Ended && current_time < voting_time.end_time.plus_days(3) {
-        return Err(ContractError::WithdrawalMustAfterThirdDay {});
+        return Err(ContractError::ClaimMustAfterThirdDay {});
     }
 
     let denom = "peaka".to_string();
@@ -1770,7 +1770,7 @@ fn execute_withdraw(
 
         return Ok(Response::new()
             .add_message(message)
-            .add_attribute("action", "withdraw")
+            .add_attribute("action", "claim")
             .add_attribute("is_ended", "false")
             .add_attribute("operator_reward", "0")
             .add_attribute("penalty_amount", contract_balance_amount.to_string())
@@ -1816,7 +1816,7 @@ fn execute_withdraw(
 
     Ok(Response::new()
         .add_messages(messages)
-        .add_attribute("action", "withdraw")
+        .add_attribute("action", "claim")
         .add_attribute("is_ended", "true")
         .add_attribute("operator_reward", operator_reward_u128_amount.to_string())
         .add_attribute("penalty_amount", penalty_u128_amount.to_string())
