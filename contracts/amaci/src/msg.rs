@@ -113,7 +113,6 @@ pub enum ExecuteMsg {
         results: Vec<Uint256>,
         salt: Uint256,
     },
-    Bond {},
     Withdraw {},
 }
 

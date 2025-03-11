@@ -5,17 +5,16 @@ use cosmwasm_std::{
     Reply, Response, StdError, StdResult, SubMsg, SubMsgResponse, Uint128, Uint256, WasmMsg,
 };
 
-use cw2::set_contract_version;
-
 use crate::error::ContractError;
+use crate::migrates::migrate_v0_1_3::migrate_v0_1_3;
 use crate::msg::{ExecuteMsg, InstantiateMsg, InstantiationData, MigrateMsg, QueryMsg};
 use crate::state::{
-    Admin, CircuitChargeConfig, OperatorConfig, OperatorInfo, ValidatorSet, ADMIN, AMACI_CODE_ID,
-    CIRCUIT_CHARGE_CONFIG, COORDINATOR_PUBKEY_MAP, MACI_OPERATOR_IDENTITY, MACI_OPERATOR_PUBKEY,
-    MACI_OPERATOR_SET, MACI_VALIDATOR_LIST, MACI_VALIDATOR_OPERATOR_SET, OPERATOR, OPERATOR_CONFIG,
-    OPERATOR_INFO,
+    Admin, CircuitChargeConfig, ValidatorSet, ADMIN, AMACI_CODE_ID, CIRCUIT_CHARGE_CONFIG,
+    COORDINATOR_PUBKEY_MAP, MACI_OPERATOR_IDENTITY, MACI_OPERATOR_PUBKEY, MACI_OPERATOR_SET,
+    MACI_VALIDATOR_LIST, MACI_VALIDATOR_OPERATOR_SET, OPERATOR,
 };
 use cosmwasm_std::Decimal;
+use cw2::set_contract_version;
 use cw_amaci::msg::{
     InstantiateMsg as AMaciInstantiateMsg, InstantiationData as AMaciInstantiationData,
     WhitelistBase,
@@ -45,18 +44,8 @@ pub fn instantiate(
 
     AMACI_CODE_ID.save(deps.storage, &msg.amaci_code_id)?;
 
-    OPERATOR_CONFIG.save(
-        deps.storage,
-        &OperatorConfig {
-            min_stake_amount: Uint128::from(500000000000000000000u128), // 500 DORA
-            healthy_stake_threshold: Uint128::from(50000000000000000000u128), // 50 DORA
-        },
-    )?;
-
     let circuit_charge_config = CircuitChargeConfig {
-        small_circuit_fee: Uint128::from(50000000000000000000u128), // 50 DORA
-        medium_circuit_fee: Uint128::from(100000000000000000000u128), // 100 DORA
-        fee_rate: Decimal::from_ratio(1u128, 1000u128),             // 0.1%
+        fee_rate: Decimal::from_ratio(1u128, 10u128), // 10%
     };
 
     CIRCUIT_CHARGE_CONFIG.save(deps.storage, &circuit_charge_config)?;
@@ -118,8 +107,6 @@ pub fn execute(
             execute_update_amaci_code_id(deps, env, info, amaci_code_id)
         }
         ExecuteMsg::ChangeOperator { address } => execute_change_operator(deps, env, info, address),
-        ExecuteMsg::AddStake {} => execute_add_stake(deps, env, info),
-        ExecuteMsg::WithdrawStake { amount } => execute_withdraw_stake(deps, env, info, amount),
     }
 }
 
@@ -145,23 +132,25 @@ pub fn execute_create_round(
     if max_voter <= Uint256::from_u128(25u128) && max_option <= Uint256::from_u128(5u128) {
         // state_tree_depth: 2
         // vote_option_tree_depth: 1
+        // price: 50 DORA
         maci_parameters = MaciParameters {
             state_tree_depth: Uint256::from_u128(2u128),
             int_state_tree_depth: Uint256::from_u128(1u128),
             vote_option_tree_depth: Uint256::from_u128(1u128),
             message_batch_size: Uint256::from_u128(5u128),
         };
-        required_fee = circuit_charge_config.small_circuit_fee;
+        required_fee = Uint128::from(50000000000000000000u128);
     } else if max_voter <= Uint256::from_u128(625u128) && max_option <= Uint256::from_u128(25u128) {
         // state_tree_depth: 4
         // vote_option_tree_depth: 2
+        // price: 100 DORA
         maci_parameters = MaciParameters {
             state_tree_depth: Uint256::from_u128(4u128),
             int_state_tree_depth: Uint256::from_u128(2u128),
             vote_option_tree_depth: Uint256::from_u128(2u128),
             message_batch_size: Uint256::from_u128(25u128),
         };
-        required_fee = circuit_charge_config.medium_circuit_fee;
+        required_fee = Uint128::from(100000000000000000000u128);
     } else {
         return Err(ContractError::NoMatchedSizeCircuit {});
     }
@@ -187,32 +176,7 @@ pub fn execute_create_round(
     }
     let operator_pubkey = MACI_OPERATOR_PUBKEY.load(deps.storage, &operator)?;
 
-    let operator_info: OperatorInfo = OPERATOR_INFO.load(deps.storage, &operator)?;
-    let config: OperatorConfig = OPERATOR_CONFIG.load(deps.storage)?;
-
-    if operator_info.staked_amount < config.healthy_stake_threshold {
-        return Err(ContractError::InsufficientStake {
-            required: config.healthy_stake_threshold,
-            provided: operator_info.staked_amount,
-        });
-    }
-
-    // 从operator质押中扣除required_fee
-    OPERATOR_INFO.update(
-        deps.storage,
-        &operator,
-        |info: Option<OperatorInfo>| -> StdResult<_> {
-            match info {
-                Some(mut info) => {
-                    info.staked_amount = info.staked_amount.checked_sub(required_fee)?;
-                    Ok(info)
-                }
-                None => Err(StdError::generic_err("operator not found")),
-            }
-        },
-    )?;
-
-    let total_fee = required_fee + required_fee;
+    let total_fee = required_fee;
     let admin = ADMIN.load(deps.storage)?.admin;
     let admin_fee = circuit_charge_config.fee_rate * total_fee;
     let operator_fee: Uint128 = total_fee - admin_fee;
@@ -267,44 +231,16 @@ pub fn execute_set_maci_operator(
     info: MessageInfo,
     operator: Addr,
 ) -> Result<Response, ContractError> {
-    // 检查调用者是否是validator
     if !is_validator(deps.as_ref(), &info.sender)? {
         return Err(ContractError::Unauthorized {});
     }
-
-    // 检查operator是否已经被设置
     if is_operator_set(deps.as_ref(), &operator)? {
         return Err(ContractError::ExistedMaciOperator {});
     }
 
-    // 获取operator配置
-    let config = OPERATOR_CONFIG.load(deps.storage)?;
-
-    // 检查质押金额
-    let denom = "peaka".to_string();
-    let mut amount: Uint128 = Uint128::new(0);
-    info.funds.iter().for_each(|fund| {
-        if fund.denom == denom {
-            amount = fund.amount;
-        }
-    });
-
-    // 检查质押金额
-    if amount < config.min_stake_amount {
-        return Err(ContractError::InsufficientStake {
-            required: config.min_stake_amount,
-            provided: amount,
-        });
-    }
-
-    let mut refund_msg: Option<BankMsg> = None;
-    let mut refund_amount: Uint128 = Uint128::new(0);
-
-    // 如果validator已经设置过operator,需要清理旧的operator数据
     if is_validator_operator_set(deps.as_ref(), &info.sender)? {
         let old_operator = MACI_VALIDATOR_OPERATOR_SET.load(deps.storage, &info.sender)?;
 
-        // 清理旧operator的pubkey
         if MACI_OPERATOR_PUBKEY.has(deps.storage, &old_operator) {
             let old_operator_pubkey = MACI_OPERATOR_PUBKEY.load(deps.storage, &old_operator)?;
             COORDINATOR_PUBKEY_MAP.remove(
@@ -317,44 +253,18 @@ pub fn execute_set_maci_operator(
             MACI_OPERATOR_PUBKEY.remove(deps.storage, &old_operator);
         }
 
-        // 准备返还旧operator的质押
-        if let Some(old_info) = OPERATOR_INFO.may_load(deps.storage, &old_operator)? {
-            refund_msg = Some(BankMsg::Send {
-                to_address: old_operator.to_string(),
-                amount: coins(old_info.staked_amount.u128(), "peaka"),
-            });
-            refund_amount = old_info.staked_amount;
-            OPERATOR_INFO.remove(deps.storage, &old_operator);
-            MACI_OPERATOR_SET.remove(deps.storage, &old_operator);
-        }
-    }
-    // 保存新的operator信息
-    let operator_info = OperatorInfo {
-        validator: info.sender.clone(),
-        staked_amount: amount,
-    };
-    OPERATOR_INFO.save(deps.storage, &operator, &operator_info)?;
+        MACI_OPERATOR_SET.remove(deps.storage, &old_operator);
 
-    // 更新validator-operator映射
+        MACI_VALIDATOR_OPERATOR_SET.save(deps.storage, &info.sender, &operator)?;
+        MACI_OPERATOR_SET.save(deps.storage, &operator, &Uint128::from(0u128))?;
+    }
+
     MACI_VALIDATOR_OPERATOR_SET.save(deps.storage, &info.sender, &operator)?;
     MACI_OPERATOR_SET.save(deps.storage, &operator, &Uint128::from(0u128))?;
-
-    // 构建基础响应
-    let mut response = Response::new()
+    Ok(Response::new()
         .add_attribute("action", "set_maci_operator")
-        .add_attribute("validator", info.sender.to_string())
-        .add_attribute("maci_operator", operator.to_string())
-        .add_attribute("staked_amount", amount.to_string());
-
-    // 如果有退款消息，添加到响应中
-    if let Some(msg) = refund_msg {
-        response = response
-            .add_message(msg)
-            .add_attribute("refunded_operator", "true")
-            .add_attribute("refunded_amount", refund_amount.to_string());
-    }
-
-    Ok(response)
+        .add_attribute("validator", &info.sender.to_string())
+        .add_attribute("maci_operator", operator.to_string()))
 }
 
 // validator operator
@@ -522,94 +432,7 @@ pub fn execute_change_charge_config(
 
     Ok(Response::new()
         .add_attribute("action", "change_charge_config")
-        .add_attribute("small_circuit_fee", config.small_circuit_fee.to_string())
-        .add_attribute("medium_circuit_fee", config.medium_circuit_fee.to_string()))
-}
-
-pub fn execute_add_stake(
-    deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
-) -> Result<Response, ContractError> {
-    // 检查是否是已注册的operator
-    if !is_operator_set(deps.as_ref(), &info.sender)? {
-        return Err(ContractError::Unauthorized {});
-    }
-
-    // 检查发送的token
-    // let amount = must_pay(&info, "peaka")?;
-    // if amount.is_zero() {
-    //     return Err(ContractError::NoFunds {});
-    // }
-
-    let config = OPERATOR_CONFIG.load(deps.storage)?;
-    let denom = "peaka".to_string();
-    let mut amount: Uint128 = Uint128::new(0);
-    info.funds.iter().for_each(|fund| {
-        if fund.denom == denom {
-            amount = fund.amount;
-        }
-    });
-
-    // 检查质押金额
-    if amount < config.min_stake_amount {
-        return Err(ContractError::InsufficientStake {
-            required: config.min_stake_amount,
-            provided: amount,
-        });
-    }
-
-    // 更新质押金额
-    OPERATOR_INFO.update(deps.storage, &info.sender, |info| -> StdResult<_> {
-        match info {
-            Some(mut info) => {
-                info.staked_amount += amount;
-                Ok(info)
-            }
-            None => Err(StdError::generic_err("operator not found")),
-        }
-    })?;
-
-    Ok(Response::new()
-        .add_attribute("action", "add_stake")
-        .add_attribute("operator", info.sender)
-        .add_attribute("amount", amount))
-}
-
-pub fn execute_withdraw_stake(
-    deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
-    amount: Uint128,
-) -> Result<Response, ContractError> {
-    // 检查是否是已注册的operator
-    if !is_operator_set(deps.as_ref(), &info.sender)? {
-        return Err(ContractError::Unauthorized {});
-    }
-
-    // 检查并更新质押金额
-    let mut operator_info = OPERATOR_INFO.load(deps.storage, &info.sender)?;
-    if amount > operator_info.staked_amount {
-        return Err(ContractError::InsufficientStake {
-            required: amount,
-            provided: operator_info.staked_amount,
-        });
-    }
-
-    operator_info.staked_amount = operator_info.staked_amount.checked_sub(amount)?;
-    OPERATOR_INFO.save(deps.storage, &info.sender, &operator_info)?;
-
-    // 发送token给operator
-    let send_msg = BankMsg::Send {
-        to_address: info.sender.to_string(),
-        amount: coins(amount.u128(), "peaka"),
-    };
-
-    Ok(Response::new()
-        .add_message(send_msg)
-        .add_attribute("action", "withdraw_stake")
-        .add_attribute("operator", info.sender)
-        .add_attribute("amount", amount))
+        .add_attribute("fee_rate", config.fee_rate.to_string()))
 }
 
 // Only admin can execute
@@ -668,10 +491,6 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::GetMaciOperatorIdentity { address } => {
             to_json_binary(&MACI_OPERATOR_IDENTITY.load(deps.storage, &address)?)
         }
-        QueryMsg::GetOperatorInfo { operator } => {
-            to_json_binary(&OPERATOR_INFO.load(deps.storage, &operator)?)
-        }
-        QueryMsg::GetOperatorConfig {} => to_json_binary(&OPERATOR_CONFIG.load(deps.storage)?),
         QueryMsg::GetCircuitChargeConfig {} => {
             to_json_binary(&CIRCUIT_CHARGE_CONFIG.load(deps.storage)?)
         }
@@ -805,25 +624,7 @@ pub fn reply_created_round(
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
-    // ensure we are migrating from an allowed contract
     cw2::ensure_from_older_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    let circuit_charge_config = CircuitChargeConfig {
-        small_circuit_fee: Uint128::from(50000000000000000000u128), // 50 DORA
-        medium_circuit_fee: Uint128::from(100000000000000000000u128), // 100 DORA
-        fee_rate: Decimal::from_ratio(1u128, 1000u128),             // 0.1%
-    };
-
-    CIRCUIT_CHARGE_CONFIG.save(deps.storage, &circuit_charge_config)?;
-
-    Ok(Response::default()
-        .add_attribute("action", "migrate")
-        .add_attribute(
-            "small_circuit_fee",
-            circuit_charge_config.small_circuit_fee.to_string(),
-        )
-        .add_attribute(
-            "medium_circuit_fee",
-            circuit_charge_config.medium_circuit_fee.to_string(),
-        ))
+    migrate_v0_1_3(deps)
 }

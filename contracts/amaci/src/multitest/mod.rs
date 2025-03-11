@@ -13,7 +13,7 @@ use crate::{
 };
 
 use cosmwasm_std::testing::{MockApi, MockStorage};
-use cosmwasm_std::{Addr, Coin, Empty, StdResult, Timestamp, Uint128, Uint256};
+use cosmwasm_std::{Addr, Empty, StdResult, Timestamp, Uint128, Uint256};
 use cw_multi_test::App as DefaultApp;
 use cw_multi_test::{
     no_init, AppBuilder, AppResponse, BankKeeper, ContractWrapper, DistributionKeeper, Executor,
@@ -648,28 +648,6 @@ impl MaciContract {
         )
     }
 
-    // #[track_caller]
-    // pub fn grant(&self, app: &mut App, sender: Addr, sent: &[Coin]) -> AnyResult<AppResponse> {
-    //     app.execute_contract(
-    //         sender,
-    //         self.addr(),
-    //         &ExecuteMsg::Grant {
-    //             max_amount: Uint128::from(10000000000000u128),
-    //         },
-    //         sent,
-    //     )
-    // }
-
-    // #[track_caller]
-    // pub fn revoke(&self, app: &mut App, sender: Addr) -> AnyResult<AppResponse> {
-    //     app.execute_contract(sender, self.addr(), &ExecuteMsg::Revoke {}, &[])
-    // }
-
-    // #[track_caller]
-    // pub fn bond(&self, app: &mut App, sender: Addr, sent: &[Coin]) -> AnyResult<AppResponse> {
-    //     app.execute_contract(sender, self.addr(), &ExecuteMsg::Bond {}, sent)
-    // }
-
     #[track_caller]
     pub fn withdraw(&self, app: &mut App, sender: Addr) -> AnyResult<AppResponse> {
         app.execute_contract(sender, self.addr(), &ExecuteMsg::Withdraw {}, &[])
@@ -735,17 +713,374 @@ impl MaciContract {
             .query_wasm_smart(self.addr(), &QueryMsg::GetDelayRecords {})
     }
 
-    pub fn query_admin(&self, app: &DefaultApp) -> StdResult<Addr> {
+    pub fn query_admin(&self, app: &App) -> StdResult<Addr> {
         app.wrap()
             .query_wasm_smart(self.addr(), &QueryMsg::Admin {})
     }
 
-    pub fn query_operator(&self, app: &DefaultApp) -> StdResult<Addr> {
+    pub fn query_operator(&self, app: &App) -> StdResult<Addr> {
         app.wrap()
             .query_wasm_smart(self.addr(), &QueryMsg::Operator {})
     }
 
-    pub fn query_round_info(&self, app: &DefaultApp) -> StdResult<RoundInfo> {
+    pub fn query_round_info(&self, app: &App) -> StdResult<RoundInfo> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::GetRoundInfo {})
+    }
+
+    #[track_caller]
+    pub fn amaci_sign_up(
+        &self,
+        app: &mut DefaultApp,
+        sender: Addr,
+        pubkey: PubKey,
+    ) -> AnyResult<AppResponse> {
+        app.execute_contract(sender, self.addr(), &ExecuteMsg::SignUp { pubkey }, &[])
+    }
+
+    #[track_caller]
+    pub fn amaci_publish_message(
+        &self,
+        app: &mut DefaultApp,
+        sender: Addr,
+        message: MessageData,
+        enc_pub_key: PubKey,
+    ) -> AnyResult<AppResponse> {
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::PublishMessage {
+                message,
+                enc_pub_key,
+            },
+            &[],
+        )
+    }
+
+    #[track_caller]
+    pub fn amaci_set_round_info(
+        &self,
+        app: &mut DefaultApp,
+        sender: Addr,
+    ) -> AnyResult<AppResponse> {
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::SetRoundInfo {
+                round_info: RoundInfo {
+                    title: String::from("TestRound2"),
+                    description: String::from(""),
+                    link: String::from("https://github.com"),
+                },
+            },
+            &[],
+        )
+    }
+
+    #[track_caller]
+    pub fn amaci_set_empty_round_info(
+        &self,
+        app: &mut DefaultApp,
+        sender: Addr,
+    ) -> AnyResult<AppResponse> {
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::SetRoundInfo {
+                round_info: RoundInfo {
+                    title: String::from(""),
+                    description: String::from("Hello"),
+                    link: String::from("https://github.com"),
+                },
+            },
+            &[],
+        )
+    }
+
+    #[track_caller]
+    pub fn amaci_set_whitelist(
+        &self,
+        app: &mut DefaultApp,
+        sender: Addr,
+    ) -> AnyResult<AppResponse> {
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::SetWhitelists {
+                whitelists: WhitelistBase {
+                    users: vec![
+                        WhitelistBaseConfig { addr: user1() },
+                        WhitelistBaseConfig { addr: user2() },
+                    ],
+                },
+            },
+            &[],
+        )
+    }
+
+    #[track_caller]
+    pub fn amaci_set_vote_option_map(
+        &self,
+        app: &mut DefaultApp,
+        sender: Addr,
+    ) -> AnyResult<AppResponse> {
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::SetVoteOptionsMap {
+                vote_option_map: vec![
+                    String::from("did_not_vote"),
+                    String::from("yes"),
+                    String::from("no"),
+                    String::from("no_with_veto"),
+                    String::from("abstain"),
+                ],
+            },
+            &[],
+        )
+    }
+
+    #[track_caller]
+    pub fn amaci_publish_deactivate_message(
+        &self,
+        app: &mut DefaultApp,
+        sender: Addr,
+        message: MessageData,
+        enc_pub_key: PubKey,
+    ) -> AnyResult<AppResponse> {
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::PublishDeactivateMessage {
+                message,
+                enc_pub_key,
+            },
+            &[],
+        )
+    }
+
+    #[track_caller]
+    pub fn amaci_process_deactivate_message(
+        &self,
+        app: &mut DefaultApp,
+        sender: Addr,
+        size: Uint256,
+        new_deactivate_commitment: Uint256,
+        new_deactivate_root: Uint256,
+        proof: Groth16ProofType,
+    ) -> AnyResult<AppResponse> {
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::ProcessDeactivateMessage {
+                size,
+                new_deactivate_commitment,
+                new_deactivate_root,
+                groth16_proof: proof,
+            },
+            &[],
+        )
+    }
+
+    #[track_caller]
+    pub fn amaci_add_key(
+        &self,
+        app: &mut DefaultApp,
+        sender: Addr,
+        pubkey: PubKey,
+        nullifier: Uint256,
+        d: [Uint256; 4],
+        proof: Groth16ProofType,
+    ) -> AnyResult<AppResponse> {
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::AddNewKey {
+                pubkey,
+                nullifier,
+                d,
+                groth16_proof: proof,
+            },
+            &[],
+        )
+    }
+
+    #[track_caller]
+    pub fn amaci_pre_add_key(
+        &self,
+        app: &mut DefaultApp,
+        sender: Addr,
+        pubkey: PubKey,
+        nullifier: Uint256,
+        d: [Uint256; 4],
+        proof: Groth16ProofType,
+    ) -> AnyResult<AppResponse> {
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::PreAddNewKey {
+                pubkey,
+                nullifier,
+                d,
+                groth16_proof: proof,
+            },
+            &[],
+        )
+    }
+
+    #[track_caller]
+    pub fn amaci_start_process(
+        &self,
+        app: &mut DefaultApp,
+        sender: Addr,
+    ) -> AnyResult<AppResponse> {
+        app.execute_contract(sender, self.addr(), &ExecuteMsg::StartProcessPeriod {}, &[])
+    }
+
+    #[track_caller]
+    pub fn amaci_process_message(
+        &self,
+        app: &mut DefaultApp,
+        sender: Addr,
+        new_state_commitment: Uint256,
+        proof: Groth16ProofType,
+    ) -> AnyResult<AppResponse> {
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::ProcessMessage {
+                new_state_commitment,
+                groth16_proof: proof,
+            },
+            &[],
+        )
+    }
+
+    #[track_caller]
+    pub fn amaci_stop_processing(
+        &self,
+        app: &mut DefaultApp,
+        sender: Addr,
+    ) -> AnyResult<AppResponse> {
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::StopProcessingPeriod {},
+            &[],
+        )
+    }
+
+    #[track_caller]
+    pub fn amaci_process_tally(
+        &self,
+        app: &mut DefaultApp,
+        sender: Addr,
+        new_tally_commitment: Uint256,
+        proof: Groth16ProofType,
+    ) -> AnyResult<AppResponse> {
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::ProcessTally {
+                new_tally_commitment,
+                groth16_proof: proof,
+            },
+            &[],
+        )
+    }
+
+    #[track_caller]
+    pub fn amaci_stop_tallying(
+        &self,
+        app: &mut DefaultApp,
+        sender: Addr,
+        results: Vec<Uint256>,
+        salt: Uint256,
+    ) -> AnyResult<AppResponse> {
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::StopTallyingPeriod { results, salt },
+            &[],
+        )
+    }
+
+    #[track_caller]
+    pub fn amaci_withdraw(&self, app: &mut DefaultApp, sender: Addr) -> AnyResult<AppResponse> {
+        app.execute_contract(sender, self.addr(), &ExecuteMsg::Withdraw {}, &[])
+    }
+
+    pub fn amaci_msg_length(&self, app: &DefaultApp) -> StdResult<Uint256> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::GetMsgChainLength {})
+    }
+
+    pub fn amaci_dmsg_length(&self, app: &DefaultApp) -> StdResult<Uint256> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::GetDMsgChainLength {})
+    }
+
+    pub fn amaci_num_sign_up(&self, app: &DefaultApp) -> StdResult<Uint256> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::GetNumSignUp {})
+    }
+
+    pub fn amaci_signuped(&self, app: &DefaultApp, pubkey_x: Uint256) -> StdResult<Uint256> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::Signuped { pubkey_x })
+    }
+
+    pub fn amaci_vote_option_map(&self, app: &DefaultApp) -> StdResult<Vec<String>> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::VoteOptionMap {})
+    }
+
+    pub fn amaci_max_vote_options(&self, app: &DefaultApp) -> StdResult<Uint256> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::MaxVoteOptions {})
+    }
+
+    pub fn amaci_get_all_result(&self, app: &DefaultApp) -> StdResult<Uint256> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::GetAllResult {})
+    }
+
+    pub fn amaci_get_voting_time(&self, app: &DefaultApp) -> StdResult<VotingTime> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::GetVotingTime {})
+    }
+
+    pub fn amaci_get_period(&self, app: &DefaultApp) -> StdResult<Period> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::GetPeriod {})
+    }
+
+    pub fn amaci_get_round_info(&self, app: &DefaultApp) -> StdResult<RoundInfo> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::GetRoundInfo {})
+    }
+
+    pub fn amaci_query_total_feegrant(&self, app: &DefaultApp) -> StdResult<Uint128> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::QueryTotalFeeGrant {})
+    }
+
+    pub fn amaci_query_delay_records(&self, app: &DefaultApp) -> StdResult<DelayRecords> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::GetDelayRecords {})
+    }
+
+    pub fn amaci_query_admin(&self, app: &DefaultApp) -> StdResult<Addr> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::Admin {})
+    }
+
+    pub fn amaci_query_operator(&self, app: &DefaultApp) -> StdResult<Addr> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::Operator {})
+    }
+
+    pub fn amaci_query_round_info(&self, app: &DefaultApp) -> StdResult<RoundInfo> {
         app.wrap()
             .query_wasm_smart(self.addr(), &QueryMsg::GetRoundInfo {})
     }

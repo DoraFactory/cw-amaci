@@ -308,13 +308,13 @@ pub fn instantiate(
     CERTSYSTEM.save(deps.storage, &msg.certification_system)?;
 
     // Init penalty rate and timeout
-    let penalty_rate = Uint256::from_u128(80);
-    PENALTY_RATE.save(deps.storage, &penalty_rate)?; // 80%
+    let penalty_rate = Uint256::from_u128(50);
+    PENALTY_RATE.save(deps.storage, &penalty_rate)?; // 50%
                                                      // let deactivate_timeout = Timestamp::from_seconds(15 * 60); // 15 minutes
                                                      // let tally_timeout = Timestamp::from_seconds(1 * 3600); // 1 hour
 
     // let deactivate_timeout = Timestamp::from_seconds(5); // for test
-    //     let tally_timeout = Timestamp::from_seconds(30); // for test
+    // let tally_timeout = Timestamp::from_seconds(30); // for test
 
     let deactivate_timeout = Timestamp::from_seconds(5 * 60); // 5 minutes
     let tally_timeout = Timestamp::from_seconds(30 * 60); // 30 minutes
@@ -465,7 +465,6 @@ pub fn execute(
         ExecuteMsg::StopTallyingPeriod { results, salt } => {
             execute_stop_tallying_period(deps, env, info, results, salt)
         }
-        ExecuteMsg::Bond {} => execute_bond(deps, env, info),
         ExecuteMsg::Withdraw {} => execute_withdraw(deps, env, info),
     }
 }
@@ -1740,25 +1739,6 @@ fn execute_stop_tallying_period(
         .add_attributes(attributes))
 }
 
-fn execute_bond(deps: DepsMut, _env: Env, info: MessageInfo) -> Result<Response, ContractError> {
-    if !is_admin(deps.as_ref(), info.sender.as_ref())? {
-        return Err(ContractError::Unauthorized {});
-    }
-
-    let denom = "peaka".to_string();
-    let mut amount: Uint128 = Uint128::new(0);
-    // Iterate through the funds and find the amount with the MACI denomination
-    info.funds.iter().for_each(|fund| {
-        if fund.denom == denom {
-            amount = fund.amount;
-        }
-    });
-
-    Ok(Response::new()
-        .add_attribute("action", "bond")
-        .add_attribute("amount", amount.to_string()))
-}
-
 fn execute_withdraw(
     deps: DepsMut,
     env: Env,
@@ -1770,18 +1750,18 @@ fn execute_withdraw(
     let admin = ADMIN.load(deps.storage)?.admin;
     let operator = MACI_OPERATOR.load(deps.storage)?;
 
-    // 检查是否已过投票结束3天
-    if current_time < voting_time.end_time.plus_days(3) {
+    // If status is Ended, you can withdraw immediately
+    // If status is not Ended, then you need to wait 3 days before you can withdraw
+    if period.status != PeriodStatus::Ended && current_time < voting_time.end_time.plus_days(3) {
         return Err(ContractError::WithdrawalMustAfterThirdDay {});
     }
 
     let denom = "peaka".to_string();
-    // 克隆env.contract.address以避免所有权移动
     let contract_address = env.contract.address.clone();
     let contract_balance = deps.querier.query_balance(contract_address, &denom)?;
     let contract_balance_amount = contract_balance.amount.u128();
 
-    // 如果超过3天还未结束,全部返还给admin
+    // If period not ended after 3 days, return all funds to admin
     if period.status != PeriodStatus::Ended {
         let message = BankMsg::Send {
             to_address: admin.to_string(),
@@ -1790,27 +1770,29 @@ fn execute_withdraw(
 
         return Ok(Response::new()
             .add_message(message)
-            .add_attribute("action", "withdraw_to_admin")
-            .add_attribute("amount", contract_balance_amount.to_string()));
+            .add_attribute("action", "withdraw")
+            .add_attribute("operator_reward", "0")
+            .add_attribute("penalty_amount", contract_balance_amount.to_string())
+            .add_attribute("miss_rate", "0"));
     }
 
-    // 计算operator表现
-    let performance = calculate_operator_performance(deps.as_ref(), env)?;
-
+    // Calculate operator performance
+    let performance = calculate_operator_performance(deps.as_ref())?;
     let withdraw_amount = Uint256::from_u128(contract_balance_amount);
-    // 根据miss_rate计算扣除比例
-    let penalty_amount =
-        withdraw_amount.multiply_ratio(performance.miss_rate, Uint256::from_u128(100u128));
 
-    // operator获得的奖励
-    let operator_reward = withdraw_amount - penalty_amount;
+    // Calculate operator reward based on miss rate
+    let operator_reward =
+        withdraw_amount.multiply_ratio(performance.miss_rate, Uint256::from_u128(100u128));
+    // Calculate penalty amount
+    let penalty_amount = withdraw_amount - operator_reward;
 
     let mut messages: Vec<CosmosMsg> = vec![];
     let penalty_u128_amount = penalty_amount
         .try_into() // Uint256 -> Uint128
         .map(|x: Uint128| x.u128()) // Uint128 -> u128
         .map_err(|_| ContractError::ValueTooLarge {})?;
-    // 发送扣除的金额给admin
+
+    // Send penalty amount to admin
     if !penalty_amount.is_zero() {
         messages.push(CosmosMsg::Bank(BankMsg::Send {
             to_address: admin.to_string(),
@@ -1823,7 +1805,7 @@ fn execute_withdraw(
         .map(|x: Uint128| x.u128())
         .map_err(|_| ContractError::ValueTooLarge {})?;
 
-    // 发送剩余奖励给operator
+    // Send remaining reward to operator
     if !operator_reward.is_zero() {
         messages.push(CosmosMsg::Bank(BankMsg::Send {
             to_address: operator.to_string(),
@@ -2119,13 +2101,13 @@ pub fn check_operator_process_time(deps: Deps, env: Env) -> Result<bool, Contrac
 
     let first_dmsg_time = match FIRST_DMSG_TIMESTAMP.may_load(deps.storage)? {
         Some(timestamp) => timestamp,
-        None => return Ok(true), // 如果没有第一条消息的时间戳,说明还没有deactivate消息需要处理
+        None => return Ok(true), // If there is no timestamp for first message, means no deactivate messages need to be processed
     };
 
     let processed_dmsg_count = PROCESSED_DMSG_COUNT.load(deps.storage)?;
     let dmsg_chain_length = DMSG_CHAIN_LENGTH.load(deps.storage)?;
 
-    // 如果当前批次已经处理完,返回true
+    // If current batch is fully processed, return true
     if processed_dmsg_count == dmsg_chain_length {
         return Ok(true);
     }
@@ -2140,95 +2122,48 @@ pub fn check_operator_process_time(deps: Deps, env: Env) -> Result<bool, Contrac
     Ok(true)
 }
 
-// Check if tally is completed within 6 hours after the voting end time
-fn check_stop_tallying_time(deps: Deps, env: Env) -> Result<bool, ContractError> {
-    let voting_time = VOTINGTIME.load(deps.storage)?;
-    let current_time = env.block.time;
-
-    // If the current time is less than or equal to the voting end time, it means we're still in the voting period.
-    if current_time <= voting_time.end_time {
-        return Ok(true);
-    }
-
-    let period = PERIOD.load(deps.storage)?;
-
-    // If the period is already Ended, it means tally has been successfully completed
-    if period.status == PeriodStatus::Ended {
-        return Ok(true);
-    }
-    let tally_timeout = TALLY_TIMEOUT.load(deps.storage)?;
-
-    // Check if we're within the tally window after the voting end time
-    let time_difference = current_time.seconds() - voting_time.end_time.seconds();
-    if time_difference > tally_timeout.seconds() {
-        return Ok(false);
-    }
-
-    Ok(true)
-}
-
 #[cw_serde]
 pub struct OperatorPerformance {
-    pub unprocessed_deactivate_count: Uint256,
-    pub delay_process_count: Uint256,
-    pub deactivate_processing_complete: bool,
-    pub tally_processing_complete: bool,
-    pub period: PeriodStatus,
-    pub miss_rate: Uint256, // Changed from Decimal to Uint256
+    pub delay_deactivate_count: Uint256,
+    pub delay_tally_count: Uint256,
+    pub miss_rate: Uint256, // Miss rate, range 0-100, represents percentage of operator's deserved reward
 }
 
-pub fn calculate_operator_performance(
-    deps: Deps,
-    env: Env,
-) -> Result<OperatorPerformance, ContractError> {
-    let penalty_rate = PENALTY_RATE.load(deps.storage)?;
-
-    let voting_time = VOTINGTIME.load(deps.storage)?;
-    let current_time = env.block.time;
-    let processed_dmsg_count = PROCESSED_DMSG_COUNT.load(deps.storage)?;
-    let dmsg_chain_length = DMSG_CHAIN_LENGTH.load(deps.storage)?;
-
-    // Check if the divisor is zero
-    if dmsg_chain_length.is_zero() {
-        return Err(ContractError::DivisionByZero {});
-    }
+pub fn calculate_operator_performance(deps: Deps) -> Result<OperatorPerformance, ContractError> {
     let delay_records = DELAY_RECORDS.load(deps.storage)?;
-    let delay_process_count = Uint256::from_u128(delay_records.records.len() as u128);
-    let unprocessed_deactivate_count = dmsg_chain_length - processed_dmsg_count;
 
-    // Calculate base miss rate as percentage (0-100)
-    let base_miss_rate = if dmsg_chain_length.is_zero() {
-        Uint256::zero()
-    } else {
-        unprocessed_deactivate_count.multiply_ratio(Uint256::from(100u128), dmsg_chain_length)
-    };
+    // Count number of different types of delay records
+    let mut delay_deactivate_count = Uint256::zero();
+    let mut delay_tally_count = Uint256::zero();
 
-    let (period, miss_rate) = if current_time < voting_time.start_time {
-        (PeriodStatus::Pending, Uint256::zero())
-    } else if current_time <= voting_time.end_time {
-        (PeriodStatus::Voting, base_miss_rate)
-    } else {
-        let period_state = PERIOD.load(deps.storage)?;
-        let final_miss_rate = if check_stop_tallying_time(deps, env.clone())? {
-            base_miss_rate
-        } else {
-            // If base_miss_rate is less than PENALTY_RATE, set it to 0 (maximum penalty)
-            // Otherwise, increase the penalty by PENALTY_RATE
-            if base_miss_rate <= penalty_rate {
-                Uint256::zero()
-            } else {
-                base_miss_rate - penalty_rate
+    for record in &delay_records.records {
+        match record.delay_type {
+            DelayType::DeactivateDelay => {
+                delay_deactivate_count += record.delay_process_dmsg_count;
             }
-        };
-        (period_state.status, final_miss_rate)
-    };
+            DelayType::TallyDelay => {
+                delay_tally_count += Uint256::from_u128(1u128);
+            }
+        }
+    }
+
+    // Set penalty rate for each type of delay
+    let tally_penalty_rate = PENALTY_RATE.load(deps.storage)?;
+    let deactivate_penalty_rate = Uint256::from_u128(5u128); // 5% penalty for each deactivate delay
+
+    // Calculate total penalty rate
+    let total_penalty_rate =
+        delay_tally_count * tally_penalty_rate + delay_deactivate_count * deactivate_penalty_rate;
+
+    // Ensure penalty rate does not exceed 100%
+    let penalty_rate = std::cmp::min(total_penalty_rate, Uint256::from_u128(100u128));
+
+    // Calculate miss rate (100% - penalty rate)
+    let miss_rate = Uint256::from_u128(100u128) - penalty_rate;
 
     Ok(OperatorPerformance {
-        unprocessed_deactivate_count,
-        delay_process_count,
-        deactivate_processing_complete: check_operator_process_time(deps, env.clone())?,
-        tally_processing_complete: check_stop_tallying_time(deps, env)?,
-        period,
+        delay_deactivate_count,
+        delay_tally_count,
         miss_rate,
     })
 }

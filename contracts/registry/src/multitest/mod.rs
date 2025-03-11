@@ -4,11 +4,13 @@ mod tests;
 use anyhow::Result as AnyResult;
 
 use crate::{
-    contract::{execute, instantiate, query, reply},
+    contract::{execute, instantiate, migrate, query, reply},
     msg::*,
     state::{CircuitChargeConfig, ValidatorSet},
 };
 use cosmwasm_std::{Addr, Coin, StdResult, Timestamp, Uint256};
+use cw_amaci::msg::{WhitelistBase, WhitelistBaseConfig};
+
 use cw_amaci::state::{PubKey, RoundInfo, VotingTime};
 use cw_multi_test::{App, AppResponse, ContractWrapper, Executor};
 pub const MOCK_CONTRACT_ADDR: &str = "cosmos2contract";
@@ -122,8 +124,15 @@ impl AmaciRegistryContract {
             operator,
             amaci_code_id,
         };
-        app.instantiate_contract(code_id.0, sender, &init_msg, &[], label, None)
-            .map(Self::from)
+        app.instantiate_contract(
+            code_id.0,
+            sender.clone(),
+            &init_msg,
+            &[],
+            label,
+            Some(sender.to_string()),
+        )
+        .map(Self::from)
     }
 
     #[track_caller]
@@ -132,13 +141,12 @@ impl AmaciRegistryContract {
         app: &mut App,
         sender: Addr,
         operator: Addr,
-        send_funds: &[Coin],
     ) -> AnyResult<AppResponse> {
         app.execute_contract(
             sender,
             self.addr(),
             &ExecuteMsg::SetMaciOperator { operator },
-            send_funds,
+            &[],
         )
     }
 
@@ -187,6 +195,52 @@ impl AmaciRegistryContract {
                 end_time,
             },
             whitelist: None,
+            pre_deactivate_root: Uint256::from_u128(0u128),
+            circuit_type,
+            certification_system,
+        };
+
+        app.execute_contract(sender, self.addr(), &msg, send_funds)
+    }
+
+    #[track_caller]
+    pub fn create_round_with_whitelist(
+        &self,
+        app: &mut App,
+        sender: Addr,
+        operator: Addr,
+        circuit_type: Uint256,
+        certification_system: Uint256,
+        send_funds: &[Coin],
+    ) -> AnyResult<AppResponse> {
+        let round_info = RoundInfo {
+            title: String::from("HackWasm Berlin"),
+            description: String::from("Hack In Brelin"),
+            link: String::from("https://baidu.com"),
+        };
+
+        let start_time = Timestamp::from_nanos(1571797424879000000);
+        let end_time = start_time.plus_minutes(11);
+
+        let whitelist = Some(WhitelistBase {
+            users: vec![
+                WhitelistBaseConfig { addr: user1() },
+                WhitelistBaseConfig { addr: user2() },
+                WhitelistBaseConfig { addr: user3() },
+            ],
+        });
+
+        let msg = ExecuteMsg::CreateRound {
+            operator,
+            round_info,
+            max_voter: Uint256::from_u128(3u128),
+            max_option: Uint256::from_u128(5u128),
+            voice_credit_amount: Uint256::from_u128(100u128),
+            voting_time: VotingTime {
+                start_time,
+                end_time,
+            },
+            whitelist,
             pre_deactivate_root: Uint256::from_u128(0u128),
             circuit_type,
             certification_system,
@@ -319,27 +373,27 @@ impl From<Addr> for AmaciRegistryContract {
 }
 
 pub fn user1() -> Addr {
-    Addr::unchecked("user1")
+    Addr::unchecked("0")
 }
 
 pub fn user2() -> Addr {
-    Addr::unchecked("user2")
+    Addr::unchecked("1")
 }
 
 pub fn user3() -> Addr {
-    Addr::unchecked("user3")
+    Addr::unchecked("2")
 }
 
 pub fn user4() -> Addr {
-    Addr::unchecked("user4")
+    Addr::unchecked("3")
 }
 
 pub fn user5() -> Addr {
-    Addr::unchecked("user5")
+    Addr::unchecked("4")
 }
 
 pub fn owner() -> Addr {
-    Addr::unchecked("dora1t58t7azqzq26406uwehgnfekal5kzym3m9lz4k")
+    Addr::unchecked("dora1qdagdkg9me4253h9qyvx83sd4gpta6rzh2fa0j")
 }
 
 pub fn validator() -> Addr {
@@ -366,7 +420,7 @@ pub fn contract_address() -> Addr {
     Addr::unchecked("dora1smdzpfsy48kmkzmm4m9hsg4850czdvfncxyxp6d4h3j7qv3m4v0s0530a6")
 }
 
-pub fn pubkey1() -> PubKey {
+pub fn operator_pubkey1() -> PubKey {
     return PubKey {
         x: uint256_from_decimal_string(
             "3557592161792765812904087712812111121909518311142005886657252371904276697771",
@@ -377,7 +431,7 @@ pub fn pubkey1() -> PubKey {
     };
 }
 
-pub fn pubkey2() -> PubKey {
+pub fn operator_pubkey2() -> PubKey {
     return PubKey {
         x: uint256_from_decimal_string(
             "4363822302427519764561660537570341277214758164895027920046745209970137856681",
@@ -388,7 +442,7 @@ pub fn pubkey2() -> PubKey {
     };
 }
 
-pub fn pubkey3() -> PubKey {
+pub fn operator_pubkey3() -> PubKey {
     return PubKey {
         x: uint256_from_decimal_string(
             "4363822302427519764561660537570341277214758164895027920046745209970137856681",
