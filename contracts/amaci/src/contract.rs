@@ -1771,9 +1771,10 @@ fn execute_withdraw(
         return Ok(Response::new()
             .add_message(message)
             .add_attribute("action", "withdraw")
+            .add_attribute("is_ended", "false")
             .add_attribute("operator_reward", "0")
             .add_attribute("penalty_amount", contract_balance_amount.to_string())
-            .add_attribute("miss_rate", "0"));
+            .add_attribute("miss_rate", Uint256::from_u128(0u128).to_string()));
     }
 
     // Calculate operator performance
@@ -1816,6 +1817,7 @@ fn execute_withdraw(
     Ok(Response::new()
         .add_messages(messages)
         .add_attribute("action", "withdraw")
+        .add_attribute("is_ended", "true")
         .add_attribute("operator_reward", operator_reward_u128_amount.to_string())
         .add_attribute("penalty_amount", penalty_u128_amount.to_string())
         .add_attribute("miss_rate", performance.miss_rate.to_string()))
