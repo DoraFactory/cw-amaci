@@ -313,11 +313,11 @@ pub fn instantiate(
                                                      // let deactivate_timeout = Timestamp::from_seconds(15 * 60); // 15 minutes
                                                      // let tally_timeout = Timestamp::from_seconds(1 * 3600); // 1 hour
 
-    // let deactivate_timeout = Timestamp::from_seconds(5); // for test
-    // let tally_timeout = Timestamp::from_seconds(30); // for test
+    let deactivate_timeout = Timestamp::from_seconds(5); // for test
+    let tally_timeout = Timestamp::from_seconds(30); // for test
 
-    let deactivate_timeout = Timestamp::from_seconds(5 * 60); // 5 minutes
-    let tally_timeout = Timestamp::from_seconds(30 * 60); // 30 minutes
+    // let deactivate_timeout = Timestamp::from_seconds(5 * 60); // 5 minutes
+    // let tally_timeout = Timestamp::from_seconds(30 * 60); // 30 minutes
     DEACTIVATE_TIMEOUT.save(deps.storage, &deactivate_timeout)?;
     TALLY_TIMEOUT.save(deps.storage, &tally_timeout)?;
     DELAY_RECORDS.save(deps.storage, &DelayRecords { records: vec![] })?;
@@ -1756,6 +1756,10 @@ fn execute_claim(deps: DepsMut, env: Env, _info: MessageInfo) -> Result<Response
     let contract_address = env.contract.address.clone();
     let contract_balance = deps.querier.query_balance(contract_address, &denom)?;
     let contract_balance_amount = contract_balance.amount.u128();
+
+    if contract_balance_amount == 0u128 {
+        return Err(ContractError::AllFundsClaimed {});
+    }
 
     // If period not ended after 3 days, return all funds to admin
     if period.status != PeriodStatus::Ended {

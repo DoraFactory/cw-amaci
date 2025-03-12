@@ -1112,4 +1112,10 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
         round_balance_before_claim.amount - claim_amount
     );
     assert_eq!(round_balance_after_claim.amount, Uint128::from(0u128));
+
+    let claim_error = maci_contract.amaci_claim(&mut app, owner()).unwrap_err();
+    assert_eq!(
+        AmaciContractError::AllFundsClaimed {},
+        claim_error.downcast().unwrap()
+    );
 }

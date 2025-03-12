@@ -122,4 +122,7 @@ pub enum ContractError {
 
     #[error("Value too large")]
     ValueTooLarge {},
+
+    #[error("All funds claimed")]
+    AllFundsClaimed {},
 }
