@@ -44,7 +44,7 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
@@ -70,6 +70,10 @@ pub fn instantiate(
             current: msg.max_vote_options,
             max_allowed: vote_option_max_amount,
         });
+    }
+
+    if msg.voting_time.end_time < env.block.time {
+        return Err(ContractError::WrongTimeSet {});
     }
 
     // if msg.voting_time.start_time >= msg.voting_time.end_time {
@@ -310,11 +314,6 @@ pub fn instantiate(
     // Init penalty rate and timeout
     let penalty_rate = Uint256::from_u128(50);
     PENALTY_RATE.save(deps.storage, &penalty_rate)?; // 50%
-                                                     // let deactivate_timeout = Timestamp::from_seconds(15 * 60); // 15 minutes
-                                                     // let tally_timeout = Timestamp::from_seconds(1 * 3600); // 1 hour
-
-    // let deactivate_timeout = Timestamp::from_seconds(5); // for test
-    // let tally_timeout = Timestamp::from_seconds(30); // for test
 
     let deactivate_timeout = Timestamp::from_seconds(5 * 60); // 5 minutes
     let tally_timeout = Timestamp::from_seconds(30 * 60); // 30 minutes
@@ -1746,12 +1745,6 @@ fn execute_claim(deps: DepsMut, env: Env, _info: MessageInfo) -> Result<Response
     let admin = ADMIN.load(deps.storage)?.admin;
     let operator = MACI_OPERATOR.load(deps.storage)?;
 
-    // If status is Ended, you can claim immediately
-    // If status is not Ended, then you need to wait 3 days before you can claim
-    if period.status != PeriodStatus::Ended && current_time < voting_time.end_time.plus_days(3) {
-        return Err(ContractError::ClaimMustAfterThirdDay {});
-    }
-
     let denom = "peaka".to_string();
     let contract_address = env.contract.address.clone();
     let contract_balance = deps.querier.query_balance(contract_address, &denom)?;
@@ -1761,8 +1754,8 @@ fn execute_claim(deps: DepsMut, env: Env, _info: MessageInfo) -> Result<Response
         return Err(ContractError::AllFundsClaimed {});
     }
 
-    // If period not ended after 3 days, return all funds to admin
-    if period.status != PeriodStatus::Ended {
+    // If more than 3 days have passed, slash regardless of status; if less than 3 days and status is not Ended, return an error
+    if current_time > voting_time.end_time.plus_days(3) {
         let message = BankMsg::Send {
             to_address: admin.to_string(),
             amount: coins(contract_balance_amount, denom),
@@ -1771,10 +1764,16 @@ fn execute_claim(deps: DepsMut, env: Env, _info: MessageInfo) -> Result<Response
         return Ok(Response::new()
             .add_message(message)
             .add_attribute("action", "claim")
-            .add_attribute("is_ended", "false")
+            .add_attribute("is_ended", (period.status == PeriodStatus::Ended).to_string())
             .add_attribute("operator_reward", "0")
             .add_attribute("penalty_amount", contract_balance_amount.to_string())
-            .add_attribute("miss_rate", Uint256::from_u128(0u128).to_string()));
+            .add_attribute("miss_rate", Uint256::from_u128(0u128).to_string())
+            .add_attribute("is_tally_timeout", "true"));
+    }
+
+    // If less than 3 days and status is not Ended, return an error
+    if period.status != PeriodStatus::Ended {
+        return Err(ContractError::PeriodError {});
     }
 
     // Calculate operator performance
@@ -1820,7 +1819,8 @@ fn execute_claim(deps: DepsMut, env: Env, _info: MessageInfo) -> Result<Response
         .add_attribute("is_ended", "true")
         .add_attribute("operator_reward", operator_reward_u128_amount.to_string())
         .add_attribute("penalty_amount", penalty_u128_amount.to_string())
-        .add_attribute("miss_rate", performance.miss_rate.to_string()))
+        .add_attribute("miss_rate", performance.miss_rate.to_string())
+        .add_attribute("is_tally_timeout", "false"))
 }
 
 fn can_sign_up(deps: Deps, sender: &Addr) -> StdResult<bool> {
