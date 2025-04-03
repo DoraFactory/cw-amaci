@@ -220,7 +220,7 @@ impl AmaciRegistryContract {
         };
 
         let start_time = Timestamp::from_nanos(1571797424879000000);
-        let end_time = start_time.plus_minutes(11);
+        let end_time = start_time.plus_minutes(21);
 
         let whitelist = Some(WhitelistBase {
             users: vec![

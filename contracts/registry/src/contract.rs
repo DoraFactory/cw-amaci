@@ -135,25 +135,25 @@ pub fn execute_create_round(
     if max_voter <= Uint256::from_u128(25u128) && max_option <= Uint256::from_u128(5u128) {
         // state_tree_depth: 2
         // vote_option_tree_depth: 1
-        // price: 50 DORA
+        // price: 20 DORA
         maci_parameters = MaciParameters {
             state_tree_depth: Uint256::from_u128(2u128),
             int_state_tree_depth: Uint256::from_u128(1u128),
             vote_option_tree_depth: Uint256::from_u128(1u128),
             message_batch_size: Uint256::from_u128(5u128),
         };
-        required_fee = Uint128::from(50000000000000000000u128);
+        required_fee = Uint128::from(20000000000000000000u128);
     } else if max_voter <= Uint256::from_u128(625u128) && max_option <= Uint256::from_u128(25u128) {
         // state_tree_depth: 4
         // vote_option_tree_depth: 2
-        // price: 100 DORA
+        // price: 750 DORA
         maci_parameters = MaciParameters {
             state_tree_depth: Uint256::from_u128(4u128),
             int_state_tree_depth: Uint256::from_u128(2u128),
             vote_option_tree_depth: Uint256::from_u128(2u128),
             message_batch_size: Uint256::from_u128(25u128),
         };
-        required_fee = Uint128::from(100000000000000000000u128);
+        required_fee = Uint128::from(750000000000000000000u128);
     } else {
         return Err(ContractError::NoMatchedSizeCircuit {});
     }

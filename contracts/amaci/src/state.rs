@@ -315,7 +315,11 @@ pub const MACI_OPERATOR: Item<Addr> = Item::new("maci_operator");
 pub const PENALTY_RATE: Item<Uint256> = Item::new("penalty_rate");
 pub const CREATE_ROUND_WINDOW: Item<Timestamp> = Item::new("create_round_window");
 
-pub const DEACTIVATE_TIMEOUT: Item<Timestamp> = Item::new("deactivate_timeout"); // deactivate timeout in seconds
+pub const DEACTIVATE_DELAY: Item<Timestamp> = Item::new("deactivate_delay"); // deactivate delay in seconds
+pub const TALLY_DELAY_MIN_HOURS: Item<u64> = Item::new("tally_delay_min_hours"); // tally delay min hours
+pub const TALLY_DELAY_MAX_HOURS: Item<u64> = Item::new("tally_delay_max_hours"); // tally delay max hours
+pub const TALLY_BASE_WORK: Item<u128> = Item::new("tally_base_work"); // tally base work
+
 pub const TALLY_TIMEOUT: Item<Timestamp> = Item::new("tally_timeout"); // tally timeout in seconds
 
 pub const FIRST_DMSG_TIMESTAMP: Item<Timestamp> = Item::new("first_dmsg_timestamp");

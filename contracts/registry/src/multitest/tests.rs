@@ -171,7 +171,13 @@ pub fn next_block_11_minutes(block: &mut BlockInfo) {
 pub fn next_block_31_minutes(block: &mut BlockInfo) {
     block.time = block.time.plus_minutes(31);
     block.height += 1;
+}   
+
+pub fn next_block_3_hours(block: &mut BlockInfo) {
+    block.time = block.time.plus_hours(3);
+    block.height += 1;
 }
+
 
 pub fn next_block_3_days(block: &mut BlockInfo) {
     block.time = block.time.plus_days(3);
@@ -809,7 +815,7 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
                     "process_deactivate_message new state commitment {:?}",
                     new_deactivate_commitment
                 );
-                app.update_block(next_block_6_minutes);
+                app.update_block(next_block_11_minutes);
                 _ = maci_contract
                     .amaci_process_deactivate_message(
                         &mut app,
@@ -990,7 +996,7 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
                     withdraw_error.downcast().unwrap()
                 );
 
-                app.update_block(next_block_31_minutes);
+                app.update_block(next_block_3_hours);
                 _ = maci_contract.amaci_stop_tallying(&mut app, owner(), results, salt);
 
                 let all_result = maci_contract.amaci_get_all_result(&app);
@@ -1022,17 +1028,17 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
             records: vec![
                 DelayRecord {
                     delay_timestamp: Timestamp::from_nanos(1571797424879305533),
-                    delay_duration: 360,
+                    delay_duration: 660,
                     delay_reason:
-                        "Processing of 2 deactivate messages has timed out after 360 seconds"
+                        "Processing of 2 deactivate messages has timed out after 660 seconds"
                             .to_string(),
                     delay_process_dmsg_count: Uint256::from_u128(2),
                     delay_type: DelayType::DeactivateDelay,
                 },
                 DelayRecord {
-                    delay_timestamp: Timestamp::from_nanos(1571798084879000000),
-                    delay_duration: 2220,
-                    delay_reason: "Tallying has timed out after 2220 seconds".to_string(),
+                    delay_timestamp: Timestamp::from_nanos(1571798684879000000),
+                    delay_duration: 10860,
+                    delay_reason: "Tallying has timed out after 10860 seconds (total process: 6, allowed: 1800 seconds)".to_string(),
                     delay_process_dmsg_count: Uint256::from_u128(0),
                     delay_type: DelayType::TallyDelay,
                 },

@@ -5,18 +5,19 @@ use crate::msg::{
     ExecuteMsg, Groth16ProofType, InstantiateMsg, InstantiationData, QueryMsg, WhitelistBase,
 };
 use crate::state::{
-    Admin, DelayRecord, DelayRecords, DelayType, Groth16ProofStr, MessageData, Period,
-    PeriodStatus, PubKey, QuinaryTreeRoot, RoundInfo, StateLeaf, VotingTime, Whitelist,
+    Admin, DelayRecord, DelayRecords, DelayType, Groth16ProofStr, MaciParameters, MessageData,
+    Period, PeriodStatus, PubKey, QuinaryTreeRoot, RoundInfo, StateLeaf, VotingTime, Whitelist,
     WhitelistConfig, ADMIN, CERTSYSTEM, CIRCUITTYPE, COORDINATORHASH, CREATE_ROUND_WINDOW,
     CURRENT_DEACTIVATE_COMMITMENT, CURRENT_STATE_COMMITMENT, CURRENT_TALLY_COMMITMENT,
-    DEACTIVATE_COUNT, DEACTIVATE_TIMEOUT, DELAY_RECORDS, DMSG_CHAIN_LENGTH, DMSG_HASHES, DNODES,
+    DEACTIVATE_COUNT, DEACTIVATE_DELAY, DELAY_RECORDS, DMSG_CHAIN_LENGTH, DMSG_HASHES, DNODES,
     FEEGRANTS, FIRST_DMSG_TIMESTAMP, GROTH16_DEACTIVATE_VKEYS, GROTH16_NEWKEY_VKEYS,
     GROTH16_PROCESS_VKEYS, GROTH16_TALLY_VKEYS, LEAF_IDX_0, MACIPARAMETERS,
     MACI_DEACTIVATE_MESSAGE, MACI_OPERATOR, MAX_LEAVES_COUNT, MAX_VOTE_OPTIONS, MSG_CHAIN_LENGTH,
     MSG_HASHES, NODES, NULLIFIERS, NUMSIGNUPS, PENALTY_RATE, PERIOD, PRE_DEACTIVATE_ROOT,
     PROCESSED_DMSG_COUNT, PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO,
-    SIGNUPED, STATEIDXINC, STATE_ROOT_BY_DMSG, TALLY_TIMEOUT, TOTAL_RESULT, VOICECREDITBALANCE,
-    VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS, ZEROS_H10,
+    SIGNUPED, STATEIDXINC, STATE_ROOT_BY_DMSG, TALLY_BASE_WORK, TALLY_DELAY_MAX_HOURS,
+    TALLY_DELAY_MIN_HOURS, TALLY_TIMEOUT, TOTAL_RESULT, VOICECREDITBALANCE, VOICE_CREDIT_AMOUNT,
+    VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS, ZEROS_H10,
 };
 use cosmwasm_schema::cw_serde;
 #[cfg(not(feature = "library"))]
@@ -315,11 +316,23 @@ pub fn instantiate(
     let penalty_rate = Uint256::from_u128(50);
     PENALTY_RATE.save(deps.storage, &penalty_rate)?; // 50%
 
-    let deactivate_timeout = Timestamp::from_seconds(5 * 60); // 5 minutes
-    let tally_timeout = Timestamp::from_seconds(30 * 60); // 30 minutes
-    DEACTIVATE_TIMEOUT.save(deps.storage, &deactivate_timeout)?;
-    TALLY_TIMEOUT.save(deps.storage, &tally_timeout)?;
     DELAY_RECORDS.save(deps.storage, &DelayRecords { records: vec![] })?;
+
+    let deactivate_delay = Timestamp::from_seconds(10 * 60); // 10 minutes
+    DEACTIVATE_DELAY.save(deps.storage, &deactivate_delay)?;
+
+    let tally_delay_min_hours = 2u64; // Minimum delay time: 2 hours
+    let tally_delay_max_hours = 36u64; // Maximum delay time: 48 hours
+                                       // Based on reference case: workload of 17208(625 + 16583) corresponds to 27 hours
+                                       // So approximately every 640 workload corresponds to 1 hour (17208/27 ≈ 637.3)
+    let tally_base_work = 640u128; // Every 640 workload corresponds to 1 hour
+    let tally_timeout = Timestamp::from_seconds(3 * 24 * 60 * 60); // 3 days
+    TALLY_DELAY_MIN_HOURS.save(deps.storage, &tally_delay_min_hours)?;
+    TALLY_DELAY_MAX_HOURS.save(deps.storage, &tally_delay_max_hours)?;
+    TALLY_BASE_WORK.save(deps.storage, &tally_base_work)?;
+    TALLY_TIMEOUT.save(deps.storage, &tally_timeout)?;
+
+    let old_tally_timeout_set = Timestamp::from_seconds(tally_delay_max_hours * 60 * 60);
 
     let data: InstantiationData = InstantiationData {
         caller: info.sender.clone(),
@@ -335,8 +348,8 @@ pub fn instantiate(
         circuit_type: circuit_type.to_string(),
         certification_system: certification_system.to_string(),
         penalty_rate: penalty_rate.clone(),
-        deactivate_timeout: deactivate_timeout.clone(),
-        tally_timeout: tally_timeout.clone(),
+        deactivate_timeout: deactivate_delay.clone(),
+        tally_timeout: old_tally_timeout_set.clone(),
     };
 
     let mut attributes = vec![
@@ -376,9 +389,12 @@ pub fn instantiate(
         attr("penalty_rate", &penalty_rate.to_string()),
         attr(
             "deactivate_timeout",
-            &deactivate_timeout.seconds().to_string(),
+            &deactivate_delay.seconds().to_string(),
         ),
-        attr("tally_timeout", &tally_timeout.seconds().to_string()),
+        attr(
+            "tally_timeout",
+            &old_tally_timeout_set.seconds().to_string(),
+        ),
     ];
 
     if msg.round_info.description != "" {
@@ -979,7 +995,7 @@ pub fn execute_process_deactivate_message(
 
     let different_time: u64 = current_time.seconds() - first_dmsg_time.seconds();
 
-    if different_time > DEACTIVATE_TIMEOUT.load(deps.storage)?.seconds() {
+    if different_time > DEACTIVATE_DELAY.load(deps.storage)?.seconds() {
         let mut delay_records = DELAY_RECORDS.load(deps.storage)?;
         let delay_timestamp = first_dmsg_time;
         let delay_duration = different_time;
@@ -1605,17 +1621,60 @@ fn execute_stop_tallying_period(
         return Err(ContractError::PeriodError {});
     }
 
-    let tally_timeout = TALLY_TIMEOUT.load(deps.storage)?;
+    // Get the final signup count and message count
+    let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
+    let msg_chain_length = MSG_CHAIN_LENGTH.load(deps.storage)?;
+
+    // Calculate total workload (signup and message have same weight)
+    let total_work = num_sign_ups + msg_chain_length;
+
+    let total_work_u128 = total_work
+        .try_into() // Uint256 -> Uint128
+        .map(|x: Uint128| x.u128()) // Uint128 -> u128
+        .map_err(|_| ContractError::ValueTooLarge {})?;
+
+    // Calculate actual delay timeout (linear change between min hours to max hours)
+    let min_hours = TALLY_DELAY_MIN_HOURS.load(deps.storage)?;
+    let max_hours = TALLY_DELAY_MAX_HOURS.load(deps.storage)?;
+    let base_work = TALLY_BASE_WORK.load(deps.storage)?;
+    let parameter: MaciParameters = MACIPARAMETERS.load(deps.storage)?;
+    let state_tree_depth = parameter.state_tree_depth;
+
+    let mut actual_timeout = 0u64;
+    if state_tree_depth == Uint256::from_u128(2u128) {
+        // 2-1-1-5 default to 30 minutes
+        actual_timeout = 30 * 60; // 30 minutes
+    } else {
+        // other maci circuit params use base_work to calculate
+        let hours = {
+            let calculated_hours = (total_work_u128 / base_work) as u64 + 1;
+            if calculated_hours < min_hours {
+                min_hours
+            } else if calculated_hours > max_hours {
+                max_hours
+            } else {
+                calculated_hours
+            }
+        };
+        actual_timeout = hours * 3600;
+    }
 
     let voting_time = VOTINGTIME.load(deps.storage)?;
     let current_time = env.block.time;
     let different_time = current_time.seconds() - voting_time.end_time.seconds();
 
-    let mut attributes = vec![];
-    if different_time > tally_timeout.seconds() {
+    let mut attributes = vec![
+        attr("total_work", total_work_u128.to_string()),
+        attr("actual_timeout_seconds", actual_timeout.to_string()),
+    ];
+
+    if different_time > actual_timeout {
         let delay_timestamp = voting_time.end_time;
         let delay_duration = different_time;
-        let delay_reason = format!("Tallying has timed out after {} seconds", different_time);
+        let delay_reason = format!(
+            "Tallying has timed out after {} seconds (total process: {}, allowed: {} seconds)",
+            different_time, total_work_u128, actual_timeout
+        );
         let delay_process_dmsg_count = Uint256::from_u128(0u128);
         let delay_type = DelayType::TallyDelay;
 
@@ -1630,13 +1689,12 @@ fn execute_stop_tallying_period(
         delay_records.records.push(delay_record);
         DELAY_RECORDS.save(deps.storage, &delay_records)?;
 
-        attributes.push(attr(
-            "delay_timestamp",
-            delay_timestamp.seconds().to_string(),
-        ));
-        attributes.push(attr("delay_duration", delay_duration.to_string()));
-        attributes.push(attr("delay_reason", delay_reason));
-        attributes.push(attr("delay_type", "tally_delay"));
+        attributes.extend(vec![
+            attr("delay_timestamp", delay_timestamp.seconds().to_string()),
+            attr("delay_duration", delay_duration.to_string()),
+            attr("delay_reason", delay_reason),
+            attr("delay_type", "tally_delay"),
+        ]);
     }
 
     let processed_user_count = PROCESSED_USER_COUNT.load(deps.storage)?;
@@ -1754,8 +1812,9 @@ fn execute_claim(deps: DepsMut, env: Env, _info: MessageInfo) -> Result<Response
         return Err(ContractError::AllFundsClaimed {});
     }
 
+    let tally_timeout: Timestamp = TALLY_TIMEOUT.load(deps.storage)?;
     // If more than 3 days have passed, slash regardless of status; if less than 3 days and status is not Ended, return an error
-    if current_time > voting_time.end_time.plus_days(3) {
+    if current_time > voting_time.end_time.plus_seconds(tally_timeout.seconds()) {
         let message = BankMsg::Send {
             to_address: admin.to_string(),
             amount: coins(contract_balance_amount, denom),
@@ -1764,7 +1823,10 @@ fn execute_claim(deps: DepsMut, env: Env, _info: MessageInfo) -> Result<Response
         return Ok(Response::new()
             .add_message(message)
             .add_attribute("action", "claim")
-            .add_attribute("is_ended", (period.status == PeriodStatus::Ended).to_string())
+            .add_attribute(
+                "is_ended",
+                (period.status == PeriodStatus::Ended).to_string(),
+            )
             .add_attribute("operator_reward", "0")
             .add_attribute("penalty_amount", contract_balance_amount.to_string())
             .add_attribute("miss_rate", Uint256::from_u128(0u128).to_string())
@@ -2116,8 +2178,8 @@ pub fn check_operator_process_time(deps: Deps, env: Env) -> Result<bool, Contrac
 
     let time_difference = current_time.seconds() - first_dmsg_time.seconds();
 
-    let deactivate_timeout = DEACTIVATE_TIMEOUT.load(deps.storage)?;
-    if time_difference > deactivate_timeout.seconds() {
+    let deactivate_delay = DEACTIVATE_DELAY.load(deps.storage)?;
+    if time_difference > deactivate_delay.seconds() {
         return Ok(false);
     }
 
