@@ -450,7 +450,7 @@ fn create_round_with_reward_should_works() {
 
     // _ = contract.migrate_v1(&mut app, owner(), amaci_code_id.id()).unwrap();
 
-    let small_base_payamount = 50000000000000000000u128;
+    let small_base_payamount = 20000000000000000000u128; // 20 DORA
     let create_round_with_wrong_circuit_type = contract
         .create_round(
             &mut app,
@@ -610,7 +610,7 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
 
     // _ = contract.migrate_v1(&mut app, owner(), amaci_code_id.id()).unwrap();
 
-    let small_base_payamount = 50000000000000000000u128;
+    let small_base_payamount = 20000000000000000000u128; // 20 DORA
 
     let resp = contract
         .create_round_with_whitelist(
@@ -1129,4 +1129,7 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
         AmaciContractError::AllFundsClaimed {},
         claim_error.downcast().unwrap()
     );
+
+    let tally_delay = maci_contract.amaci_query_tally_delay(&app).unwrap();
+    println!("tally_delay: {:?}", tally_delay);
 }

@@ -1084,6 +1084,11 @@ impl MaciContract {
         app.wrap()
             .query_wasm_smart(self.addr(), &QueryMsg::GetRoundInfo {})
     }
+
+    pub fn amaci_query_tally_delay(&self, app: &DefaultApp) -> StdResult<TallyDelayInfo> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::GetTallyDelay {})
+    }
 }
 
 impl From<Addr> for MaciContract {

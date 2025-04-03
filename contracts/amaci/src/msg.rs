@@ -211,6 +211,20 @@ pub enum QueryMsg {
 
     #[returns(DelayRecords)]
     GetDelayRecords {},
+
+    #[returns(TallyDelayInfo)]
+    GetTallyDelay {},
+}
+
+#[cw_serde]
+pub struct TallyDelayInfo {
+    pub delay_seconds: u64,
+    pub total_work: u128,
+    pub num_sign_ups: Uint256,
+    pub msg_chain_length: Uint256,
+    pub min_hours: u64,
+    pub max_hours: u64,
+    pub calculated_hours: u64,
 }
 
 #[cw_serde]

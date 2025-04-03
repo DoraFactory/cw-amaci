@@ -2,7 +2,7 @@ use crate::circuit_params::match_vkeys;
 use crate::error::ContractError;
 use crate::groth16_parser::{parse_groth16_proof, parse_groth16_vkey};
 use crate::msg::{
-    ExecuteMsg, Groth16ProofType, InstantiateMsg, InstantiationData, QueryMsg, WhitelistBase,
+    ExecuteMsg, Groth16ProofType, InstantiateMsg, InstantiationData, QueryMsg, WhitelistBase, TallyDelayInfo
 };
 use crate::state::{
     Admin, DelayRecord, DelayRecords, DelayType, Groth16ProofStr, MaciParameters, MessageData,
@@ -1634,46 +1634,22 @@ fn execute_stop_tallying_period(
         .map_err(|_| ContractError::ValueTooLarge {})?;
 
     // Calculate actual delay timeout (linear change between min hours to max hours)
-    let min_hours = TALLY_DELAY_MIN_HOURS.load(deps.storage)?;
-    let max_hours = TALLY_DELAY_MAX_HOURS.load(deps.storage)?;
-    let base_work = TALLY_BASE_WORK.load(deps.storage)?;
-    let parameter: MaciParameters = MACIPARAMETERS.load(deps.storage)?;
-    let state_tree_depth = parameter.state_tree_depth;
-
-    let mut actual_timeout = 0u64;
-    if state_tree_depth == Uint256::from_u128(2u128) {
-        // 2-1-1-5 default to 30 minutes
-        actual_timeout = 30 * 60; // 30 minutes
-    } else {
-        // other maci circuit params use base_work to calculate
-        let hours = {
-            let calculated_hours = (total_work_u128 / base_work) as u64 + 1;
-            if calculated_hours < min_hours {
-                min_hours
-            } else if calculated_hours > max_hours {
-                max_hours
-            } else {
-                calculated_hours
-            }
-        };
-        actual_timeout = hours * 3600;
-    }
-
+    let actual_delay: TallyDelayInfo = calculate_tally_delay(deps.as_ref())?;
     let voting_time = VOTINGTIME.load(deps.storage)?;
     let current_time = env.block.time;
     let different_time = current_time.seconds() - voting_time.end_time.seconds();
 
     let mut attributes = vec![
         attr("total_work", total_work_u128.to_string()),
-        attr("actual_timeout_seconds", actual_timeout.to_string()),
+        attr("actual_delay_seconds", actual_delay.delay_seconds.to_string()),
     ];
 
-    if different_time > actual_timeout {
+    if different_time > actual_delay.delay_seconds {
         let delay_timestamp = voting_time.end_time;
         let delay_duration = different_time;
         let delay_reason = format!(
             "Tallying has timed out after {} seconds (total process: {}, allowed: {} seconds)",
-            different_time, total_work_u128, actual_timeout
+            different_time, total_work_u128, actual_delay.delay_seconds
         );
         let delay_process_dmsg_count = Uint256::from_u128(0u128);
         let delay_type = DelayType::TallyDelay;
@@ -2126,6 +2102,10 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 .unwrap_or(DelayRecords { records: vec![] });
             to_json_binary(&records)
         }
+        QueryMsg::GetTallyDelay {} => {
+            let delay_info = calculate_tally_delay(deps).map_err(|e| cosmwasm_std::StdError::generic_err(e.to_string()))?;
+            to_json_binary(&delay_info)
+        }
     }
 }
 
@@ -2229,5 +2209,53 @@ pub fn calculate_operator_performance(deps: Deps) -> Result<OperatorPerformance,
         delay_deactivate_count,
         delay_tally_count,
         miss_rate,
+    })
+}
+
+pub fn calculate_tally_delay(
+    deps: Deps
+) -> Result<TallyDelayInfo, ContractError> {
+    let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
+    let msg_chain_length = MSG_CHAIN_LENGTH.load(deps.storage)?;
+    
+    // Calculate total workload (signup and message have same weight)
+    let total_work = num_sign_ups + msg_chain_length;
+
+    let total_work_u128 = total_work
+        .try_into() // Uint256 -> Uint128
+        .map(|x: Uint128| x.u128()) // Uint128 -> u128
+        .map_err(|_| ContractError::ValueTooLarge {})?;
+
+    // Calculate actual delay timeout (linear change between min hours to max hours)
+    let min_hours = TALLY_DELAY_MIN_HOURS.load(deps.storage)?;
+    let max_hours = TALLY_DELAY_MAX_HOURS.load(deps.storage)?;
+    let base_work = TALLY_BASE_WORK.load(deps.storage)?;
+    let parameter: MaciParameters = MACIPARAMETERS.load(deps.storage)?;
+    let state_tree_depth = parameter.state_tree_depth;
+
+    let (delay_seconds, calculated_hours) = if state_tree_depth == Uint256::from_u128(2u128) {
+        // 2-1-1-5 default to 30 minutes
+        (30 * 60, 0) // 30 minutes, no calculated hours for this case
+    } else {
+        // other maci circuit params use base_work to calculate
+        let raw_calculated_hours = (total_work_u128 / base_work) as u64 + 1;
+        let calculated_hours = if raw_calculated_hours < min_hours {
+            min_hours
+        } else if raw_calculated_hours > max_hours {
+            max_hours
+        } else {
+            raw_calculated_hours
+        };
+        (calculated_hours * 3600, calculated_hours)
+    };
+
+    Ok(TallyDelayInfo {
+        delay_seconds,
+        total_work: total_work_u128,
+        num_sign_ups,
+        msg_chain_length,
+        min_hours,
+        max_hours,
+        calculated_hours,
     })
 }
