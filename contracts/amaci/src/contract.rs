@@ -2,7 +2,8 @@ use crate::circuit_params::match_vkeys;
 use crate::error::ContractError;
 use crate::groth16_parser::{parse_groth16_proof, parse_groth16_vkey};
 use crate::msg::{
-    ExecuteMsg, Groth16ProofType, InstantiateMsg, InstantiationData, QueryMsg, WhitelistBase, TallyDelayInfo
+    ExecuteMsg, Groth16ProofType, InstantiateMsg, InstantiationData, QueryMsg, TallyDelayInfo,
+    WhitelistBase,
 };
 use crate::state::{
     Admin, DelayRecord, DelayRecords, DelayType, Groth16ProofStr, MaciParameters, MessageData,
@@ -252,9 +253,7 @@ pub fn instantiate(
             .to_string()
             .parse::<usize>()
             .unwrap()],
-        zeros[msg
-            .parameters
-            .state_tree_depth
+        zeros[(msg.parameters.state_tree_depth + Uint256::from_u128(2u128))
             .to_string()
             .parse::<usize>()
             .unwrap()],
@@ -691,7 +690,6 @@ pub fn execute_publish_message(
     // Check if the period status is Voting
     let voting_time = VOTINGTIME.load(deps.storage)?;
     check_voting_time(env, voting_time)?;
-
     // Load the scalar field value
     let snark_scalar_field =
         uint256_from_hex_string("30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001");
@@ -941,7 +939,6 @@ pub fn execute_process_deactivate_message(
 
     // Compute the hash of the input values
     let input_hash = uint256_from_hex_string(&hash_256_uint256_list(&input)) % snark_scalar_field;
-
     // Load the process verification keys
     let deactivate_vkeys_str = GROTH16_DEACTIVATE_VKEYS.load(deps.storage)?;
 
@@ -1344,7 +1341,6 @@ pub fn execute_process_message(
     }
     let mut processed_msg_count = PROCESSED_MSG_COUNT.load(deps.storage)?;
     let msg_chain_length = MSG_CHAIN_LENGTH.load(deps.storage)?;
-
     // Check that all messages have not been processed yet
     assert!(
         processed_msg_count < msg_chain_length,
@@ -1641,7 +1637,10 @@ fn execute_stop_tallying_period(
 
     let mut attributes = vec![
         attr("total_work", total_work_u128.to_string()),
-        attr("actual_delay_seconds", actual_delay.delay_seconds.to_string()),
+        attr(
+            "actual_delay_seconds",
+            actual_delay.delay_seconds.to_string(),
+        ),
     ];
 
     if different_time > actual_delay.delay_seconds {
@@ -2103,7 +2102,8 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             to_json_binary(&records)
         }
         QueryMsg::GetTallyDelay {} => {
-            let delay_info = calculate_tally_delay(deps).map_err(|e| cosmwasm_std::StdError::generic_err(e.to_string()))?;
+            let delay_info = calculate_tally_delay(deps)
+                .map_err(|e| cosmwasm_std::StdError::generic_err(e.to_string()))?;
             to_json_binary(&delay_info)
         }
     }
@@ -2212,12 +2212,10 @@ pub fn calculate_operator_performance(deps: Deps) -> Result<OperatorPerformance,
     })
 }
 
-pub fn calculate_tally_delay(
-    deps: Deps
-) -> Result<TallyDelayInfo, ContractError> {
+pub fn calculate_tally_delay(deps: Deps) -> Result<TallyDelayInfo, ContractError> {
     let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
     let msg_chain_length = MSG_CHAIN_LENGTH.load(deps.storage)?;
-    
+
     // Calculate total workload (signup and message have same weight)
     let total_work = num_sign_ups + msg_chain_length;
 

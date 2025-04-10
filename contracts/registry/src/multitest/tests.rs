@@ -168,6 +168,11 @@ pub fn next_block_11_minutes(block: &mut BlockInfo) {
     block.height += 1;
 }
 
+pub fn next_block_22_minutes(block: &mut BlockInfo) {
+    block.time = block.time.plus_minutes(22);
+    block.height += 1;
+}
+
 pub fn next_block_31_minutes(block: &mut BlockInfo) {
     block.time = block.time.plus_minutes(31);
     block.height += 1;
@@ -798,7 +803,7 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
                 let data: ProofDeactivateData = deserialize_data(&entry.data);
                 assert_eq!(
                     maci_contract.amaci_dmsg_length(&app).unwrap(),
-                    Uint256::from_u128(2u128)
+                    Uint256::from_u128(1u128)
                 );
 
                 let size = uint256_from_decimal_string(&data.size);
@@ -806,10 +811,10 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
                     uint256_from_decimal_string(&data.new_deactivate_commitment);
                 let new_deactivate_root = uint256_from_decimal_string(&data.new_deactivate_root);
                 let proof = Groth16ProofType {
-                                a: "2fac29af2cad382c07952b42c10b282d6ee5c27032548c370fdf40c693965b98239bb54fb0546480075f7e93f7f46acdacfecf3eb40fb3c16f9b13287d15fd7a".to_string(),
-                                b: "18fb4503928bda6fc6aa377170b80fb3e2c73161c78c936bca222cb233318c7517ca194640de6b7790ec65ea7e46891089567d86a9fe8e419ad5e5d27e2cf96a2cf5383ef516ea8d14754c2e9e132fe566dd32eb23cd0de3543398a03a1c15f02a75014c4db8598d472112b292bbdde2968c409b759dbe76dec21da24b09d1a1".to_string(),
-                                c: "18f024873175339f2e939c8bc8a369daa56257564f3e23b0cf4b635e5721f0d1285e5d66fc1dd69f581a2b146083267e4ce9a3c21e46f488af2ed9289bd00714".to_string()
-                            };
+                    a: "166258d6b7dbbfe5682779016d69dda85e790db833db3fd630deac8b93945d7217b43d47ce0bca942daf551e9977cd3296b70e12ca069ba17bf7c93cc7d243bb".to_string(),
+                    b: "0c16f2b065e020f802431214962b2ee4cb325bd5cd8be1465d64c2e63d65990a2a886708b469a3d721ad95e8237dce1d590425b2b50e0713fd0d9c1587af88c3209570538e196db0b2e39e85d87948e15ceaaa58b308fffe86f7571384c20fb7248233090ec8844dbacc7292c17b3eeaff089f7f35830ce577e43021c2e8f36c".to_string(),
+                    c: "0a6ef77965279f792445c5f53f06b65fd7665cef4c2430660abd13f84d762c2e0e19de71f7159485943fa7ca2d3bb3182bc7b4a317df3ee871416ca8b6607859".to_string()
+                };
                 println!("process_deactivate_message proof {:?}", proof);
                 println!(
                     "process_deactivate_message new state commitment {:?}",
@@ -890,7 +895,6 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
                     )
                     .unwrap_err();
                 assert_eq!(
-                    // 不能投票环节结束之后不能进行sign up
                     AmaciContractError::PeriodError {},
                     sign_up_after_voting_end_error.downcast().unwrap()
                 );
@@ -928,10 +932,10 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
 
                 let new_state_commitment = uint256_from_decimal_string(&data.new_state_commitment);
                 let proof = Groth16ProofType {
-                        a: "096d1b959a9d1a4414da11a08220f034cd897b9cdd4cfce9a5427dca6302da15256a4aa11311f51231d905883f2224bdda75e8d1757f701164d11a286dd3831a".to_string(),
-                        b: "1bce75878f05c102f04f23d8033ecbf074420c02d977e312f6e121b1254bfe262e465cd3e76211e75251ee9a1dadfaedbde55c55af20c3b906ee4f360f079f6b069f7aa8774a1fbfcca147a2581d64885a977aa05f5a03b0f8871abc2f0611ad058a4f480bdff6ec3616be5b4f197f8a96c21b206485827f628b1f8ee5f55be4".to_string(),
-                        c: "11d9887f25fb3cac4a4cc9f20031f9be14bb206fe5db157ae2302d23c65ed6ad06af73ef894c43bbd89008b720efded006a0499bc76cdfc5ae8d8bf67360f37e".to_string()
-                    };
+                    a: "196514f4a74d1e2a0654e78dde3609083cdb554e82ff2e2e3060fa5aff6a744f26d4032fd0bce4b464f5bfffddb45ad5bda9cd2d53e2a1efb969f5e9cc974de0".to_string(),
+                    b: "1c2743aa42afe90735cb2d71b46bc54952ba97165988ae1b39fde2bf115097d40a93c7f6c937eaa6876a05a3c5f1726926443e149a854bc456d57ffecdc478751d496155a93a1bd9380018ac56c26551b31e561022adb176ed31a0ea369b01fa0bafb79cafb50880afab926ee468c88507947d0203bb0a3a2483cdc78bb61640".to_string(),
+                    c: "21706a34fc2514560b85328c6982283d2d722bb19e747b94fdc7c98852954be122efe42279374b1b6a9f8dfe67c4c573e7115d3ae8b87ea6399705b40e792d7a".to_string()
+                };
                 println!("process_message proof {:?}", proof);
                 println!(
                     "process_message new state commitment {:?}",
@@ -968,10 +972,10 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
                 let new_tally_commitment = uint256_from_decimal_string(&data.new_tally_commitment);
 
                 let tally_proof = Groth16ProofType {
-                            a: "2a88fe840fa2eb49979acee8b545766fc83f28f128219041d3bf1e900fcf86a219b124cbf9b755a802186c391a154137eadf865a4b604452f5f98c4c533a1652".to_string(),
-                            b: "0b6706904e637f888a9406db1529c84c26d068ad54bbfd3597de3e542f9230302cfdfdcd606e3544a63139b888fa561c2bf5ed928826d68c4f35e0fd07d491da27488896f67e261e8e3c6e33f947700b10eb6029daf6d9ae19add49e19fde2792563eec2f3fa6a43b1ec42c7d2f32b644c2f18e2b48d5dc552958b49c30f80c8".to_string(),
-                            c: "0d4529ea7dd9c686c5673d48ee6a3fb3971a7cf12441f40e0ba6116046d64767288254a628cac0e46ccd3f1d1100ba2cd922d71066ae48b78283773b505665e0".to_string()
-                        };
+                    a: "03f3b4e4cc23b195ad6e4f387b364c47dd8c569519590cec84c34949ba299e781c83d90167f31ac1415a08d496004fabbdb8993a42f56bf5f190649e17f4b190".to_string(),
+                    b: "140a91192b4f95a3739ab7c4dd245b49484549e35dd46dd88d81a675259f68e22c3f0cfb1cfcd68a3ae2511abc1a206a6eebeb70978466ddfdc0364e6aadfd5308f0342e7cfcfc32ee717ad17e3fddc86f494b6b5d11409992b3e41353326caf01c7a8b16df57e2f1ba1668f1fe5240fc7bbe03671d609dad7625b58373459b3".to_string(),
+                    c: "294881977d0a50888a163923f21c8774c015980c69df721884e82ac60f05e21304325c39d04936d96c6b0afdb3e99b6712b30d9e25685fb5e3af1ca570467eed".to_string()
+                };
 
                 _ = maci_contract
                     .amaci_process_tally(&mut app, owner(), new_tally_commitment, tally_proof)
@@ -1030,15 +1034,15 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
                     delay_timestamp: Timestamp::from_nanos(1571797424879305533),
                     delay_duration: 660,
                     delay_reason:
-                        "Processing of 2 deactivate messages has timed out after 660 seconds"
+                        "Processing of 1 deactivate messages has timed out after 660 seconds"
                             .to_string(),
-                    delay_process_dmsg_count: Uint256::from_u128(2),
+                    delay_process_dmsg_count: Uint256::from_u128(1),
                     delay_type: DelayType::DeactivateDelay,
                 },
                 DelayRecord {
                     delay_timestamp: Timestamp::from_nanos(1571798684879000000),
                     delay_duration: 10860,
-                    delay_reason: "Tallying has timed out after 10860 seconds (total process: 6, allowed: 1800 seconds)".to_string(),
+                    delay_reason: "Tallying has timed out after 10860 seconds (total process: 4, allowed: 1800 seconds)".to_string(),
                     delay_process_dmsg_count: Uint256::from_u128(0),
                     delay_type: DelayType::TallyDelay,
                 },
@@ -1104,7 +1108,7 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
     // assert_eq!(round_balance_after_claim.amount, Uint128::from(0u128));
 
     let claim_amount = Uint128::from(round_balance_before_claim.amount);
-    let operator_reward = claim_amount.multiply_ratio(100u128 - (50u128 + 5u128 * 2), 100u128);
+    let operator_reward = claim_amount.multiply_ratio(100u128 - (50u128 + 5u128 * 1), 100u128);
     // let operator_reward = Uint128::from(0u128); // after 3 days, operator reward is 0, all funds are returned to admin
     let penalty_amount = claim_amount - operator_reward;
     println!("operator_reward: {:?}", operator_reward);
