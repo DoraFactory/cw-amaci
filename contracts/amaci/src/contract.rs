@@ -2232,8 +2232,8 @@ pub fn calculate_tally_delay(deps: Deps) -> Result<TallyDelayInfo, ContractError
     let state_tree_depth = parameter.state_tree_depth;
 
     let (delay_seconds, calculated_hours) = if state_tree_depth == Uint256::from_u128(2u128) {
-        // 2-1-1-5 default to 30 minutes
-        (30 * 60, 0) // 30 minutes, no calculated hours for this case
+        // 2-1-1-5 default to 45 minutes
+        (45 * 60, 0) // 45 minutes, no calculated hours for this case
     } else {
         // other maci circuit params use base_work to calculate
         let raw_calculated_hours = (total_work_u128 / base_work) as u64 + 1;
