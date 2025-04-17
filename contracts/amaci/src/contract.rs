@@ -16,9 +16,9 @@ use crate::state::{
     MACI_DEACTIVATE_MESSAGE, MACI_OPERATOR, MAX_LEAVES_COUNT, MAX_VOTE_OPTIONS, MSG_CHAIN_LENGTH,
     MSG_HASHES, NODES, NULLIFIERS, NUMSIGNUPS, PENALTY_RATE, PERIOD, PRE_DEACTIVATE_ROOT,
     PROCESSED_DMSG_COUNT, PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO,
-    SIGNUPED, STATEIDXINC, STATE_ROOT_BY_DMSG, TALLY_BASE_WORK, TALLY_DELAY_MAX_HOURS,
-    TALLY_DELAY_MIN_HOURS, TALLY_TIMEOUT, TOTAL_RESULT, VOICECREDITBALANCE, VOICE_CREDIT_AMOUNT,
-    VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS, ZEROS_H10,
+    SIGNUPED, STATEIDXINC, STATE_ROOT_BY_DMSG, TALLY_TIMEOUT, TOTAL_RESULT,
+    VOICECREDITBALANCE, VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS,
+    ZEROS_H10, TALLY_DELAY_MAX_HOURS
 };
 use cosmwasm_schema::cw_serde;
 #[cfg(not(feature = "library"))]
@@ -320,15 +320,10 @@ pub fn instantiate(
     let deactivate_delay = Timestamp::from_seconds(10 * 60); // 10 minutes
     DEACTIVATE_DELAY.save(deps.storage, &deactivate_delay)?;
 
-    let tally_delay_min_hours = 2u64; // Minimum delay time: 2 hours
-    let tally_delay_max_hours = 36u64; // Maximum delay time: 48 hours
-                                       // Based on reference case: workload of 17208(625 + 16583) corresponds to 27 hours
-                                       // So approximately every 640 workload corresponds to 1 hour (17208/27 ≈ 637.3)
-    let tally_base_work = 640u128; // Every 640 workload corresponds to 1 hour
-    let tally_timeout = Timestamp::from_seconds(3 * 24 * 60 * 60); // 3 days
-    TALLY_DELAY_MIN_HOURS.save(deps.storage, &tally_delay_min_hours)?;
+    let tally_delay_max_hours = 48; // 48 hours
     TALLY_DELAY_MAX_HOURS.save(deps.storage, &tally_delay_max_hours)?;
-    TALLY_BASE_WORK.save(deps.storage, &tally_base_work)?;
+
+    let tally_timeout = Timestamp::from_seconds(4 * 24 * 60 * 60); // 4 days
     TALLY_TIMEOUT.save(deps.storage, &tally_timeout)?;
 
     let old_tally_timeout_set = Timestamp::from_seconds(tally_delay_max_hours * 60 * 60);
@@ -2225,26 +2220,16 @@ pub fn calculate_tally_delay(deps: Deps) -> Result<TallyDelayInfo, ContractError
         .map_err(|_| ContractError::ValueTooLarge {})?;
 
     // Calculate actual delay timeout (linear change between min hours to max hours)
-    let min_hours = TALLY_DELAY_MIN_HOURS.load(deps.storage)?;
-    let max_hours = TALLY_DELAY_MAX_HOURS.load(deps.storage)?;
-    let base_work = TALLY_BASE_WORK.load(deps.storage)?;
     let parameter: MaciParameters = MACIPARAMETERS.load(deps.storage)?;
     let state_tree_depth = parameter.state_tree_depth;
+    let tally_delay_max_hours = TALLY_DELAY_MAX_HOURS.load(deps.storage)?;
 
     let (delay_seconds, calculated_hours) = if state_tree_depth == Uint256::from_u128(2u128) {
-        // 2-1-1-5 default to 45 minutes
-        (45 * 60, 0) // 45 minutes, no calculated hours for this case
+        // 2-1-1-5 default to 1 hours
+        (1 * 60 * 60, 1) // 1 hours, no calculated hours for this case
     } else {
         // other maci circuit params use base_work to calculate
-        let raw_calculated_hours = (total_work_u128 / base_work) as u64 + 1;
-        let calculated_hours = if raw_calculated_hours < min_hours {
-            min_hours
-        } else if raw_calculated_hours > max_hours {
-            max_hours
-        } else {
-            raw_calculated_hours
-        };
-        (calculated_hours * 3600, calculated_hours)
+        (tally_delay_max_hours * 60 * 60, tally_delay_max_hours)
     };
 
     Ok(TallyDelayInfo {
@@ -2252,8 +2237,6 @@ pub fn calculate_tally_delay(deps: Deps) -> Result<TallyDelayInfo, ContractError
         total_work: total_work_u128,
         num_sign_ups,
         msg_chain_length,
-        min_hours,
-        max_hours,
         calculated_hours,
     })
 }

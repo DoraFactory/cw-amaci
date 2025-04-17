@@ -184,8 +184,8 @@ pub fn next_block_3_hours(block: &mut BlockInfo) {
 }
 
 
-pub fn next_block_3_days(block: &mut BlockInfo) {
-    block.time = block.time.plus_days(3);
+pub fn next_block_4_days(block: &mut BlockInfo) {
+    block.time = block.time.plus_days(4);
     block.height += 1;
 }
 
@@ -1042,7 +1042,7 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
                 DelayRecord {
                     delay_timestamp: Timestamp::from_nanos(1571798684879000000),
                     delay_duration: 10860,
-                    delay_reason: "Tallying has timed out after 10860 seconds (total process: 4, allowed: 1800 seconds)".to_string(),
+                    delay_reason: "Tallying has timed out after 10860 seconds (total process: 4, allowed: 3600 seconds)".to_string(),
                     delay_process_dmsg_count: Uint256::from_u128(0),
                     delay_type: DelayType::TallyDelay,
                 },
@@ -1080,7 +1080,7 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
     );
     // assert_eq!(operator_balance.amount, Uint128::from(0u128));
 
-    // app.update_block(next_block_3_days); // after 3 days, operator reward is 0, all funds are returned to admin
+    // app.update_block(next_block_4_days); // after 4 days, operator reward is 0, all funds are returned to admin
     _ = maci_contract.amaci_claim(&mut app, owner());
     let owner_balance = contract
         .balance_of(&app, owner().to_string(), DORA_DEMON.to_string())
@@ -1109,14 +1109,625 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
 
     let claim_amount = Uint128::from(round_balance_before_claim.amount);
     let operator_reward = claim_amount.multiply_ratio(100u128 - (50u128 + 5u128 * 1), 100u128);
-    // let operator_reward = Uint128::from(0u128); // after 3 days, operator reward is 0, all funds are returned to admin
+    // let operator_reward = Uint128::from(0u128); // after 4 days, operator reward is 0, all funds are returned to admin
     let penalty_amount = claim_amount - operator_reward;
     println!("operator_reward: {:?}", operator_reward);
     println!("penalty_amount: {:?}", penalty_amount);
     assert_eq!(
         operator_balance.amount,
         operator_reward + operator_balance_before_claim.amount
-        // Uint128::from(0u128) // after 3 days, operator reward is 0, all funds are returned to admin
+        // Uint128::from(0u128) // after 4 days, operator reward is 0, all funds are returned to admin
+    );
+    assert_eq!(
+        owner_balance.amount,
+        penalty_amount + owner_balance_before_claim.amount
+    );
+    assert_eq!(
+        round_balance_after_claim.amount,
+        round_balance_before_claim.amount - claim_amount
+    );
+    assert_eq!(round_balance_after_claim.amount, Uint128::from(0u128));
+
+    let claim_error = maci_contract.amaci_claim(&mut app, owner()).unwrap_err();
+    assert_eq!(
+        AmaciContractError::AllFundsClaimed {},
+        claim_error.downcast().unwrap()
+    );
+
+    let tally_delay = maci_contract.amaci_query_tally_delay(&app).unwrap();
+    println!("tally_delay: {:?}", tally_delay);
+}
+
+
+#[test]
+fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_should_works() {
+    let msg_file_path = "./src/test/qv_test/msg.json";
+
+    let mut msg_file = fs::File::open(msg_file_path).expect("Failed to open file");
+    let mut msg_content = String::new();
+
+    msg_file
+        .read_to_string(&mut msg_content)
+        .expect("Failed to read file");
+
+    let data: MsgData = serde_json::from_str(&msg_content).expect("Failed to parse JSON");
+
+    let pubkey_file_path = "./src/test/user_pubkey.json";
+
+    let mut pubkey_file = fs::File::open(pubkey_file_path).expect("Failed to open file");
+    let mut pubkey_content = String::new();
+
+    pubkey_file
+        .read_to_string(&mut pubkey_content)
+        .expect("Failed to read file");
+    let pubkey_data: UserPubkeyData =
+        serde_json::from_str(&pubkey_content).expect("Failed to parse JSON");
+
+    let logs_file_path = "./src/test/amaci_test/logs.json";
+
+    let mut logs_file = fs::File::open(logs_file_path).expect("Failed to open file");
+    let mut logs_content = String::new();
+
+    logs_file
+        .read_to_string(&mut logs_content)
+        .expect("Failed to read file");
+
+    let logs_data: Vec<AMaciLogEntry> =
+        serde_json::from_str(&logs_content).expect("Failed to parse JSON");
+
+    let owner_coin_amount = 50000000000000000000u128; // 50 DORA (register 500, create round 50)
+    let _operator_coin_amount = 1000000000000000000000u128; // 1000 DORA
+
+    let mut app = App::new(|router, _api, storage| {
+        router
+            .bank
+            .init_balance(storage, &owner(), coins(owner_coin_amount, DORA_DEMON))
+            .unwrap();
+        // router
+        //     .bank
+        //     .init_balance(
+        //         storage,
+        //         &operator(),
+        //         coins(operator_coin_amount, DORA_DEMON),
+        //     )
+        //     .unwrap();
+    });
+
+    let register_code_id = AmaciRegistryCodeId::store_code(&mut app);
+    let amaci_code_id = MaciCodeId::store_default_code(&mut app);
+
+    let label = "Dora AMaci Registry";
+    let contract = register_code_id
+        .instantiate(&mut app, owner(), amaci_code_id.id(), label)
+        .unwrap();
+
+    _ = contract.set_validators(&mut app, owner());
+
+    let validator_set = contract.get_validators(&app).unwrap();
+    assert_eq!(
+        ValidatorSet {
+            addresses: vec![user1(), user2(), user4()]
+        },
+        validator_set
+    );
+
+    _ = contract.set_maci_operator(&mut app, user1(), operator());
+    let user1_operator_addr = contract.get_validator_operator(&app, user1()).unwrap();
+    assert_eq!(operator(), user1_operator_addr);
+
+    let user1_check_operator = contract.is_maci_operator(&app, operator()).unwrap();
+
+    assert_eq!(true, user1_check_operator);
+
+    _ = contract.set_maci_operator_pubkey(&mut app, operator(), operator_pubkey1());
+
+    let user1_operator_pubkey = contract.get_operator_pubkey(&app, operator()).unwrap();
+    assert_eq!(operator_pubkey1(), user1_operator_pubkey);
+
+    // _ = contract.migrate_v1(&mut app, owner(), amaci_code_id.id()).unwrap();
+
+    let small_base_payamount = 20000000000000000000u128; // 20 DORA
+
+    let resp = contract
+        .create_round_with_whitelist(
+            &mut app,
+            owner(),
+            operator(),
+            Uint256::from_u128(1u128),
+            Uint256::from_u128(0u128),
+            &coins(small_base_payamount, DORA_DEMON),
+        )
+        .unwrap();
+
+    let amaci_contract_addr: InstantiationData = from_json(&resp.data.unwrap()).unwrap();
+    println!("{:?}", amaci_contract_addr);
+    let maci_contract = MaciContract::new(amaci_contract_addr.addr.clone());
+    let amaci_admin = maci_contract.amaci_query_admin(&app).unwrap();
+    println!("{:?}", amaci_admin);
+    assert_eq!(owner(), amaci_admin);
+
+    let amaci_operator = maci_contract.amaci_query_operator(&app).unwrap();
+    println!("{:?}", amaci_operator);
+    assert_eq!(operator(), amaci_operator);
+
+    let amaci_round_info = maci_contract.amaci_query_round_info(&app).unwrap();
+    println!("{:?}", amaci_round_info);
+
+    let amaci_round_balance = contract
+        .balance_of(
+            &app,
+            amaci_contract_addr.addr.to_string(),
+            DORA_DEMON.to_string(),
+        )
+        .unwrap();
+    let circuit_charge_config = contract.get_circuit_charge_config(&app).unwrap();
+    let total_fee = Uint128::from(small_base_payamount);
+    let admin_fee = circuit_charge_config.fee_rate * total_fee;
+    let operator_fee = total_fee - admin_fee;
+
+    assert_eq!(Uint128::from(operator_fee), amaci_round_balance.amount);
+
+    // let start_voting_error = contract.start_voting(&mut app, owner()).unwrap_err();
+
+    // assert_eq!(
+    //     ContractError::AlreadySetVotingTime {
+    //         time_name: String::from("start_time")
+    //     },
+    //     start_voting_error.downcast().unwrap()
+    // );
+
+    let num_sign_up = maci_contract.amaci_num_sign_up(&app).unwrap();
+    assert_eq!(num_sign_up, Uint256::from_u128(0u128));
+
+    let vote_option_map = maci_contract.amaci_vote_option_map(&app).unwrap();
+    let max_vote_options = maci_contract.amaci_max_vote_options(&app).unwrap();
+    assert_eq!(vote_option_map, vec!["", "", "", "", ""]);
+    assert_eq!(max_vote_options, Uint256::from_u128(5u128));
+    _ = maci_contract.amaci_set_vote_option_map(&mut app, owner());
+    let new_vote_option_map = maci_contract.amaci_vote_option_map(&app).unwrap();
+    assert_eq!(
+        new_vote_option_map,
+        vec![
+            String::from("did_not_vote"),
+            String::from("yes"),
+            String::from("no"),
+            String::from("no_with_veto"),
+            String::from("abstain"),
+        ]
+    );
+    // assert_eq!(num_sign_up, Uint256::from_u128(0u128));
+
+    let test_pubkey = PubKey {
+        x: uint256_from_decimal_string(&data.current_state_leaves[0][0]),
+        y: uint256_from_decimal_string(&data.current_state_leaves[0][1]),
+    };
+    let sign_up_error = maci_contract
+        .amaci_sign_up(
+            &mut app,
+            Addr::unchecked(0.to_string()),
+            test_pubkey.clone(),
+        )
+        .unwrap_err();
+    assert_eq!(
+        AmaciContractError::PeriodError {},
+        sign_up_error.downcast().unwrap()
+    ); // 不能在voting环节之前进行signup
+
+    _ = maci_contract.amaci_set_vote_option_map(&mut app, owner());
+
+    app.update_block(next_block); // Start Voting
+    let set_whitelist_only_in_pending = maci_contract
+        .amaci_set_whitelist(&mut app, owner())
+        .unwrap_err();
+    assert_eq!(
+        // 注册之后不能再进行注册
+        AmaciContractError::PeriodError {},
+        set_whitelist_only_in_pending.downcast().unwrap()
+    );
+    let set_vote_option_map_error = maci_contract
+        .amaci_set_vote_option_map(&mut app, owner())
+        .unwrap_err();
+    assert_eq!(
+        AmaciContractError::PeriodError {},
+        set_vote_option_map_error.downcast().unwrap()
+    );
+
+    let error_start_process_in_voting = maci_contract
+        .amaci_start_process(&mut app, owner())
+        .unwrap_err();
+    assert_eq!(
+        AmaciContractError::PeriodError {},
+        error_start_process_in_voting.downcast().unwrap()
+    );
+    assert_eq!(
+        Period {
+            status: PeriodStatus::Pending
+        },
+        maci_contract.amaci_get_period(&app).unwrap()
+    );
+
+    let pubkey0 = PubKey {
+        x: uint256_from_decimal_string(&pubkey_data.pubkeys[0][0]),
+        y: uint256_from_decimal_string(&pubkey_data.pubkeys[0][1]),
+    };
+
+    let pubkey1 = PubKey {
+        x: uint256_from_decimal_string(&pubkey_data.pubkeys[1][0]),
+        y: uint256_from_decimal_string(&pubkey_data.pubkeys[1][1]),
+    };
+
+    let _ = maci_contract.amaci_sign_up(&mut app, Addr::unchecked("0"), pubkey0.clone());
+
+    let can_sign_up_error = maci_contract
+        .amaci_sign_up(&mut app, Addr::unchecked("0"), pubkey0.clone())
+        .unwrap_err();
+    assert_eq!(
+        AmaciContractError::UserAlreadyRegistered {},
+        can_sign_up_error.downcast().unwrap()
+    );
+
+    let _ = maci_contract.amaci_sign_up(&mut app, Addr::unchecked("1"), pubkey1.clone());
+
+    assert_eq!(
+        maci_contract.amaci_num_sign_up(&app).unwrap(),
+        Uint256::from_u128(2u128)
+    );
+
+    assert_eq!(
+        maci_contract.amaci_signuped(&app, pubkey0.x).unwrap(),
+        Uint256::from_u128(1u128)
+    );
+    assert_eq!(
+        maci_contract.amaci_signuped(&app, pubkey1.x).unwrap(),
+        Uint256::from_u128(2u128)
+    );
+
+    for entry in &logs_data {
+        match entry.log_type.as_str() {
+            "publishDeactivateMessage" => {
+                let data: PublishDeactivateMessageData = deserialize_data(&entry.data);
+
+                let message = MessageData {
+                    data: [
+                        uint256_from_decimal_string(&data.message[0]),
+                        uint256_from_decimal_string(&data.message[1]),
+                        uint256_from_decimal_string(&data.message[2]),
+                        uint256_from_decimal_string(&data.message[3]),
+                        uint256_from_decimal_string(&data.message[4]),
+                        uint256_from_decimal_string(&data.message[5]),
+                        uint256_from_decimal_string(&data.message[6]),
+                    ],
+                };
+
+                let enc_pub = PubKey {
+                    x: uint256_from_decimal_string(&data.enc_pub_key[0]),
+                    y: uint256_from_decimal_string(&data.enc_pub_key[1]),
+                };
+                _ = maci_contract.amaci_publish_deactivate_message(
+                    &mut app,
+                    user2(),
+                    message,
+                    enc_pub,
+                );
+            }
+            "proofDeactivate" => {
+                let data: ProofDeactivateData = deserialize_data(&entry.data);
+                assert_eq!(
+                    maci_contract.amaci_dmsg_length(&app).unwrap(),
+                    Uint256::from_u128(1u128)
+                );
+
+                let size = uint256_from_decimal_string(&data.size);
+                let new_deactivate_commitment =
+                    uint256_from_decimal_string(&data.new_deactivate_commitment);
+                let new_deactivate_root = uint256_from_decimal_string(&data.new_deactivate_root);
+                let proof = Groth16ProofType {
+                    a: "166258d6b7dbbfe5682779016d69dda85e790db833db3fd630deac8b93945d7217b43d47ce0bca942daf551e9977cd3296b70e12ca069ba17bf7c93cc7d243bb".to_string(),
+                    b: "0c16f2b065e020f802431214962b2ee4cb325bd5cd8be1465d64c2e63d65990a2a886708b469a3d721ad95e8237dce1d590425b2b50e0713fd0d9c1587af88c3209570538e196db0b2e39e85d87948e15ceaaa58b308fffe86f7571384c20fb7248233090ec8844dbacc7292c17b3eeaff089f7f35830ce577e43021c2e8f36c".to_string(),
+                    c: "0a6ef77965279f792445c5f53f06b65fd7665cef4c2430660abd13f84d762c2e0e19de71f7159485943fa7ca2d3bb3182bc7b4a317df3ee871416ca8b6607859".to_string()
+                };
+                println!("process_deactivate_message proof {:?}", proof);
+                println!(
+                    "process_deactivate_message new state commitment {:?}",
+                    new_deactivate_commitment
+                );
+                app.update_block(next_block_11_minutes);
+                _ = maci_contract
+                    .amaci_process_deactivate_message(
+                        &mut app,
+                        owner(),
+                        size,
+                        new_deactivate_commitment,
+                        new_deactivate_root,
+                        proof,
+                    )
+                    .unwrap();
+            }
+            "proofAddNewKey" => {
+                let data: ProofAddNewKeyData = deserialize_data(&entry.data);
+
+                let new_key_pub = PubKey {
+                    x: uint256_from_decimal_string(&data.pub_key[0]),
+                    y: uint256_from_decimal_string(&data.pub_key[1]),
+                };
+
+                let d: [Uint256; 4] = [
+                    uint256_from_decimal_string(&data.d[0]),
+                    uint256_from_decimal_string(&data.d[1]),
+                    uint256_from_decimal_string(&data.d[2]),
+                    uint256_from_decimal_string(&data.d[3]),
+                ];
+
+                let nullifier = uint256_from_decimal_string(&data.nullifier);
+
+                let proof = Groth16ProofType {
+                                a: "29eb173553d340b41108fa7581371d1e2eb84962e93e667aff45ee2cc05aa9b91234d82ac4caafd2eaf597e1da25c5982bef8b0a937a7f68b84954f042d4ed0f".to_string(),
+                                b: "01a6d17acb0c2381082e1c35baee57af4bf393dbd94377bac54bfec15916c0b80197c2a0c0faa491e9b32b32de526c03b2c57a126eeafcb72feae194b3f8a60f0a81e4f7aa16ba2afb45a694dcc5832531b36c060f3ae31a8df0e7c724961e130d5fc5a83a7d658b63611dd37e0790b3602072529743cf727a371f82c3c250b2".to_string(),
+                                c: "2e18f57e4618cac5b0111a6ca470a193dfbad5f393a455b06be2b2dbd8bb7b8e1c0f4fbb35a51d466d665d7fcfb22ea3717c6503e45f104167c4639fd01a1285".to_string()
+                            };
+
+                println!("add_new_key proof {:?}", proof);
+                _ = maci_contract
+                    .amaci_add_key(&mut app, owner(), new_key_pub, nullifier, d, proof)
+                    .unwrap();
+            }
+            "publishMessage" => {
+                let data: PublishMessageData = deserialize_data(&entry.data);
+
+                let message = MessageData {
+                    data: [
+                        uint256_from_decimal_string(&data.message[0]),
+                        uint256_from_decimal_string(&data.message[1]),
+                        uint256_from_decimal_string(&data.message[2]),
+                        uint256_from_decimal_string(&data.message[3]),
+                        uint256_from_decimal_string(&data.message[4]),
+                        uint256_from_decimal_string(&data.message[5]),
+                        uint256_from_decimal_string(&data.message[6]),
+                    ],
+                };
+
+                let enc_pub = PubKey {
+                    x: uint256_from_decimal_string(&data.enc_pub_key[0]),
+                    y: uint256_from_decimal_string(&data.enc_pub_key[1]),
+                };
+
+                println!("------- publishMessage ------");
+                _ = maci_contract.amaci_publish_message(&mut app, user2(), message, enc_pub);
+            }
+            "processMessage" => {
+                let data: ProcessMessageData = deserialize_data(&entry.data);
+                app.update_block(next_block_11_minutes);
+
+                let sign_up_after_voting_end_error = maci_contract
+                    .amaci_sign_up(
+                        &mut app,
+                        Addr::unchecked(3.to_string()),
+                        test_pubkey.clone(),
+                    )
+                    .unwrap_err();
+                assert_eq!(
+                    AmaciContractError::PeriodError {},
+                    sign_up_after_voting_end_error.downcast().unwrap()
+                );
+
+                // let stop_voting_error = contract.stop_voting(&mut app, owner()).unwrap_err();
+                // assert_eq!(
+                //     ContractError::AlreadySetVotingTime {
+                //         time_name: String::from("end_time")
+                //     },
+                //     stop_voting_error.downcast().unwrap()
+                // );
+
+                _ = maci_contract.amaci_start_process(&mut app, owner());
+                assert_eq!(
+                    Period {
+                        status: PeriodStatus::Processing
+                    },
+                    maci_contract.amaci_get_period(&app).unwrap()
+                );
+
+                println!(
+                    "after start process: {:?}",
+                    maci_contract.amaci_get_period(&app).unwrap()
+                );
+
+                let error_stop_processing_with_not_finish_process = maci_contract
+                    .amaci_stop_processing(&mut app, owner())
+                    .unwrap_err();
+                assert_eq!(
+                    AmaciContractError::MsgLeftProcess {},
+                    error_stop_processing_with_not_finish_process
+                        .downcast()
+                        .unwrap()
+                );
+
+                let new_state_commitment = uint256_from_decimal_string(&data.new_state_commitment);
+                let proof = Groth16ProofType {
+                    a: "196514f4a74d1e2a0654e78dde3609083cdb554e82ff2e2e3060fa5aff6a744f26d4032fd0bce4b464f5bfffddb45ad5bda9cd2d53e2a1efb969f5e9cc974de0".to_string(),
+                    b: "1c2743aa42afe90735cb2d71b46bc54952ba97165988ae1b39fde2bf115097d40a93c7f6c937eaa6876a05a3c5f1726926443e149a854bc456d57ffecdc478751d496155a93a1bd9380018ac56c26551b31e561022adb176ed31a0ea369b01fa0bafb79cafb50880afab926ee468c88507947d0203bb0a3a2483cdc78bb61640".to_string(),
+                    c: "21706a34fc2514560b85328c6982283d2d722bb19e747b94fdc7c98852954be122efe42279374b1b6a9f8dfe67c4c573e7115d3ae8b87ea6399705b40e792d7a".to_string()
+                };
+                println!("process_message proof {:?}", proof);
+                println!(
+                    "process_message new state commitment {:?}",
+                    new_state_commitment
+                );
+                println!("------ processMessage ------");
+                _ = maci_contract
+                    .amaci_process_message(&mut app, owner(), new_state_commitment, proof)
+                    .unwrap();
+            }
+            "processTally" => {
+                let data: ProcessTallyData = deserialize_data(&entry.data);
+
+                _ = maci_contract.amaci_stop_processing(&mut app, owner());
+                println!(
+                    "after stop process: {:?}",
+                    maci_contract.amaci_get_period(&app).unwrap()
+                );
+
+                let error_start_process_in_talling = maci_contract
+                    .amaci_start_process(&mut app, owner())
+                    .unwrap_err();
+                assert_eq!(
+                    AmaciContractError::PeriodError {},
+                    error_start_process_in_talling.downcast().unwrap()
+                );
+                assert_eq!(
+                    Period {
+                        status: PeriodStatus::Tallying
+                    },
+                    maci_contract.amaci_get_period(&app).unwrap()
+                );
+
+                let new_tally_commitment = uint256_from_decimal_string(&data.new_tally_commitment);
+
+                let tally_proof = Groth16ProofType {
+                    a: "03f3b4e4cc23b195ad6e4f387b364c47dd8c569519590cec84c34949ba299e781c83d90167f31ac1415a08d496004fabbdb8993a42f56bf5f190649e17f4b190".to_string(),
+                    b: "140a91192b4f95a3739ab7c4dd245b49484549e35dd46dd88d81a675259f68e22c3f0cfb1cfcd68a3ae2511abc1a206a6eebeb70978466ddfdc0364e6aadfd5308f0342e7cfcfc32ee717ad17e3fddc86f494b6b5d11409992b3e41353326caf01c7a8b16df57e2f1ba1668f1fe5240fc7bbe03671d609dad7625b58373459b3".to_string(),
+                    c: "294881977d0a50888a163923f21c8774c015980c69df721884e82ac60f05e21304325c39d04936d96c6b0afdb3e99b6712b30d9e25685fb5e3af1ca570467eed".to_string()
+                };
+
+                _ = maci_contract
+                    .amaci_process_tally(&mut app, owner(), new_tally_commitment, tally_proof)
+                    .unwrap();
+            }
+            "stopTallyingPeriod" => {
+                let data: StopTallyingPeriodData = deserialize_data(&entry.data);
+
+                let results: Vec<Uint256> = vec![
+                    uint256_from_decimal_string(&data.results[0]),
+                    uint256_from_decimal_string(&data.results[1]),
+                    uint256_from_decimal_string(&data.results[2]),
+                    uint256_from_decimal_string(&data.results[3]),
+                    uint256_from_decimal_string(&data.results[4]),
+                ];
+
+                let salt = uint256_from_decimal_string(&data.salt);
+
+                let withdraw_error = maci_contract.amaci_claim(&mut app, owner()).unwrap_err();
+                assert_eq!(
+                    AmaciContractError::PeriodError {},
+                    withdraw_error.downcast().unwrap()
+                );
+
+                app.update_block(next_block_3_hours);
+                _ = maci_contract.amaci_stop_tallying(&mut app, owner(), results, salt);
+
+                let all_result = maci_contract.amaci_get_all_result(&app);
+                println!("all_result: {:?}", all_result);
+                let error_start_process = maci_contract
+                    .amaci_start_process(&mut app, owner())
+                    .unwrap_err();
+                assert_eq!(
+                    AmaciContractError::PeriodError {},
+                    error_start_process.downcast().unwrap()
+                );
+
+                assert_eq!(
+                    Period {
+                        status: PeriodStatus::Ended
+                    },
+                    maci_contract.amaci_get_period(&app).unwrap()
+                );
+            }
+            _ => println!("Unknown type: {}", entry.log_type),
+        }
+    }
+
+    let delay_records = maci_contract.amaci_query_delay_records(&app).unwrap();
+    println!("delay_records: {:?}", delay_records);
+    assert_eq!(
+        delay_records,
+        DelayRecords {
+            records: vec![
+                DelayRecord {
+                    delay_timestamp: Timestamp::from_nanos(1571797424879305533),
+                    delay_duration: 660,
+                    delay_reason:
+                        "Processing of 1 deactivate messages has timed out after 660 seconds"
+                            .to_string(),
+                    delay_process_dmsg_count: Uint256::from_u128(1),
+                    delay_type: DelayType::DeactivateDelay,
+                },
+                DelayRecord {
+                    delay_timestamp: Timestamp::from_nanos(1571798684879000000),
+                    delay_duration: 10860,
+                    delay_reason: "Tallying has timed out after 10860 seconds (total process: 4, allowed: 3600 seconds)".to_string(),
+                    delay_process_dmsg_count: Uint256::from_u128(0),
+                    delay_type: DelayType::TallyDelay,
+                },
+            ]
+        }
+    );
+
+    let round_balance_before_claim = contract
+        .balance_of(
+            &app,
+            maci_contract.addr().to_string(),
+            DORA_DEMON.to_string(),
+        )
+        .unwrap();
+    println!(
+        "round_balance_before_claim: {:?}",
+        round_balance_before_claim
+    );
+
+    let owner_balance_before_claim = contract
+        .balance_of(&app, owner().to_string(), DORA_DEMON.to_string())
+        .unwrap();
+    println!(
+        "owner_balance_before_claim: {:?}",
+        owner_balance_before_claim
+    );
+    // assert_eq!(owner_balance.amount, round_balance_before_withdraw.amount + Uint128::from(delay));
+
+    let operator_balance_before_claim = contract
+        .balance_of(&app, operator().to_string(), DORA_DEMON.to_string())
+        .unwrap();
+    println!(
+        "operator_balance_before_claim: {:?}",
+        operator_balance_before_claim
+    );
+    // assert_eq!(operator_balance.amount, Uint128::from(0u128));
+
+    app.update_block(next_block_4_days); // after 4 days, operator reward is 0, all funds are returned to admin
+    _ = maci_contract.amaci_claim(&mut app, owner());
+    let owner_balance = contract
+        .balance_of(&app, owner().to_string(), DORA_DEMON.to_string())
+        .unwrap();
+    println!("owner_balance: {:?}", owner_balance);
+    // assert_eq!(owner_balance.amount, round_balance_before_withdraw.amount + Uint128::from(delay));
+
+    let operator_balance = contract
+        .balance_of(&app, operator().to_string(), DORA_DEMON.to_string())
+        .unwrap();
+    println!("operator_balance: {:?}", operator_balance);
+    // assert_eq!(operator_balance.amount, Uint128::from(0u128));
+
+    let round_balance_after_claim = contract
+        .balance_of(
+            &app,
+            maci_contract.addr().to_string(),
+            DORA_DEMON.to_string(),
+        )
+        .unwrap();
+    println!(
+        "round_balance_after_claim: {:?}",
+        round_balance_after_claim
+    );
+    // assert_eq!(round_balance_after_claim.amount, Uint128::from(0u128));
+
+    let claim_amount = Uint128::from(round_balance_before_claim.amount);
+    let operator_reward = claim_amount.multiply_ratio(100u128 - (50u128 + 5u128 * 1), 100u128);
+    let operator_reward = Uint128::from(0u128); // after 4 days, operator reward is 0, all funds are returned to admin
+    let penalty_amount = claim_amount - operator_reward;
+    println!("operator_reward: {:?}", operator_reward);
+    println!("penalty_amount: {:?}", penalty_amount);
+    assert_eq!(
+        operator_balance.amount,
+        // operator_reward + operator_balance_before_claim.amount
+        Uint128::from(0u128) // after 4 days, operator reward is 0, all funds are returned to admin
     );
     assert_eq!(
         owner_balance.amount,
