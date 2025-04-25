@@ -803,7 +803,7 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
                 let data: ProofDeactivateData = deserialize_data(&entry.data);
                 assert_eq!(
                     maci_contract.amaci_dmsg_length(&app).unwrap(),
-                    Uint256::from_u128(1u128)
+                    Uint256::from_u128(2u128)
                 );
 
                 let size = uint256_from_decimal_string(&data.size);
@@ -811,9 +811,9 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
                     uint256_from_decimal_string(&data.new_deactivate_commitment);
                 let new_deactivate_root = uint256_from_decimal_string(&data.new_deactivate_root);
                 let proof = Groth16ProofType {
-                    a: "166258d6b7dbbfe5682779016d69dda85e790db833db3fd630deac8b93945d7217b43d47ce0bca942daf551e9977cd3296b70e12ca069ba17bf7c93cc7d243bb".to_string(),
-                    b: "0c16f2b065e020f802431214962b2ee4cb325bd5cd8be1465d64c2e63d65990a2a886708b469a3d721ad95e8237dce1d590425b2b50e0713fd0d9c1587af88c3209570538e196db0b2e39e85d87948e15ceaaa58b308fffe86f7571384c20fb7248233090ec8844dbacc7292c17b3eeaff089f7f35830ce577e43021c2e8f36c".to_string(),
-                    c: "0a6ef77965279f792445c5f53f06b65fd7665cef4c2430660abd13f84d762c2e0e19de71f7159485943fa7ca2d3bb3182bc7b4a317df3ee871416ca8b6607859".to_string()
+                    a: "04c5d564a7dd1feaba7c422f429327bd5e9430cb6b67f0bf77a19788fac264a7080063a86a7f45a4893f68ce20a4ee0bc22cb085866c9387d1b822d1b1fba033".to_string(),
+                    b: "1515ff2d529baece55d6d9f7338de646dc83fba060dce13a88a8b31114b9df8b2573959072de506962aeadc60198138bfbba84a7ed3a7a349563a1b3ed4fef67062efab826e3b0ebdbce3bf0744634ba3db1d336d7ba38cfd16b8d3d42f9bb5d2546e2f71e1bbd6f680e65696aad163f99c3baac18c27146c17086542b2da535".to_string(),
+                    c: "2cb72b2822ff424c48e6972bdca59ee9f6b813bfb00571a286c41070a5a56de91d5e9c1310eef0653dc5c34255ebd40afaffcd65ba34f6d4799a4dca92cf12ff".to_string()
                 };
                 println!("process_deactivate_message proof {:?}", proof);
                 println!(
@@ -850,9 +850,9 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
                 let nullifier = uint256_from_decimal_string(&data.nullifier);
 
                 let proof = Groth16ProofType {
-                                a: "29eb173553d340b41108fa7581371d1e2eb84962e93e667aff45ee2cc05aa9b91234d82ac4caafd2eaf597e1da25c5982bef8b0a937a7f68b84954f042d4ed0f".to_string(),
-                                b: "01a6d17acb0c2381082e1c35baee57af4bf393dbd94377bac54bfec15916c0b80197c2a0c0faa491e9b32b32de526c03b2c57a126eeafcb72feae194b3f8a60f0a81e4f7aa16ba2afb45a694dcc5832531b36c060f3ae31a8df0e7c724961e130d5fc5a83a7d658b63611dd37e0790b3602072529743cf727a371f82c3c250b2".to_string(),
-                                c: "2e18f57e4618cac5b0111a6ca470a193dfbad5f393a455b06be2b2dbd8bb7b8e1c0f4fbb35a51d466d665d7fcfb22ea3717c6503e45f104167c4639fd01a1285".to_string()
+                                a: "2d72823f8f7e44117ab51f945a9b14899b56f8bc24ac93b68a42a0d3df1b815109535ff45d1694ad8299b55499065d5cd1fc03a222439d8f58ab0a3369d06739".to_string(),
+                                b: "2a83d66d8de353f284d8ab3d4d6beac737a8fd4528df53019f4f480bf224755525c910f7f36d59b8d5254cb79d20a229e0e0522c1b1d5501dbec4b71f8929bc6136cdc1cd58d2dfd73d52c7c6387a459420a7f2aba924a57b3eb32fc4d7d5dc311a262196bb79b95a66b5ebd6ccb89b0a06fb400d031f0ea0fe6c340b709cd69".to_string(),
+                                c: "184fc89744396e6069a589c662b41502cc7adc69feace7e07bb3a56ca24e100b087f4604dde84b86d75d581d4d5278369776076ad940f08f2d6d44651a599b8d".to_string()
                             };
 
                 println!("add_new_key proof {:?}", proof);
@@ -932,9 +932,9 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
 
                 let new_state_commitment = uint256_from_decimal_string(&data.new_state_commitment);
                 let proof = Groth16ProofType {
-                    a: "196514f4a74d1e2a0654e78dde3609083cdb554e82ff2e2e3060fa5aff6a744f26d4032fd0bce4b464f5bfffddb45ad5bda9cd2d53e2a1efb969f5e9cc974de0".to_string(),
-                    b: "1c2743aa42afe90735cb2d71b46bc54952ba97165988ae1b39fde2bf115097d40a93c7f6c937eaa6876a05a3c5f1726926443e149a854bc456d57ffecdc478751d496155a93a1bd9380018ac56c26551b31e561022adb176ed31a0ea369b01fa0bafb79cafb50880afab926ee468c88507947d0203bb0a3a2483cdc78bb61640".to_string(),
-                    c: "21706a34fc2514560b85328c6982283d2d722bb19e747b94fdc7c98852954be122efe42279374b1b6a9f8dfe67c4c573e7115d3ae8b87ea6399705b40e792d7a".to_string()
+                    a: "1d15cc37dcb272bbacd6793212775a2660be0df34138806c176b23b237b342811de490c5864a44aaff70e9f85d622b3f9a96f4a75b8f95ccabbb653b9e03bfdf".to_string(),
+                    b: "0de712129a430f3172d4ccd0241a95babbe777145ff386a56e6637ae968ae10b01f7c7d3edf83e66dfa8b022f1a8297e6f4c188950d82eb72565cc1bfaf28511185f0579f703687c4410e6b21cbb30efc82cd4841b56ccf9fa66341a0c6c256b1820517f1eb3b06e7736cdd3b170b23bec6968f02e8ed6e4fab098b42652361e".to_string(),
+                    c: "097f71ae3a88062baabafc37e8d4356d00b4577c0fca127235922654ee91cd040d61065aa98b440a4a16829eb0def9ac7d03a1ab5f3b0c6219ff19bebd122b79".to_string()
                 };
                 println!("process_message proof {:?}", proof);
                 println!(
@@ -972,9 +972,9 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
                 let new_tally_commitment = uint256_from_decimal_string(&data.new_tally_commitment);
 
                 let tally_proof = Groth16ProofType {
-                    a: "03f3b4e4cc23b195ad6e4f387b364c47dd8c569519590cec84c34949ba299e781c83d90167f31ac1415a08d496004fabbdb8993a42f56bf5f190649e17f4b190".to_string(),
-                    b: "140a91192b4f95a3739ab7c4dd245b49484549e35dd46dd88d81a675259f68e22c3f0cfb1cfcd68a3ae2511abc1a206a6eebeb70978466ddfdc0364e6aadfd5308f0342e7cfcfc32ee717ad17e3fddc86f494b6b5d11409992b3e41353326caf01c7a8b16df57e2f1ba1668f1fe5240fc7bbe03671d609dad7625b58373459b3".to_string(),
-                    c: "294881977d0a50888a163923f21c8774c015980c69df721884e82ac60f05e21304325c39d04936d96c6b0afdb3e99b6712b30d9e25685fb5e3af1ca570467eed".to_string()
+                    a: "1e0bd768d465ded5a9e699f052dd636be8ab48fe0c4a1d3d9cacf8d36913d8ae177af12ba0069288a86d9203373c5f8f60c37cbb3398b63df1b11991e6ca0c50".to_string(),
+                    b: "23dfa545c123e67c4c9fef8390afe9a3484df2058fa00d92ffc8f1f3379dcc1800584aff26615a81ab5f28d35e596b7b88d6cfd3b3ec205a8981f91aacd8aa6b2896a841947bd200cce364e04064c0b16533015c68c09d8dc2a4c6fa6e907c5b1fc331016aa03f8059a2bf73aa39b69ad5c36f07a9aede6817144e84dbfd9250".to_string(),
+                    c: "2bc0d5643a8fdc18712e4e0815f698539c3ed905fa8edd091a752d679270967109ac6f774c8b8bb002bfb07675cdeb4e3bf4ec2ade2bf6e5ed74c167dc3dee0a".to_string()
                 };
 
                 _ = maci_contract
@@ -1034,21 +1034,22 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
                     delay_timestamp: Timestamp::from_nanos(1571797424879305533),
                     delay_duration: 660,
                     delay_reason:
-                        "Processing of 1 deactivate messages has timed out after 660 seconds"
+                        "Processing of 2 deactivate messages has timed out after 660 seconds"
                             .to_string(),
-                    delay_process_dmsg_count: Uint256::from_u128(1),
+                    delay_process_dmsg_count: Uint256::from_u128(2),
                     delay_type: DelayType::DeactivateDelay,
                 },
                 DelayRecord {
                     delay_timestamp: Timestamp::from_nanos(1571798684879000000),
                     delay_duration: 10860,
-                    delay_reason: "Tallying has timed out after 10860 seconds (total process: 4, allowed: 3600 seconds)".to_string(),
+                    delay_reason: "Tallying has timed out after 10860 seconds (total process: 6, allowed: 3600 seconds)".to_string(),
                     delay_process_dmsg_count: Uint256::from_u128(0),
                     delay_type: DelayType::TallyDelay,
                 },
             ]
         }
     );
+
 
     let round_balance_before_claim = contract
         .balance_of(
@@ -1108,7 +1109,7 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
     // assert_eq!(round_balance_after_claim.amount, Uint128::from(0u128));
 
     let claim_amount = Uint128::from(round_balance_before_claim.amount);
-    let operator_reward = claim_amount.multiply_ratio(100u128 - (50u128 + 5u128 * 1), 100u128);
+    let operator_reward = claim_amount.multiply_ratio(100u128 - (50u128 + 5u128 * 2), 100u128);
     // let operator_reward = Uint128::from(0u128); // after 4 days, operator reward is 0, all funds are returned to admin
     let penalty_amount = claim_amount - operator_reward;
     println!("operator_reward: {:?}", operator_reward);
@@ -1414,7 +1415,7 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
                 let data: ProofDeactivateData = deserialize_data(&entry.data);
                 assert_eq!(
                     maci_contract.amaci_dmsg_length(&app).unwrap(),
-                    Uint256::from_u128(1u128)
+                    Uint256::from_u128(2u128)
                 );
 
                 let size = uint256_from_decimal_string(&data.size);
@@ -1422,9 +1423,9 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
                     uint256_from_decimal_string(&data.new_deactivate_commitment);
                 let new_deactivate_root = uint256_from_decimal_string(&data.new_deactivate_root);
                 let proof = Groth16ProofType {
-                    a: "166258d6b7dbbfe5682779016d69dda85e790db833db3fd630deac8b93945d7217b43d47ce0bca942daf551e9977cd3296b70e12ca069ba17bf7c93cc7d243bb".to_string(),
-                    b: "0c16f2b065e020f802431214962b2ee4cb325bd5cd8be1465d64c2e63d65990a2a886708b469a3d721ad95e8237dce1d590425b2b50e0713fd0d9c1587af88c3209570538e196db0b2e39e85d87948e15ceaaa58b308fffe86f7571384c20fb7248233090ec8844dbacc7292c17b3eeaff089f7f35830ce577e43021c2e8f36c".to_string(),
-                    c: "0a6ef77965279f792445c5f53f06b65fd7665cef4c2430660abd13f84d762c2e0e19de71f7159485943fa7ca2d3bb3182bc7b4a317df3ee871416ca8b6607859".to_string()
+                    a: "04c5d564a7dd1feaba7c422f429327bd5e9430cb6b67f0bf77a19788fac264a7080063a86a7f45a4893f68ce20a4ee0bc22cb085866c9387d1b822d1b1fba033".to_string(),
+                    b: "1515ff2d529baece55d6d9f7338de646dc83fba060dce13a88a8b31114b9df8b2573959072de506962aeadc60198138bfbba84a7ed3a7a349563a1b3ed4fef67062efab826e3b0ebdbce3bf0744634ba3db1d336d7ba38cfd16b8d3d42f9bb5d2546e2f71e1bbd6f680e65696aad163f99c3baac18c27146c17086542b2da535".to_string(),
+                    c: "2cb72b2822ff424c48e6972bdca59ee9f6b813bfb00571a286c41070a5a56de91d5e9c1310eef0653dc5c34255ebd40afaffcd65ba34f6d4799a4dca92cf12ff".to_string()
                 };
                 println!("process_deactivate_message proof {:?}", proof);
                 println!(
@@ -1461,9 +1462,9 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
                 let nullifier = uint256_from_decimal_string(&data.nullifier);
 
                 let proof = Groth16ProofType {
-                                a: "29eb173553d340b41108fa7581371d1e2eb84962e93e667aff45ee2cc05aa9b91234d82ac4caafd2eaf597e1da25c5982bef8b0a937a7f68b84954f042d4ed0f".to_string(),
-                                b: "01a6d17acb0c2381082e1c35baee57af4bf393dbd94377bac54bfec15916c0b80197c2a0c0faa491e9b32b32de526c03b2c57a126eeafcb72feae194b3f8a60f0a81e4f7aa16ba2afb45a694dcc5832531b36c060f3ae31a8df0e7c724961e130d5fc5a83a7d658b63611dd37e0790b3602072529743cf727a371f82c3c250b2".to_string(),
-                                c: "2e18f57e4618cac5b0111a6ca470a193dfbad5f393a455b06be2b2dbd8bb7b8e1c0f4fbb35a51d466d665d7fcfb22ea3717c6503e45f104167c4639fd01a1285".to_string()
+                                a: "2d72823f8f7e44117ab51f945a9b14899b56f8bc24ac93b68a42a0d3df1b815109535ff45d1694ad8299b55499065d5cd1fc03a222439d8f58ab0a3369d06739".to_string(),
+                                b: "2a83d66d8de353f284d8ab3d4d6beac737a8fd4528df53019f4f480bf224755525c910f7f36d59b8d5254cb79d20a229e0e0522c1b1d5501dbec4b71f8929bc6136cdc1cd58d2dfd73d52c7c6387a459420a7f2aba924a57b3eb32fc4d7d5dc311a262196bb79b95a66b5ebd6ccb89b0a06fb400d031f0ea0fe6c340b709cd69".to_string(),
+                                c: "184fc89744396e6069a589c662b41502cc7adc69feace7e07bb3a56ca24e100b087f4604dde84b86d75d581d4d5278369776076ad940f08f2d6d44651a599b8d".to_string()
                             };
 
                 println!("add_new_key proof {:?}", proof);
@@ -1543,9 +1544,9 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
 
                 let new_state_commitment = uint256_from_decimal_string(&data.new_state_commitment);
                 let proof = Groth16ProofType {
-                    a: "196514f4a74d1e2a0654e78dde3609083cdb554e82ff2e2e3060fa5aff6a744f26d4032fd0bce4b464f5bfffddb45ad5bda9cd2d53e2a1efb969f5e9cc974de0".to_string(),
-                    b: "1c2743aa42afe90735cb2d71b46bc54952ba97165988ae1b39fde2bf115097d40a93c7f6c937eaa6876a05a3c5f1726926443e149a854bc456d57ffecdc478751d496155a93a1bd9380018ac56c26551b31e561022adb176ed31a0ea369b01fa0bafb79cafb50880afab926ee468c88507947d0203bb0a3a2483cdc78bb61640".to_string(),
-                    c: "21706a34fc2514560b85328c6982283d2d722bb19e747b94fdc7c98852954be122efe42279374b1b6a9f8dfe67c4c573e7115d3ae8b87ea6399705b40e792d7a".to_string()
+                    a: "1d15cc37dcb272bbacd6793212775a2660be0df34138806c176b23b237b342811de490c5864a44aaff70e9f85d622b3f9a96f4a75b8f95ccabbb653b9e03bfdf".to_string(),
+                    b: "0de712129a430f3172d4ccd0241a95babbe777145ff386a56e6637ae968ae10b01f7c7d3edf83e66dfa8b022f1a8297e6f4c188950d82eb72565cc1bfaf28511185f0579f703687c4410e6b21cbb30efc82cd4841b56ccf9fa66341a0c6c256b1820517f1eb3b06e7736cdd3b170b23bec6968f02e8ed6e4fab098b42652361e".to_string(),
+                    c: "097f71ae3a88062baabafc37e8d4356d00b4577c0fca127235922654ee91cd040d61065aa98b440a4a16829eb0def9ac7d03a1ab5f3b0c6219ff19bebd122b79".to_string()
                 };
                 println!("process_message proof {:?}", proof);
                 println!(
@@ -1583,9 +1584,9 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
                 let new_tally_commitment = uint256_from_decimal_string(&data.new_tally_commitment);
 
                 let tally_proof = Groth16ProofType {
-                    a: "03f3b4e4cc23b195ad6e4f387b364c47dd8c569519590cec84c34949ba299e781c83d90167f31ac1415a08d496004fabbdb8993a42f56bf5f190649e17f4b190".to_string(),
-                    b: "140a91192b4f95a3739ab7c4dd245b49484549e35dd46dd88d81a675259f68e22c3f0cfb1cfcd68a3ae2511abc1a206a6eebeb70978466ddfdc0364e6aadfd5308f0342e7cfcfc32ee717ad17e3fddc86f494b6b5d11409992b3e41353326caf01c7a8b16df57e2f1ba1668f1fe5240fc7bbe03671d609dad7625b58373459b3".to_string(),
-                    c: "294881977d0a50888a163923f21c8774c015980c69df721884e82ac60f05e21304325c39d04936d96c6b0afdb3e99b6712b30d9e25685fb5e3af1ca570467eed".to_string()
+                    a: "1e0bd768d465ded5a9e699f052dd636be8ab48fe0c4a1d3d9cacf8d36913d8ae177af12ba0069288a86d9203373c5f8f60c37cbb3398b63df1b11991e6ca0c50".to_string(),
+                    b: "23dfa545c123e67c4c9fef8390afe9a3484df2058fa00d92ffc8f1f3379dcc1800584aff26615a81ab5f28d35e596b7b88d6cfd3b3ec205a8981f91aacd8aa6b2896a841947bd200cce364e04064c0b16533015c68c09d8dc2a4c6fa6e907c5b1fc331016aa03f8059a2bf73aa39b69ad5c36f07a9aede6817144e84dbfd9250".to_string(),
+                    c: "2bc0d5643a8fdc18712e4e0815f698539c3ed905fa8edd091a752d679270967109ac6f774c8b8bb002bfb07675cdeb4e3bf4ec2ade2bf6e5ed74c167dc3dee0a".to_string()
                 };
 
                 _ = maci_contract
@@ -1645,15 +1646,15 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
                     delay_timestamp: Timestamp::from_nanos(1571797424879305533),
                     delay_duration: 660,
                     delay_reason:
-                        "Processing of 1 deactivate messages has timed out after 660 seconds"
+                        "Processing of 2 deactivate messages has timed out after 660 seconds"
                             .to_string(),
-                    delay_process_dmsg_count: Uint256::from_u128(1),
+                    delay_process_dmsg_count: Uint256::from_u128(2),
                     delay_type: DelayType::DeactivateDelay,
                 },
                 DelayRecord {
                     delay_timestamp: Timestamp::from_nanos(1571798684879000000),
                     delay_duration: 10860,
-                    delay_reason: "Tallying has timed out after 10860 seconds (total process: 4, allowed: 3600 seconds)".to_string(),
+                    delay_reason: "Tallying has timed out after 10860 seconds (total process: 6, allowed: 3600 seconds)".to_string(),
                     delay_process_dmsg_count: Uint256::from_u128(0),
                     delay_type: DelayType::TallyDelay,
                 },
