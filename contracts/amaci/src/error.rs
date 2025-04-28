@@ -125,4 +125,7 @@ pub enum ContractError {
 
     #[error("All funds claimed")]
     AllFundsClaimed {},
+
+    #[error("Maximum number of deactivate messages ({max_deactivate_messages}) has been reached")]
+    MaxDeactivateMessagesReached { max_deactivate_messages: Uint256 },
 }

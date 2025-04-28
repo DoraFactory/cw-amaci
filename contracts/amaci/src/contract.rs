@@ -752,7 +752,15 @@ pub fn execute_publish_deactivate_message(
     // Load the scalar field value
     let snark_scalar_field =
         uint256_from_hex_string("30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001");
+    let mut dmsg_chain_length = DMSG_CHAIN_LENGTH.load(deps.storage)?;
 
+    let maci_parameters: MaciParameters = MACIPARAMETERS.load(deps.storage)?;
+    // Calculate maximum allowed deactivate messages: 5^(state_tree_depth+2)-1
+    let max_deactivate_messages = Uint256::from_u128(5u128).pow((maci_parameters.state_tree_depth + 
+        Uint256::from_u128(2u128)).to_string().parse().unwrap()) - Uint256::from_u128(1u128);
+    if dmsg_chain_length + Uint256::from_u128(1u128) > max_deactivate_messages {
+        return Err(ContractError::MaxDeactivateMessagesReached { max_deactivate_messages });
+    }
     // let snark_scalar_field = uint256_from_decimal_string(
     //     "21888242871839275222246405745257275088548364400416034343698204186575808495617",
     // );
@@ -763,7 +771,6 @@ pub fn execute_publish_deactivate_message(
         && enc_pub_key.y < snark_scalar_field
     {
         let processed_dmsg_count = PROCESSED_DMSG_COUNT.load(deps.storage)?;
-        let mut dmsg_chain_length = DMSG_CHAIN_LENGTH.load(deps.storage)?;
 
         // When the processed_dmsg_count catches up with dmsg_chain_length, it indicates that the previous batch has been processed.
         // At this point, the new incoming message is the first one of the new batch, and we record the timestamp.
