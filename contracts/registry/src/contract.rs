@@ -1,19 +1,20 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    attr, from_json, to_json_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Reply,
-    Response, StdError, StdResult, SubMsg, SubMsgResponse, Uint128, Uint256, WasmMsg,
+    attr, coins, from_json, to_json_binary, Addr, BankMsg, Binary, Deps, DepsMut, Env, MessageInfo,
+    Reply, Response, StdError, StdResult, SubMsg, SubMsgResponse, Uint128, Uint256, WasmMsg,
 };
-
-use cw2::set_contract_version;
 
 use crate::error::ContractError;
+use crate::migrates::migrate_v0_1_3::migrate_v0_1_3;
 use crate::msg::{ExecuteMsg, InstantiateMsg, InstantiationData, MigrateMsg, QueryMsg};
 use crate::state::{
-    Admin, ValidatorSet, ADMIN, AMACI_CODE_ID, COORDINATOR_PUBKEY_MAP, MACI_OPERATOR_IDENTITY,
-    MACI_OPERATOR_PUBKEY, MACI_OPERATOR_SET, MACI_VALIDATOR_LIST, MACI_VALIDATOR_OPERATOR_SET,
-    OPERATOR,
+    Admin, CircuitChargeConfig, ValidatorSet, ADMIN, AMACI_CODE_ID, CIRCUIT_CHARGE_CONFIG,
+    COORDINATOR_PUBKEY_MAP, MACI_OPERATOR_IDENTITY, MACI_OPERATOR_PUBKEY, MACI_OPERATOR_SET,
+    MACI_VALIDATOR_LIST, MACI_VALIDATOR_OPERATOR_SET, OPERATOR,
 };
+use cosmwasm_std::Decimal;
+use cw2::set_contract_version;
 use cw_amaci::msg::{
     InstantiateMsg as AMaciInstantiateMsg, InstantiationData as AMaciInstantiationData,
     WhitelistBase,
@@ -42,6 +43,13 @@ pub fn instantiate(
     OPERATOR.save(deps.storage, &msg.operator)?;
 
     AMACI_CODE_ID.save(deps.storage, &msg.amaci_code_id)?;
+
+    let circuit_charge_config = CircuitChargeConfig {
+        fee_rate: Decimal::from_ratio(1u128, 10u128), // 10%
+    };
+
+    CIRCUIT_CHARGE_CONFIG.save(deps.storage, &circuit_charge_config)?;
+
     Ok(Response::default())
 }
 
@@ -99,6 +107,9 @@ pub fn execute(
             execute_update_amaci_code_id(deps, env, info, amaci_code_id)
         }
         ExecuteMsg::ChangeOperator { address } => execute_change_operator(deps, env, info, address),
+        ExecuteMsg::ChangeChargeConfig { config } => {
+            execute_change_charge_config(deps, env, info, config)
+        }
     }
 }
 
@@ -118,33 +129,62 @@ pub fn execute_create_round(
     certification_system: Uint256,
 ) -> Result<Response, ContractError> {
     let maci_parameters: MaciParameters;
+    let required_fee: Uint128;
+    let circuit_charge_config = CIRCUIT_CHARGE_CONFIG.load(deps.storage)?;
+
     if max_voter <= Uint256::from_u128(25u128) && max_option <= Uint256::from_u128(5u128) {
         // state_tree_depth: 2
         // vote_option_tree_depth: 1
+        // price: 20 DORA
         maci_parameters = MaciParameters {
             state_tree_depth: Uint256::from_u128(2u128),
             int_state_tree_depth: Uint256::from_u128(1u128),
             vote_option_tree_depth: Uint256::from_u128(1u128),
             message_batch_size: Uint256::from_u128(5u128),
-        }
+        };
+        required_fee = Uint128::from(20000000000000000000u128);
+        // required_fee = Uint128::from(50000000000000000000u128);
     } else if max_voter <= Uint256::from_u128(625u128) && max_option <= Uint256::from_u128(25u128) {
         // state_tree_depth: 4
         // vote_option_tree_depth: 2
+        // price: 750 DORA
         maci_parameters = MaciParameters {
             state_tree_depth: Uint256::from_u128(4u128),
             int_state_tree_depth: Uint256::from_u128(2u128),
             vote_option_tree_depth: Uint256::from_u128(2u128),
             message_batch_size: Uint256::from_u128(25u128),
-        }
-        // } else if max_voter <= 15625 && max_option <= 125 {
+        };
+        required_fee = Uint128::from(750000000000000000000u128);
+        // required_fee = Uint128::from(100000000000000000000u128);
     } else {
         return Err(ContractError::NoMatchedSizeCircuit {});
+    }
+
+    let denom = "peaka".to_string();
+    let mut amount: Uint128 = Uint128::new(0);
+    info.funds.iter().for_each(|fund| {
+        if fund.denom == denom {
+            amount = fund.amount;
+        }
+    });
+
+    // check user's payment
+    if amount < required_fee {
+        return Err(ContractError::InsufficientFee {
+            required: required_fee,
+            provided: amount,
+        });
     }
 
     if !MACI_OPERATOR_PUBKEY.has(deps.storage, &operator) {
         return Err(ContractError::NotSetOperatorPubkey {});
     }
     let operator_pubkey = MACI_OPERATOR_PUBKEY.load(deps.storage, &operator)?;
+
+    let total_fee = required_fee;
+    let admin = ADMIN.load(deps.storage)?.admin;
+    let admin_fee = circuit_charge_config.fee_rate * total_fee;
+    let operator_fee: Uint128 = total_fee - admin_fee;
 
     let init_msg = AMaciInstantiateMsg {
         parameters: maci_parameters,
@@ -161,20 +201,30 @@ pub fn execute_create_round(
         certification_system,
     };
     let amaci_code_id = AMACI_CODE_ID.load(deps.storage)?;
-    let msg = WasmMsg::Instantiate {
-        admin: Some(env.contract.address.to_string()),
-        code_id: amaci_code_id,
-        msg: to_json_binary(&init_msg)?,
-        funds: vec![],
-        label: "AMACI".to_string(),
+    let instantiate_msg = SubMsg::reply_on_success(
+        WasmMsg::Instantiate {
+            admin: Some(env.contract.address.to_string()),
+            code_id: amaci_code_id,
+            msg: to_json_binary(&init_msg)?,
+            funds: coins(operator_fee.u128(), "peaka"),
+            label: "AMACI".to_string(),
+        },
+        CREATED_GROTH16_ROUND_REPLY_ID,
+    );
+
+    // 添加转账admin_fee给admin的消息
+    let send_admin_fee = BankMsg::Send {
+        to_address: admin.to_string(),
+        amount: coins(admin_fee.u128(), "peaka"),
     };
 
-    let msg = SubMsg::reply_on_success(msg, CREATED_GROTH16_ROUND_REPLY_ID);
-
     let resp = Response::new()
-        .add_submessage(msg)
+        .add_submessage(instantiate_msg)
+        .add_message(send_admin_fee)
         .add_attribute("action", "create_round")
-        .add_attribute("amaci_code_id", &amaci_code_id.to_string());
+        .add_attribute("amaci_code_id", &amaci_code_id.to_string())
+        .add_attribute("admin_fee", admin_fee.to_string())
+        .add_attribute("operator_fee", operator_fee.to_string());
 
     Ok(resp)
 }
@@ -373,6 +423,23 @@ pub fn execute_change_operator(
     }
 }
 
+pub fn execute_change_charge_config(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    config: CircuitChargeConfig,
+) -> Result<Response, ContractError> {
+    if !is_operator(deps.as_ref(), info.sender.as_ref())? {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    CIRCUIT_CHARGE_CONFIG.save(deps.storage, &config)?;
+
+    Ok(Response::new()
+        .add_attribute("action", "change_charge_config")
+        .add_attribute("fee_rate", config.fee_rate.to_string()))
+}
+
 // Only admin can execute
 fn is_admin(deps: Deps, sender: &str) -> StdResult<bool> {
     let cfg = ADMIN.load(deps.storage)?;
@@ -428,7 +495,10 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         }
         QueryMsg::GetMaciOperatorIdentity { address } => {
             to_json_binary(&MACI_OPERATOR_IDENTITY.load(deps.storage, &address)?)
-        } // QueryMsg::GetNewState {} => to_json_binary(&MIGRATE_NEW_STATE.load(deps.storage)?),
+        }
+        QueryMsg::GetCircuitChargeConfig {} => {
+            to_json_binary(&CIRCUIT_CHARGE_CONFIG.load(deps.storage)?)
+        }
     }
 }
 
@@ -559,12 +629,7 @@ pub fn reply_created_round(
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
-    // ensure we are migrating from an allowed contract
     cw2::ensure_from_older_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    // do any desired state migrations here
-    // MIGRATE_NEW_STATE.save(deps.storage, &msg.test)?;
-
-    Ok(Response::default().add_attribute("action", "migrate"))
-    // .add_attribute("new_state", msg.test.to_string()))
+    migrate_v0_1_3(deps)
 }

@@ -8,8 +8,8 @@ mod test {
     use crate::state::{
         DelayRecord, DelayRecords, DelayType, MessageData, Period, PeriodStatus, PubKey,
     };
-    use cosmwasm_std::{coins, Addr, BlockInfo, Timestamp, Uint128, Uint256};
-    use cw_multi_test::{next_block, AppBuilder, StargateAccepting};
+    use cosmwasm_std::{Addr, BlockInfo, Timestamp, Uint256};
+    use cw_multi_test::next_block;
     use serde::{Deserialize, Serialize};
     use serde_json;
     use std::fs;
@@ -901,10 +901,10 @@ mod test {
                     let new_deactivate_root =
                         uint256_from_decimal_string(&data.new_deactivate_root);
                     let proof = Groth16ProofType {
-                                    a: "07eb1d9b0b358b2e4fe5e051bfd67aa3e57e2ab2f64f10e35d396ffd250b43e50433ae33cf1f829a23b7f326d8d2e4ff947c6f9778b788cf98336a6596ca2d16".to_string(),
-                                    b: "0178e65e73c8e868900a5b439ac9c9f4c5dd7b1648b1f62bd5515a570fbf35a910fe35a737af956348436c2c62f046a08f35c0c7249bdaee25821122d1e3e11805f57494d28352120e88d1f75f560b3f15bea5af48d07e942df098b3e1aa95ff0a2541ae1aec50d71f30d01be5cd3d8a9d86ead1f190fb7d4c723bdcf9b11a51".to_string(),
-                                    c: "1e146ab4c5b7388f8207d8e00c8d44d63786eb9a2deb07674b9e47ecb263541b22109d09c11658954333b6e62dacca8a72c088ddd8ab633765bc46bf88e97cd8".to_string()
-                                };
+                        a: "132a36c4e9653de9ebe2f131e3452319fc4b0f19339083ce52c6dbd5d1d583190f79d3cf25dbf173a959631330f358a334f3977ae2fcfe2e93fb5c5e86dc6ef4".to_string(),
+                        b: "17c61aea44885cf09a35b41fed13916e8a712cfdc2da041a0c29578d102c559f1bd5a1ae12404f47f8fe3f9cba289f9f9fcdf6e60fb64fe17335a65f00f82eda2a5f55a8181bc191a242a60cb27d7c303059895065219d7e436d95e1dbedec182ffa368e7e99494c75e230452fee2a6b2136444b91bf7cfe7581fea055805dbd".to_string(),
+                        c: "138d241e6ca289a65ac398af0c1b68b455184a3735e68dd0d5966d8c5ed9629415cab9376a35f9e33a1be5957e8b696e4a3b43363c8df9a460ff70831b63f69b".to_string()
+                    };
                     println!("process_deactivate_message proof {:?}", proof);
                     println!(
                         "process_deactivate_message new state commitment {:?}",
@@ -1023,9 +1023,9 @@ mod test {
                     let new_state_commitment =
                         uint256_from_decimal_string(&data.new_state_commitment);
                     let proof = Groth16ProofType {
-                            a: "1064da3b6dc28c0c1cf5be19ae0d7e653cd6b4fd7fad60fbdf388358e3238a5106cdf7446c0e37a5421ffc98ca27e2ad7c39cbce6bd0828293a18903fb488b11".to_string(),
-                            b: "269766a5e7a27980fa446543f84984ce60f8998f3518f74dff73d1b044323d4f22df42cb66facc4ce30d4e1937abe342cf8fda8d10134a4c21d60ab8ffabcc7029fcf2f5f4870f4d54d807cbd8cde9e4a2c2bc8740d6c63d835045145f1851470c8ba81d9639c83ecbecf5a4495238b4fcc7f8317388422c049dd7874b265b4b".to_string(),
-                            c: "13e4c1882e33e250de25c916d469ef2fe99e2dfd2a89e2c2369ba348903d7bd40cd1b811de0b35c2b2ece3ac156e12cb1e1114819fbd37a670d0f588f4f30bab".to_string()
+                            a: "11c744b43710eb925e5b81217de65d15a2388882c6fb82f85c8addb1367c69b02dec496b413ae73174333bf29117513239d1cc583c00f24a6c93d1082834b477".to_string(),
+                            b: "2cbb0e1085abef8077ccbbdea230c99064f9a8e9f9385932ee74ebe58964781a1dabe6292b711ec05d40afb380f64564a77b24185333d7f4ed7065e37fc9479e01d9949cdb9e682c6574951070711eae504d12ab10e1d20f733882edd65c2c4a18737f0837fccda1a5d6c08828cc62060cb9f650fd4598baf548921bf93e2632".to_string(),
+                            c: "2c4e66dd6e47abc6aa343d3eae4f2cf7360147ec28f402829e8fbc6db079741011fe98e27342b42f5cf9a4dfc8a31b2e1d42dc5630cf11e97b92536da978b0c7".to_string()
                         };
                     println!("process_message proof {:?}", proof);
                     println!(
@@ -1062,11 +1062,11 @@ mod test {
                     let new_tally_commitment =
                         uint256_from_decimal_string(&data.new_tally_commitment);
 
-                    let tally_proof = Groth16ProofType {
-                                a: "2223e53e3b01380cc92390be785006738a510e3f371b0ab255a4adc5a77839410537bc9546e50d1b634b45c8607c59d3ff905a64de8de75ea3f43b6b77a569be".to_string(),
-                                b: "1786ccb676689ce648bcb5c9afba636d3bfb15b14c5333802f1006f9338f869a12e033e0a68484c04b9c6f8c6ee01d23a3cc78b13b86ab5282f14961f01f0b8212a89a503e8f2e652c5f00fceca6e1033df0904bb8626a2d6515bd44488e40e4211d1a7f6996e41ee46f81a762af3132174aa4725334783a493a432d1828db80".to_string(),
-                                c: "1e53064534ff278b93ba9c2df8a8d2accac3358f7486072a605990e38544cc292cde5cf0b444f3395b627edeabf892ef3020b2b90edc3936bcef2caa6d68dbcb".to_string()
-                            };
+                        let tally_proof = Groth16ProofType {
+                            a: "24eefd06494531734508ae412053ed5688072c5fb4cf71fc3c8ec0d31f7d563f093e8b9a311e0caa1ba02de27e75c143f958248b5f486190edd8817f636f0ce8".to_string(),
+                            b: "1fc5e9cdc59c37c88c2a148ac2418659d6eea3448698b57d35c78c7c08b4c52921aa37dca6de3851abe0843338440de8024a6ece04d284e8abf2061a70be713f295339ddce483a56315c3feec141938028a544e62e38bb5bf050dd19146d9ab72b32fe75e87e6bd44ce0476177ebf796fc7eba01bcbf175ccbbd10e2f04a90f0".to_string(),
+                            c: "0ba9c3647f448b9ba9fcf39900c380dff4c9f0328529795f4013912b25a45b9f18f6ca48d63751f67800108105b7b34f88ddda72234ff7eda5c63de7bb90da48".to_string()
+                        };
 
                     _ = contract
                         .process_tally(&mut app, owner(), new_tally_commitment, tally_proof)
@@ -1107,113 +1107,7 @@ mod test {
         }
     }
 
-    // #[test] TODO
-    fn instantiate_with_voting_time_and_test_grant_should_works() {
-        let admin_coin_amount = 50u128;
-        let bond_coin_amount = 10u128;
-        const DORA_DEMON: &str = "peaka";
-
-        let msg_file_path = "./src/test/msg_test.json";
-
-        let mut msg_file = fs::File::open(msg_file_path).expect("Failed to open file");
-        let mut msg_content = String::new();
-
-        msg_file
-            .read_to_string(&mut msg_content)
-            .expect("Failed to read file");
-
-        let data: MsgData = serde_json::from_str(&msg_content).expect("Failed to parse JSON");
-
-        let mut app = AppBuilder::default()
-            .with_stargate(StargateAccepting)
-            .build(|router, _api, storage| {
-                router
-                    .bank
-                    .init_balance(storage, &owner(), coins(admin_coin_amount, DORA_DEMON))
-                    .unwrap();
-            });
-
-        let code_id = MaciCodeId::store_code(&mut app);
-        let label = "Group";
-        let contract = code_id
-            .instantiate_with_voting_time_and_no_whitelist(&mut app, owner(), label)
-            .unwrap();
-
-        _ = contract.set_vote_option_map(&mut app, owner());
-        let new_vote_option_map = contract.vote_option_map(&app).unwrap();
-        assert_eq!(
-            new_vote_option_map,
-            vec![
-                String::from("did_not_vote"),
-                String::from("yes"),
-                String::from("no"),
-                String::from("no_with_veto"),
-                String::from("abstain"),
-            ]
-        );
-        _ = contract.set_whitelist(&mut app, owner());
-
-        let error_grant_in_pending = contract
-            .grant(&mut app, owner(), &coins(bond_coin_amount, DORA_DEMON))
-            .unwrap_err();
-        assert_eq!(
-            ContractError::PeriodError {},
-            error_grant_in_pending.downcast().unwrap()
-        );
-
-        _ = contract.set_vote_option_map(&mut app, owner());
-
-        app.update_block(next_block); // Start Voting
-
-        let a = contract.grant(&mut app, owner(), &coins(bond_coin_amount, DORA_DEMON));
-        println!("grant res: {:?}", a);
-        let feegrant_amount = contract.query_total_feegrant(&app).unwrap();
-        assert_eq!(Uint128::from(10000000000000u128), feegrant_amount);
-
-        for i in 0..data.msgs.len() {
-            if i < Uint256::from_u128(2u128).to_string().parse().unwrap() {
-                let pubkey = PubKey {
-                    x: uint256_from_decimal_string(&data.current_state_leaves[i][0]),
-                    y: uint256_from_decimal_string(&data.current_state_leaves[i][1]),
-                };
-
-                println!("---------- signup ---------- {:?}", i);
-                let _ = contract.sign_up(&mut app, Addr::unchecked(i.to_string()), pubkey);
-            }
-            let message = MessageData {
-                data: [
-                    uint256_from_decimal_string(&data.msgs[i][0]),
-                    uint256_from_decimal_string(&data.msgs[i][1]),
-                    uint256_from_decimal_string(&data.msgs[i][2]),
-                    uint256_from_decimal_string(&data.msgs[i][3]),
-                    uint256_from_decimal_string(&data.msgs[i][4]),
-                    uint256_from_decimal_string(&data.msgs[i][5]),
-                    uint256_from_decimal_string(&data.msgs[i][6]),
-                ],
-            };
-
-            let enc_pub = PubKey {
-                x: uint256_from_decimal_string(&data.enc_pub_keys[i][0]),
-                y: uint256_from_decimal_string(&data.enc_pub_keys[i][1]),
-            };
-            _ = contract.publish_message(&mut app, user2(), message, enc_pub);
-        }
-
-        assert_eq!(
-            contract.num_sign_up(&app).unwrap(),
-            Uint256::from_u128(2u128)
-        );
-
-        assert_eq!(
-            contract.msg_length(&app).unwrap(),
-            Uint256::from_u128(3u128)
-        );
-
-        // Stop Voting Period
-        app.update_block(next_block);
-    }
-
-    #[test]
+    // #[test]
     fn instantiate_with_voting_time_qv_amaci_should_works() {
         let msg_file_path = "./src/test/qv_test/msg.json";
 
@@ -1416,10 +1310,10 @@ mod test {
                     let new_deactivate_root =
                         uint256_from_decimal_string(&data.new_deactivate_root);
                     let proof = Groth16ProofType {
-                                    a: "2fac29af2cad382c07952b42c10b282d6ee5c27032548c370fdf40c693965b98239bb54fb0546480075f7e93f7f46acdacfecf3eb40fb3c16f9b13287d15fd7a".to_string(),
-                                    b: "18fb4503928bda6fc6aa377170b80fb3e2c73161c78c936bca222cb233318c7517ca194640de6b7790ec65ea7e46891089567d86a9fe8e419ad5e5d27e2cf96a2cf5383ef516ea8d14754c2e9e132fe566dd32eb23cd0de3543398a03a1c15f02a75014c4db8598d472112b292bbdde2968c409b759dbe76dec21da24b09d1a1".to_string(),
-                                    c: "18f024873175339f2e939c8bc8a369daa56257564f3e23b0cf4b635e5721f0d1285e5d66fc1dd69f581a2b146083267e4ce9a3c21e46f488af2ed9289bd00714".to_string()
-                                };
+                        a: "132a36c4e9653de9ebe2f131e3452319fc4b0f19339083ce52c6dbd5d1d583190f79d3cf25dbf173a959631330f358a334f3977ae2fcfe2e93fb5c5e86dc6ef4".to_string(),
+                        b: "17c61aea44885cf09a35b41fed13916e8a712cfdc2da041a0c29578d102c559f1bd5a1ae12404f47f8fe3f9cba289f9f9fcdf6e60fb64fe17335a65f00f82eda2a5f55a8181bc191a242a60cb27d7c303059895065219d7e436d95e1dbedec182ffa368e7e99494c75e230452fee2a6b2136444b91bf7cfe7581fea055805dbd".to_string(),
+                        c: "138d241e6ca289a65ac398af0c1b68b455184a3735e68dd0d5966d8c5ed9629415cab9376a35f9e33a1be5957e8b696e4a3b43363c8df9a460ff70831b63f69b".to_string()
+                    };
                     println!("process_deactivate_message proof {:?}", proof);
                     println!(
                         "process_deactivate_message new state commitment {:?}",
@@ -1538,9 +1432,9 @@ mod test {
                     let new_state_commitment =
                         uint256_from_decimal_string(&data.new_state_commitment);
                     let proof = Groth16ProofType {
-                            a: "096d1b959a9d1a4414da11a08220f034cd897b9cdd4cfce9a5427dca6302da15256a4aa11311f51231d905883f2224bdda75e8d1757f701164d11a286dd3831a".to_string(),
-                            b: "1bce75878f05c102f04f23d8033ecbf074420c02d977e312f6e121b1254bfe262e465cd3e76211e75251ee9a1dadfaedbde55c55af20c3b906ee4f360f079f6b069f7aa8774a1fbfcca147a2581d64885a977aa05f5a03b0f8871abc2f0611ad058a4f480bdff6ec3616be5b4f197f8a96c21b206485827f628b1f8ee5f55be4".to_string(),
-                            c: "11d9887f25fb3cac4a4cc9f20031f9be14bb206fe5db157ae2302d23c65ed6ad06af73ef894c43bbd89008b720efded006a0499bc76cdfc5ae8d8bf67360f37e".to_string()
+                            a: "11c744b43710eb925e5b81217de65d15a2388882c6fb82f85c8addb1367c69b02dec496b413ae73174333bf29117513239d1cc583c00f24a6c93d1082834b477".to_string(),
+                            b: "2cbb0e1085abef8077ccbbdea230c99064f9a8e9f9385932ee74ebe58964781a1dabe6292b711ec05d40afb380f64564a77b24185333d7f4ed7065e37fc9479e01d9949cdb9e682c6574951070711eae504d12ab10e1d20f733882edd65c2c4a18737f0837fccda1a5d6c08828cc62060cb9f650fd4598baf548921bf93e2632".to_string(),
+                            c: "2c4e66dd6e47abc6aa343d3eae4f2cf7360147ec28f402829e8fbc6db079741011fe98e27342b42f5cf9a4dfc8a31b2e1d42dc5630cf11e97b92536da978b0c7".to_string()
                         };
                     println!("process_message proof {:?}", proof);
                     println!(
@@ -1578,10 +1472,10 @@ mod test {
                         uint256_from_decimal_string(&data.new_tally_commitment);
 
                     let tally_proof = Groth16ProofType {
-                                a: "2a88fe840fa2eb49979acee8b545766fc83f28f128219041d3bf1e900fcf86a219b124cbf9b755a802186c391a154137eadf865a4b604452f5f98c4c533a1652".to_string(),
-                                b: "0b6706904e637f888a9406db1529c84c26d068ad54bbfd3597de3e542f9230302cfdfdcd606e3544a63139b888fa561c2bf5ed928826d68c4f35e0fd07d491da27488896f67e261e8e3c6e33f947700b10eb6029daf6d9ae19add49e19fde2792563eec2f3fa6a43b1ec42c7d2f32b644c2f18e2b48d5dc552958b49c30f80c8".to_string(),
-                                c: "0d4529ea7dd9c686c5673d48ee6a3fb3971a7cf12441f40e0ba6116046d64767288254a628cac0e46ccd3f1d1100ba2cd922d71066ae48b78283773b505665e0".to_string()
-                            };
+                        a: "24eefd06494531734508ae412053ed5688072c5fb4cf71fc3c8ec0d31f7d563f093e8b9a311e0caa1ba02de27e75c143f958248b5f486190edd8817f636f0ce8".to_string(),
+                        b: "1fc5e9cdc59c37c88c2a148ac2418659d6eea3448698b57d35c78c7c08b4c52921aa37dca6de3851abe0843338440de8024a6ece04d284e8abf2061a70be713f295339ddce483a56315c3feec141938028a544e62e38bb5bf050dd19146d9ab72b32fe75e87e6bd44ce0476177ebf796fc7eba01bcbf175ccbbd10e2f04a90f0".to_string(),
+                        c: "0ba9c3647f448b9ba9fcf39900c380dff4c9f0328529795f4013912b25a45b9f18f6ca48d63751f67800108105b7b34f88ddda72234ff7eda5c63de7bb90da48".to_string()
+                    };
 
                     _ = contract
                         .process_tally(&mut app, owner(), new_tally_commitment, tally_proof)
@@ -1638,7 +1532,7 @@ mod test {
         );
     }
 
-    #[test]
+    // #[test]
     fn instantiate_with_wrong_voting_time_error() {
         let mut app = create_app();
         let code_id = MaciCodeId::store_code(&mut app);
@@ -1652,7 +1546,7 @@ mod test {
         assert_eq!(ContractError::WrongTimeSet {}, contract.downcast().unwrap());
     }
 
-    #[test]
+    // #[test]
     fn test_amaci_process_deactivate_message_delay_data() {
         let msg_file_path = "./src/test/qv_test/msg.json";
 

@@ -2,21 +2,23 @@ use crate::circuit_params::match_vkeys;
 use crate::error::ContractError;
 use crate::groth16_parser::{parse_groth16_proof, parse_groth16_vkey};
 use crate::msg::{
-    ExecuteMsg, Groth16ProofType, InstantiateMsg, InstantiationData, QueryMsg, WhitelistBase,
+    ExecuteMsg, Groth16ProofType, InstantiateMsg, InstantiationData, QueryMsg, TallyDelayInfo,
+    WhitelistBase,
 };
 use crate::state::{
-    Admin, DelayRecord, DelayRecords, DelayType, Groth16ProofStr, MessageData, Period,
-    PeriodStatus, PubKey, QuinaryTreeRoot, RoundInfo, StateLeaf, VotingTime, Whitelist,
+    Admin, DelayRecord, DelayRecords, DelayType, Groth16ProofStr, MaciParameters, MessageData,
+    Period, PeriodStatus, PubKey, QuinaryTreeRoot, RoundInfo, StateLeaf, VotingTime, Whitelist,
     WhitelistConfig, ADMIN, CERTSYSTEM, CIRCUITTYPE, COORDINATORHASH, CREATE_ROUND_WINDOW,
     CURRENT_DEACTIVATE_COMMITMENT, CURRENT_STATE_COMMITMENT, CURRENT_TALLY_COMMITMENT,
-    DEACTIVATE_TIMEOUT, DELAY_RECORDS, DMSG_CHAIN_LENGTH, DMSG_HASHES, DNODES, FEEGRANTS,
-    FIRST_DMSG_TIMESTAMP, GROTH16_DEACTIVATE_VKEYS, GROTH16_NEWKEY_VKEYS, GROTH16_PROCESS_VKEYS,
-    GROTH16_TALLY_VKEYS, LEAF_IDX_0, MACIPARAMETERS, MACI_DEACTIVATE_MESSAGE, MACI_OPERATOR,
-    MAX_LEAVES_COUNT, MAX_VOTE_OPTIONS, MSG_CHAIN_LENGTH, MSG_HASHES, NODES, NULLIFIERS,
-    NUMSIGNUPS, PENALTY_RATE, PERIOD, PRE_DEACTIVATE_ROOT, PROCESSED_DMSG_COUNT,
-    PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO, SIGNUPED, STATEIDXINC,
-    STATE_ROOT_BY_DMSG, TALLY_TIMEOUT, TOTAL_RESULT, VOICECREDITBALANCE, VOICE_CREDIT_AMOUNT,
-    VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS, ZEROS_H10,
+    DEACTIVATE_COUNT, DEACTIVATE_DELAY, DELAY_RECORDS, DMSG_CHAIN_LENGTH, DMSG_HASHES, DNODES,
+    FEEGRANTS, FIRST_DMSG_TIMESTAMP, GROTH16_DEACTIVATE_VKEYS, GROTH16_NEWKEY_VKEYS,
+    GROTH16_PROCESS_VKEYS, GROTH16_TALLY_VKEYS, LEAF_IDX_0, MACIPARAMETERS,
+    MACI_DEACTIVATE_MESSAGE, MACI_OPERATOR, MAX_LEAVES_COUNT, MAX_VOTE_OPTIONS, MSG_CHAIN_LENGTH,
+    MSG_HASHES, NODES, NULLIFIERS, NUMSIGNUPS, PENALTY_RATE, PERIOD, PRE_DEACTIVATE_ROOT,
+    PROCESSED_DMSG_COUNT, PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO,
+    SIGNUPED, STATEIDXINC, STATE_ROOT_BY_DMSG, TALLY_TIMEOUT, TOTAL_RESULT,
+    VOICECREDITBALANCE, VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS,
+    ZEROS_H10, TALLY_DELAY_MAX_HOURS
 };
 use cosmwasm_schema::cw_serde;
 #[cfg(not(feature = "library"))]
@@ -24,15 +26,6 @@ use cosmwasm_std::entry_point;
 use cw2::set_contract_version;
 
 use pairing_ce::bn256::Bn256;
-
-use cosmos_sdk_proto::cosmos::base::v1beta1::Coin as SdkCoin;
-use cosmos_sdk_proto::cosmos::feegrant::v1beta1::{
-    AllowedMsgAllowance, BasicAllowance, MsgGrantAllowance, MsgRevokeAllowance,
-};
-use cosmos_sdk_proto::prost::Message;
-use cosmos_sdk_proto::traits::TypeUrl;
-use cosmos_sdk_proto::Any;
-use prost_types::Timestamp as SdkTimestamp;
 
 use crate::utils::{hash2, hash5, hash_256_uint256_list, uint256_from_hex_string};
 use cosmwasm_std::{
@@ -53,7 +46,7 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
@@ -79,6 +72,10 @@ pub fn instantiate(
             current: msg.max_vote_options,
             max_allowed: vote_option_max_amount,
         });
+    }
+
+    if msg.voting_time.end_time < env.block.time {
+        return Err(ContractError::WrongTimeSet {});
     }
 
     // if msg.voting_time.start_time >= msg.voting_time.end_time {
@@ -247,6 +244,7 @@ pub fn instantiate(
 
     PROCESSED_DMSG_COUNT.save(deps.storage, &Uint256::from_u128(0u128))?;
     DMSG_CHAIN_LENGTH.save(deps.storage, &Uint256::from_u128(0u128))?;
+    DEACTIVATE_COUNT.save(deps.storage, &0u128)?;
 
     let current_dcommitment = &hash2([
         zeros[msg
@@ -255,9 +253,7 @@ pub fn instantiate(
             .to_string()
             .parse::<usize>()
             .unwrap()],
-        zeros[msg
-            .parameters
-            .state_tree_depth
+        zeros[(msg.parameters.state_tree_depth + Uint256::from_u128(2u128))
             .to_string()
             .parse::<usize>()
             .unwrap()],
@@ -316,19 +312,21 @@ pub fn instantiate(
     CERTSYSTEM.save(deps.storage, &msg.certification_system)?;
 
     // Init penalty rate and timeout
-    let penalty_rate = Uint256::from_u128(80);
-    PENALTY_RATE.save(deps.storage, &penalty_rate)?; // 80%
-                                                     // let deactivate_timeout = Timestamp::from_seconds(15 * 60); // 15 minutes
-                                                     // let tally_timeout = Timestamp::from_seconds(1 * 3600); // 1 hour
+    let penalty_rate = Uint256::from_u128(50);
+    PENALTY_RATE.save(deps.storage, &penalty_rate)?; // 50%
 
-    // let deactivate_timeout = Timestamp::from_seconds(5); // for test
-    //     let tally_timeout = Timestamp::from_seconds(30); // for test
-
-    let deactivate_timeout = Timestamp::from_seconds(5 * 60); // 5 minutes
-    let tally_timeout = Timestamp::from_seconds(30 * 60); // 30 minutes
-    DEACTIVATE_TIMEOUT.save(deps.storage, &deactivate_timeout)?;
-    TALLY_TIMEOUT.save(deps.storage, &tally_timeout)?;
     DELAY_RECORDS.save(deps.storage, &DelayRecords { records: vec![] })?;
+
+    let deactivate_delay = Timestamp::from_seconds(10 * 60); // 10 minutes
+    DEACTIVATE_DELAY.save(deps.storage, &deactivate_delay)?;
+
+    let tally_delay_max_hours = 48; // 48 hours
+    TALLY_DELAY_MAX_HOURS.save(deps.storage, &tally_delay_max_hours)?;
+
+    let tally_timeout = Timestamp::from_seconds(4 * 24 * 60 * 60); // 4 days
+    TALLY_TIMEOUT.save(deps.storage, &tally_timeout)?;
+
+    let old_tally_timeout_set = Timestamp::from_seconds(tally_delay_max_hours * 60 * 60);
 
     let data: InstantiationData = InstantiationData {
         caller: info.sender.clone(),
@@ -344,8 +342,8 @@ pub fn instantiate(
         circuit_type: circuit_type.to_string(),
         certification_system: certification_system.to_string(),
         penalty_rate: penalty_rate.clone(),
-        deactivate_timeout: deactivate_timeout.clone(),
-        tally_timeout: tally_timeout.clone(),
+        deactivate_timeout: deactivate_delay.clone(),
+        tally_timeout: old_tally_timeout_set.clone(),
     };
 
     let mut attributes = vec![
@@ -385,9 +383,12 @@ pub fn instantiate(
         attr("penalty_rate", &penalty_rate.to_string()),
         attr(
             "deactivate_timeout",
-            &deactivate_timeout.seconds().to_string(),
+            &deactivate_delay.seconds().to_string(),
         ),
-        attr("tally_timeout", &tally_timeout.seconds().to_string()),
+        attr(
+            "tally_timeout",
+            &old_tally_timeout_set.seconds().to_string(),
+        ),
     ];
 
     if msg.round_info.description != "" {
@@ -473,10 +474,7 @@ pub fn execute(
         ExecuteMsg::StopTallyingPeriod { results, salt } => {
             execute_stop_tallying_period(deps, env, info, results, salt)
         }
-        ExecuteMsg::Grant { max_amount } => execute_grant(deps, env, info, max_amount),
-        ExecuteMsg::Revoke {} => execute_revoke(deps, env, info),
-        ExecuteMsg::Bond {} => execute_bond(deps, env, info),
-        ExecuteMsg::Withdraw { amount } => execute_withdraw(deps, env, info, amount),
+        ExecuteMsg::Claim {} => execute_claim(deps, env, info),
     }
 }
 
@@ -687,7 +685,6 @@ pub fn execute_publish_message(
     // Check if the period status is Voting
     let voting_time = VOTINGTIME.load(deps.storage)?;
     check_voting_time(env, voting_time)?;
-
     // Load the scalar field value
     let snark_scalar_field =
         uint256_from_hex_string("30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001");
@@ -755,7 +752,15 @@ pub fn execute_publish_deactivate_message(
     // Load the scalar field value
     let snark_scalar_field =
         uint256_from_hex_string("30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001");
+    let mut dmsg_chain_length = DMSG_CHAIN_LENGTH.load(deps.storage)?;
 
+    let maci_parameters: MaciParameters = MACIPARAMETERS.load(deps.storage)?;
+    // Calculate maximum allowed deactivate messages: 5^(state_tree_depth+2)-1
+    let max_deactivate_messages = Uint256::from_u128(5u128).pow((maci_parameters.state_tree_depth + 
+        Uint256::from_u128(2u128)).to_string().parse().unwrap()) - Uint256::from_u128(1u128);
+    if dmsg_chain_length + Uint256::from_u128(1u128) > max_deactivate_messages {
+        return Err(ContractError::MaxDeactivateMessagesReached { max_deactivate_messages });
+    }
     // let snark_scalar_field = uint256_from_decimal_string(
     //     "21888242871839275222246405745257275088548364400416034343698204186575808495617",
     // );
@@ -766,7 +771,6 @@ pub fn execute_publish_deactivate_message(
         && enc_pub_key.y < snark_scalar_field
     {
         let processed_dmsg_count = PROCESSED_DMSG_COUNT.load(deps.storage)?;
-        let mut dmsg_chain_length = DMSG_CHAIN_LENGTH.load(deps.storage)?;
 
         // When the processed_dmsg_count catches up with dmsg_chain_length, it indicates that the previous batch has been processed.
         // At this point, the new incoming message is the first one of the new batch, and we record the timestamp.
@@ -819,6 +823,10 @@ pub fn execute_publish_deactivate_message(
         // Update the message chain length
         dmsg_chain_length += Uint256::from_u128(1u128);
         DMSG_CHAIN_LENGTH.save(deps.storage, &dmsg_chain_length)?;
+
+        let mut deactivate_count = DEACTIVATE_COUNT.load(deps.storage)?;
+        deactivate_count += 1u128;
+        DEACTIVATE_COUNT.save(deps.storage, &deactivate_count)?;
 
         let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
 
@@ -933,7 +941,6 @@ pub fn execute_process_deactivate_message(
 
     // Compute the hash of the input values
     let input_hash = uint256_from_hex_string(&hash_256_uint256_list(&input)) % snark_scalar_field;
-
     // Load the process verification keys
     let deactivate_vkeys_str = GROTH16_DEACTIVATE_VKEYS.load(deps.storage)?;
 
@@ -987,7 +994,7 @@ pub fn execute_process_deactivate_message(
 
     let different_time: u64 = current_time.seconds() - first_dmsg_time.seconds();
 
-    if different_time > DEACTIVATE_TIMEOUT.load(deps.storage)?.seconds() {
+    if different_time > DEACTIVATE_DELAY.load(deps.storage)?.seconds() {
         let mut delay_records = DELAY_RECORDS.load(deps.storage)?;
         let delay_timestamp = first_dmsg_time;
         let delay_duration = different_time;
@@ -1336,7 +1343,6 @@ pub fn execute_process_message(
     }
     let mut processed_msg_count = PROCESSED_MSG_COUNT.load(deps.storage)?;
     let msg_chain_length = MSG_CHAIN_LENGTH.load(deps.storage)?;
-
     // Check that all messages have not been processed yet
     assert!(
         processed_msg_count < msg_chain_length,
@@ -1613,17 +1619,39 @@ fn execute_stop_tallying_period(
         return Err(ContractError::PeriodError {});
     }
 
-    let tally_timeout = TALLY_TIMEOUT.load(deps.storage)?;
+    // Get the final signup count and message count
+    let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
+    let msg_chain_length = MSG_CHAIN_LENGTH.load(deps.storage)?;
 
+    // Calculate total workload (signup and message have same weight)
+    let total_work = num_sign_ups + msg_chain_length;
+
+    let total_work_u128 = total_work
+        .try_into() // Uint256 -> Uint128
+        .map(|x: Uint128| x.u128()) // Uint128 -> u128
+        .map_err(|_| ContractError::ValueTooLarge {})?;
+
+    // Calculate actual delay timeout (linear change between min hours to max hours)
+    let actual_delay: TallyDelayInfo = calculate_tally_delay(deps.as_ref())?;
     let voting_time = VOTINGTIME.load(deps.storage)?;
     let current_time = env.block.time;
     let different_time = current_time.seconds() - voting_time.end_time.seconds();
 
-    let mut attributes = vec![];
-    if different_time > tally_timeout.seconds() {
+    let mut attributes = vec![
+        attr("total_work", total_work_u128.to_string()),
+        attr(
+            "actual_delay_seconds",
+            actual_delay.delay_seconds.to_string(),
+        ),
+    ];
+
+    if different_time > actual_delay.delay_seconds {
         let delay_timestamp = voting_time.end_time;
         let delay_duration = different_time;
-        let delay_reason = format!("Tallying has timed out after {} seconds", different_time);
+        let delay_reason = format!(
+            "Tallying has timed out after {} seconds (total process: {}, allowed: {} seconds)",
+            different_time, total_work_u128, actual_delay.delay_seconds
+        );
         let delay_process_dmsg_count = Uint256::from_u128(0u128);
         let delay_type = DelayType::TallyDelay;
 
@@ -1638,13 +1666,12 @@ fn execute_stop_tallying_period(
         delay_records.records.push(delay_record);
         DELAY_RECORDS.save(deps.storage, &delay_records)?;
 
-        attributes.push(attr(
-            "delay_timestamp",
-            delay_timestamp.seconds().to_string(),
-        ));
-        attributes.push(attr("delay_duration", delay_duration.to_string()));
-        attributes.push(attr("delay_reason", delay_reason));
-        attributes.push(attr("delay_type", "tally_delay"));
+        attributes.extend(vec![
+            attr("delay_timestamp", delay_timestamp.seconds().to_string()),
+            attr("delay_duration", delay_duration.to_string()),
+            attr("delay_reason", delay_reason),
+            attr("delay_type", "tally_delay"),
+        ]);
     }
 
     let processed_user_count = PROCESSED_USER_COUNT.load(deps.storage)?;
@@ -1746,164 +1773,93 @@ fn execute_stop_tallying_period(
         .add_attributes(attributes))
 }
 
-fn execute_grant(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    max_amount: Uint128,
-) -> Result<Response, ContractError> {
-    // Check if the sender is authorized to execute the function
-    if !is_admin(deps.as_ref(), info.sender.as_ref())? {
-        return Err(ContractError::Unauthorized {});
-    }
-
-    let voting_time = VOTINGTIME.load(deps.storage)?;
-    check_voting_time(env.clone(), voting_time.clone())?;
-
-    if FEEGRANTS.exists(deps.storage) {
-        return Err(ContractError::FeeGrantAlreadyExists {});
-    }
+fn execute_claim(deps: DepsMut, env: Env, _info: MessageInfo) -> Result<Response, ContractError> {
+    let period = PERIOD.load(deps.storage)?;
+    let voting_time: VotingTime = VOTINGTIME.load(deps.storage)?;
+    let current_time = env.block.time;
+    let admin = ADMIN.load(deps.storage)?.admin;
+    let operator = MACI_OPERATOR.load(deps.storage)?;
 
     let denom = "peaka".to_string();
+    let contract_address = env.contract.address.clone();
+    let contract_balance = deps.querier.query_balance(contract_address, &denom)?;
+    let contract_balance_amount = contract_balance.amount.u128();
 
-    let mut amount: Uint128 = Uint128::new(0);
-    // Iterate through the funds and find the amount with the MACI denomination
-    info.funds.iter().for_each(|fund| {
-        if fund.denom == denom {
-            amount = fund.amount;
-        }
-    });
-    FEEGRANTS.save(deps.storage, &max_amount)?;
-
-    let whitelist = WHITELIST.load(deps.storage)?;
-
-    let base_amount = max_amount / Uint128::from(whitelist.users.len() as u128);
-
-    let expiration_time = Some(SdkTimestamp {
-        seconds: voting_time.end_time.seconds() as i64,
-        nanos: 0,
-    });
-
-    let allowance = BasicAllowance {
-        spend_limit: vec![SdkCoin {
-            denom: denom,
-            amount: base_amount.to_string(),
-        }],
-        expiration: expiration_time,
-    };
-
-    let allowed_allowance = AllowedMsgAllowance {
-        allowance: Some(Any {
-            type_url: BasicAllowance::TYPE_URL.to_string(),
-            value: allowance.encode_to_vec(),
-        }),
-        allowed_messages: vec!["/cosmwasm.wasm.v1.MsgExecuteContract".to_string()],
-    };
-
-    let mut messages = vec![];
-    for i in 0..whitelist.users.len() {
-        let grant_msg = MsgGrantAllowance {
-            granter: env.contract.address.to_string(),
-            grantee: whitelist.users[i].addr.to_string(),
-            allowance: Some(Any {
-                type_url: AllowedMsgAllowance::TYPE_URL.to_string(),
-                value: allowed_allowance.encode_to_vec(),
-            }),
-        };
-
-        let message = CosmosMsg::Stargate {
-            type_url: MsgGrantAllowance::TYPE_URL.to_string(),
-            value: grant_msg.encode_to_vec().into(),
-        };
-        messages.push(message);
+    if contract_balance_amount == 0u128 {
+        return Err(ContractError::AllFundsClaimed {});
     }
 
-    Ok(Response::default().add_messages(messages).add_attributes([
-        ("action", "grant"),
-        ("max_amount", max_amount.to_string().as_str()),
-        ("base_amount", base_amount.to_string().as_str()),
-        ("bond_amount", amount.to_string().as_str()),
-    ]))
-}
-
-fn execute_revoke(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
-    // Check if the sender is authorized to execute the function
-    if !is_admin(deps.as_ref(), info.sender.as_ref())? {
-        return Err(ContractError::Unauthorized {});
-    }
-
-    if !FEEGRANTS.exists(deps.storage) {
-        return Err(ContractError::FeeGrantIsNotExists {});
-    }
-
-    let whitelist = WHITELIST.load(deps.storage)?;
-
-    let mut messages = vec![];
-    for i in 0..whitelist.users.len() {
-        let revoke_msg = MsgRevokeAllowance {
-            granter: env.contract.address.to_string(),
-            grantee: whitelist.users[i].addr.to_string(),
+    let tally_timeout: Timestamp = TALLY_TIMEOUT.load(deps.storage)?;
+    // If more than 3 days have passed, slash regardless of status; if less than 3 days and status is not Ended, return an error
+    if current_time > voting_time.end_time.plus_seconds(tally_timeout.seconds()) {
+        let message = BankMsg::Send {
+            to_address: admin.to_string(),
+            amount: coins(contract_balance_amount, denom),
         };
-        let message = CosmosMsg::Stargate {
-            type_url: MsgRevokeAllowance::TYPE_URL.to_string(),
-            value: revoke_msg.encode_to_vec().into(),
-        };
-        messages.push(message);
-    }
-    FEEGRANTS.remove(deps.storage);
 
-    Ok(Response::default()
+        return Ok(Response::new()
+            .add_message(message)
+            .add_attribute("action", "claim")
+            .add_attribute(
+                "is_ended",
+                (period.status == PeriodStatus::Ended).to_string(),
+            )
+            .add_attribute("operator_reward", "0")
+            .add_attribute("penalty_amount", contract_balance_amount.to_string())
+            .add_attribute("miss_rate", Uint256::from_u128(0u128).to_string())
+            .add_attribute("is_tally_timeout", "true"));
+    }
+
+    // If less than 3 days and status is not Ended, return an error
+    if period.status != PeriodStatus::Ended {
+        return Err(ContractError::PeriodError {});
+    }
+
+    // Calculate operator performance
+    let performance = calculate_operator_performance(deps.as_ref())?;
+    let withdraw_amount = Uint256::from_u128(contract_balance_amount);
+
+    // Calculate operator reward based on miss rate
+    let operator_reward =
+        withdraw_amount.multiply_ratio(performance.miss_rate, Uint256::from_u128(100u128));
+    // Calculate penalty amount
+    let penalty_amount = withdraw_amount - operator_reward;
+
+    let mut messages: Vec<CosmosMsg> = vec![];
+    let penalty_u128_amount = penalty_amount
+        .try_into() // Uint256 -> Uint128
+        .map(|x: Uint128| x.u128()) // Uint128 -> u128
+        .map_err(|_| ContractError::ValueTooLarge {})?;
+
+    // Send penalty amount to admin
+    if !penalty_amount.is_zero() {
+        messages.push(CosmosMsg::Bank(BankMsg::Send {
+            to_address: admin.to_string(),
+            amount: coins(penalty_u128_amount, denom.clone()),
+        }));
+    }
+
+    let operator_reward_u128_amount = operator_reward
+        .try_into()
+        .map(|x: Uint128| x.u128())
+        .map_err(|_| ContractError::ValueTooLarge {})?;
+
+    // Send remaining reward to operator
+    if !operator_reward.is_zero() {
+        messages.push(CosmosMsg::Bank(BankMsg::Send {
+            to_address: operator.to_string(),
+            amount: coins(operator_reward_u128_amount, denom.clone()),
+        }));
+    }
+
+    Ok(Response::new()
         .add_messages(messages)
-        .add_attributes([("action", "revoke")]))
-}
-
-fn execute_bond(deps: DepsMut, _env: Env, info: MessageInfo) -> Result<Response, ContractError> {
-    if !is_admin(deps.as_ref(), info.sender.as_ref())? {
-        return Err(ContractError::Unauthorized {});
-    }
-
-    let denom = "peaka".to_string();
-    let mut amount: Uint128 = Uint128::new(0);
-    // Iterate through the funds and find the amount with the MACI denomination
-    info.funds.iter().for_each(|fund| {
-        if fund.denom == denom {
-            amount = fund.amount;
-        }
-    });
-
-    Ok(Response::new()
-        .add_attribute("action", "bond")
-        .add_attribute("amount", amount.to_string()))
-}
-
-fn execute_withdraw(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    amount: Option<Uint128>,
-) -> Result<Response, ContractError> {
-    if !is_admin(deps.as_ref(), info.sender.as_ref())? {
-        return Err(ContractError::Unauthorized {});
-    }
-
-    let denom = "peaka".to_string();
-    let contract_balance = deps.querier.query_balance(env.contract.address, &denom)?;
-    let mut withdraw_amount = amount.map_or_else(|| contract_balance.amount.u128(), |am| am.u128());
-
-    if withdraw_amount > contract_balance.amount.u128() {
-        withdraw_amount = contract_balance.amount.u128();
-    }
-
-    let amount_res = coins(withdraw_amount, denom);
-    let message = BankMsg::Send {
-        to_address: info.sender.to_string(),
-        amount: amount_res,
-    };
-
-    Ok(Response::new()
-        .add_message(message)
-        .add_attribute("action", "withdraw")
-        .add_attribute("amount", withdraw_amount.to_string()))
+        .add_attribute("action", "claim")
+        .add_attribute("is_ended", "true")
+        .add_attribute("operator_reward", operator_reward_u128_amount.to_string())
+        .add_attribute("penalty_amount", penalty_u128_amount.to_string())
+        .add_attribute("miss_rate", performance.miss_rate.to_string())
+        .add_attribute("is_tally_timeout", "false"))
 }
 
 fn can_sign_up(deps: Deps, sender: &Addr) -> StdResult<bool> {
@@ -2147,6 +2103,11 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 .unwrap_or(DelayRecords { records: vec![] });
             to_json_binary(&records)
         }
+        QueryMsg::GetTallyDelay {} => {
+            let delay_info = calculate_tally_delay(deps)
+                .map_err(|e| cosmwasm_std::StdError::generic_err(e.to_string()))?;
+            to_json_binary(&delay_info)
+        }
     }
 }
 
@@ -2186,48 +2147,21 @@ pub fn check_operator_process_time(deps: Deps, env: Env) -> Result<bool, Contrac
 
     let first_dmsg_time = match FIRST_DMSG_TIMESTAMP.may_load(deps.storage)? {
         Some(timestamp) => timestamp,
-        None => return Ok(true), // 如果没有第一条消息的时间戳,说明还没有deactivate消息需要处理
+        None => return Ok(true), // If there is no timestamp for first message, means no deactivate messages need to be processed
     };
 
     let processed_dmsg_count = PROCESSED_DMSG_COUNT.load(deps.storage)?;
     let dmsg_chain_length = DMSG_CHAIN_LENGTH.load(deps.storage)?;
 
-    // 如果当前批次已经处理完,返回true
+    // If current batch is fully processed, return true
     if processed_dmsg_count == dmsg_chain_length {
         return Ok(true);
     }
 
     let time_difference = current_time.seconds() - first_dmsg_time.seconds();
 
-    let deactivate_timeout = DEACTIVATE_TIMEOUT.load(deps.storage)?;
-    if time_difference > deactivate_timeout.seconds() {
-        return Ok(false);
-    }
-
-    Ok(true)
-}
-
-// Check if tally is completed within 6 hours after the voting end time
-fn check_stop_tallying_time(deps: Deps, env: Env) -> Result<bool, ContractError> {
-    let voting_time = VOTINGTIME.load(deps.storage)?;
-    let current_time = env.block.time;
-
-    // If the current time is less than or equal to the voting end time, it means we're still in the voting period.
-    if current_time <= voting_time.end_time {
-        return Ok(true);
-    }
-
-    let period = PERIOD.load(deps.storage)?;
-
-    // If the period is already Ended, it means tally has been successfully completed
-    if period.status == PeriodStatus::Ended {
-        return Ok(true);
-    }
-    let tally_timeout = TALLY_TIMEOUT.load(deps.storage)?;
-
-    // Check if we're within the tally window after the voting end time
-    let time_difference = current_time.seconds() - voting_time.end_time.seconds();
-    if time_difference > tally_timeout.seconds() {
+    let deactivate_delay = DEACTIVATE_DELAY.load(deps.storage)?;
+    if time_difference > deactivate_delay.seconds() {
         return Ok(false);
     }
 
@@ -2236,66 +2170,80 @@ fn check_stop_tallying_time(deps: Deps, env: Env) -> Result<bool, ContractError>
 
 #[cw_serde]
 pub struct OperatorPerformance {
-    pub unprocessed_deactivate_count: Uint256,
-    pub delay_process_count: Uint256,
-    pub deactivate_processing_complete: bool,
-    pub tally_processing_complete: bool,
-    pub period: PeriodStatus,
-    pub miss_rate: Uint256, // Changed from Decimal to Uint256
+    pub delay_deactivate_count: Uint256,
+    pub delay_tally_count: Uint256,
+    pub miss_rate: Uint256, // Miss rate, range 0-100, represents percentage of operator's deserved reward
 }
 
-pub fn calculate_operator_performance(
-    deps: Deps,
-    env: Env,
-) -> Result<OperatorPerformance, ContractError> {
-    let penalty_rate = PENALTY_RATE.load(deps.storage)?;
-
-    let voting_time = VOTINGTIME.load(deps.storage)?;
-    let current_time = env.block.time;
-    let processed_dmsg_count = PROCESSED_DMSG_COUNT.load(deps.storage)?;
-    let dmsg_chain_length = DMSG_CHAIN_LENGTH.load(deps.storage)?;
-
-    // Check if the divisor is zero
-    if dmsg_chain_length.is_zero() {
-        return Err(ContractError::DivisionByZero {});
-    }
+pub fn calculate_operator_performance(deps: Deps) -> Result<OperatorPerformance, ContractError> {
     let delay_records = DELAY_RECORDS.load(deps.storage)?;
-    let delay_process_count = Uint256::from_u128(delay_records.records.len() as u128);
-    let unprocessed_deactivate_count = dmsg_chain_length - processed_dmsg_count;
 
-    // Calculate base miss rate as percentage (0-100)
-    let base_miss_rate = if dmsg_chain_length.is_zero() {
-        Uint256::zero()
-    } else {
-        unprocessed_deactivate_count.multiply_ratio(Uint256::from(100u128), dmsg_chain_length)
-    };
+    // Count number of different types of delay records
+    let mut delay_deactivate_count = Uint256::zero();
+    let mut delay_tally_count = Uint256::zero();
 
-    let (period, miss_rate) = if current_time < voting_time.start_time {
-        (PeriodStatus::Pending, Uint256::zero())
-    } else if current_time <= voting_time.end_time {
-        (PeriodStatus::Voting, base_miss_rate)
-    } else {
-        let period_state = PERIOD.load(deps.storage)?;
-        let final_miss_rate = if check_stop_tallying_time(deps, env.clone())? {
-            base_miss_rate
-        } else {
-            // If base_miss_rate is less than PENALTY_RATE, set it to 0 (maximum penalty)
-            // Otherwise, increase the penalty by PENALTY_RATE
-            if base_miss_rate <= penalty_rate {
-                Uint256::zero()
-            } else {
-                base_miss_rate - penalty_rate
+    for record in &delay_records.records {
+        match record.delay_type {
+            DelayType::DeactivateDelay => {
+                delay_deactivate_count += record.delay_process_dmsg_count;
             }
-        };
-        (period_state.status, final_miss_rate)
-    };
+            DelayType::TallyDelay => {
+                delay_tally_count += Uint256::from_u128(1u128);
+            }
+        }
+    }
+
+    // Set penalty rate for each type of delay
+    let tally_penalty_rate = PENALTY_RATE.load(deps.storage)?;
+    let deactivate_penalty_rate = Uint256::from_u128(5u128); // 5% penalty for each deactivate delay
+
+    // Calculate total penalty rate
+    let total_penalty_rate =
+        delay_tally_count * tally_penalty_rate + delay_deactivate_count * deactivate_penalty_rate;
+
+    // Ensure penalty rate does not exceed 100%
+    let penalty_rate = std::cmp::min(total_penalty_rate, Uint256::from_u128(100u128));
+
+    // Calculate miss rate (100% - penalty rate)
+    let miss_rate = Uint256::from_u128(100u128) - penalty_rate;
 
     Ok(OperatorPerformance {
-        unprocessed_deactivate_count,
-        delay_process_count,
-        deactivate_processing_complete: check_operator_process_time(deps, env.clone())?,
-        tally_processing_complete: check_stop_tallying_time(deps, env)?,
-        period,
+        delay_deactivate_count,
+        delay_tally_count,
         miss_rate,
+    })
+}
+
+pub fn calculate_tally_delay(deps: Deps) -> Result<TallyDelayInfo, ContractError> {
+    let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
+    let msg_chain_length = MSG_CHAIN_LENGTH.load(deps.storage)?;
+
+    // Calculate total workload (signup and message have same weight)
+    let total_work = num_sign_ups + msg_chain_length;
+
+    let total_work_u128 = total_work
+        .try_into() // Uint256 -> Uint128
+        .map(|x: Uint128| x.u128()) // Uint128 -> u128
+        .map_err(|_| ContractError::ValueTooLarge {})?;
+
+    // Calculate actual delay timeout (linear change between min hours to max hours)
+    let parameter: MaciParameters = MACIPARAMETERS.load(deps.storage)?;
+    let state_tree_depth = parameter.state_tree_depth;
+    let tally_delay_max_hours = TALLY_DELAY_MAX_HOURS.load(deps.storage)?;
+
+    let (delay_seconds, calculated_hours) = if state_tree_depth == Uint256::from_u128(2u128) {
+        // 2-1-1-5 default to 1 hours
+        (1 * 60 * 60, 1) // 1 hours, no calculated hours for this case
+    } else {
+        // other maci circuit params use base_work to calculate
+        (tally_delay_max_hours * 60 * 60, tally_delay_max_hours)
+    };
+
+    Ok(TallyDelayInfo {
+        delay_seconds,
+        total_work: total_work_u128,
+        num_sign_ups,
+        msg_chain_length,
+        calculated_hours,
     })
 }

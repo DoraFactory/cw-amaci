@@ -158,6 +158,8 @@ pub const CURRENT_DEACTIVATE_COMMITMENT: Item<Uint256> = Item::new("current_deac
 pub const SIGNUPED: Map<Vec<u8>, Uint256> = Map::new("signuped");
 pub const PRE_DEACTIVATE_ROOT: Item<Uint256> = Item::new("pre_deactivate_root");
 
+pub const DEACTIVATE_COUNT: Item<u128> = Item::new("deactivate_count");
+
 #[cw_serde]
 pub struct Groth16ProofStr {
     pub pi_a: Vec<u8>,
@@ -313,11 +315,12 @@ pub const MACI_OPERATOR: Item<Addr> = Item::new("maci_operator");
 pub const PENALTY_RATE: Item<Uint256> = Item::new("penalty_rate");
 pub const CREATE_ROUND_WINDOW: Item<Timestamp> = Item::new("create_round_window");
 
-pub const DEACTIVATE_TIMEOUT: Item<Timestamp> = Item::new("deactivate_timeout"); // deactivate timeout in seconds
+pub const DEACTIVATE_DELAY: Item<Timestamp> = Item::new("deactivate_delay"); // deactivate delay in seconds
+pub const TALLY_DELAY_MAX_HOURS: Item<u64> = Item::new("tally_delay_max_hours"); // tally delay max hours
+
 pub const TALLY_TIMEOUT: Item<Timestamp> = Item::new("tally_timeout"); // tally timeout in seconds
 
 pub const FIRST_DMSG_TIMESTAMP: Item<Timestamp> = Item::new("first_dmsg_timestamp");
-
 
 #[cw_serde]
 pub enum DelayType {
@@ -328,9 +331,9 @@ pub enum DelayType {
 #[cw_serde]
 pub struct DelayRecord {
     pub delay_timestamp: Timestamp,
-    pub delay_duration: u64, // 延迟时间(秒)
+    pub delay_duration: u64,
     pub delay_reason: String,
-    pub delay_process_dmsg_count: Uint256, // 延迟处理的消息数量
+    pub delay_process_dmsg_count: Uint256,
     pub delay_type: DelayType,
 }
 

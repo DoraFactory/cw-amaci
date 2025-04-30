@@ -113,14 +113,7 @@ pub enum ExecuteMsg {
         results: Vec<Uint256>,
         salt: Uint256,
     },
-    Grant {
-        max_amount: Uint128,
-    },
-    Revoke {},
-    Bond {},
-    Withdraw {
-        amount: Option<Uint128>,
-    },
+    Claim {},
 }
 
 #[cw_serde]
@@ -218,6 +211,18 @@ pub enum QueryMsg {
 
     #[returns(DelayRecords)]
     GetDelayRecords {},
+
+    #[returns(TallyDelayInfo)]
+    GetTallyDelay {},
+}
+
+#[cw_serde]
+pub struct TallyDelayInfo {
+    pub delay_seconds: u64,
+    pub total_work: u128,
+    pub num_sign_ups: Uint256,
+    pub msg_chain_length: Uint256,
+    pub calculated_hours: u64,
 }
 
 #[cw_serde]

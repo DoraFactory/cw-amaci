@@ -116,4 +116,16 @@ pub enum ContractError {
 
     #[error("Division by zero")]
     DivisionByZero {},
+
+    #[error("Claim must be after the third day of voting end time")]
+    ClaimMustAfterThirdDay {},
+
+    #[error("Value too large")]
+    ValueTooLarge {},
+
+    #[error("All funds claimed")]
+    AllFundsClaimed {},
+
+    #[error("Maximum number of deactivate messages ({max_deactivate_messages}) has been reached")]
+    MaxDeactivateMessagesReached { max_deactivate_messages: Uint256 },
 }
