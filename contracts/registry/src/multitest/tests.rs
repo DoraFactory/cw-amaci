@@ -110,11 +110,9 @@ struct ProofDeactivateData {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Groth16Proof {
-    pi_a: Vec<String>,
-    pi_b: Vec<Vec<String>>,
-    pi_c: Vec<String>,
-    protocol: String,
-    curve: String,
+    pi_a: String,
+    pi_b: String,
+    pi_c: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -850,10 +848,10 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
                 let nullifier = uint256_from_decimal_string(&data.nullifier);
 
                 let proof = Groth16ProofType {
-                                a: "2d72823f8f7e44117ab51f945a9b14899b56f8bc24ac93b68a42a0d3df1b815109535ff45d1694ad8299b55499065d5cd1fc03a222439d8f58ab0a3369d06739".to_string(),
-                                b: "2a83d66d8de353f284d8ab3d4d6beac737a8fd4528df53019f4f480bf224755525c910f7f36d59b8d5254cb79d20a229e0e0522c1b1d5501dbec4b71f8929bc6136cdc1cd58d2dfd73d52c7c6387a459420a7f2aba924a57b3eb32fc4d7d5dc311a262196bb79b95a66b5ebd6ccb89b0a06fb400d031f0ea0fe6c340b709cd69".to_string(),
-                                c: "184fc89744396e6069a589c662b41502cc7adc69feace7e07bb3a56ca24e100b087f4604dde84b86d75d581d4d5278369776076ad940f08f2d6d44651a599b8d".to_string()
-                            };
+                    a: data.proof.pi_a.to_string(),
+                    b: data.proof.pi_b.to_string(),
+                    c: data.proof.pi_c.to_string()
+                };
 
                 println!("add_new_key proof {:?}", proof);
                 _ = maci_contract
@@ -932,9 +930,9 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
 
                 let new_state_commitment = uint256_from_decimal_string(&data.new_state_commitment);
                 let proof = Groth16ProofType {
-                    a: "1d15cc37dcb272bbacd6793212775a2660be0df34138806c176b23b237b342811de490c5864a44aaff70e9f85d622b3f9a96f4a75b8f95ccabbb653b9e03bfdf".to_string(),
-                    b: "0de712129a430f3172d4ccd0241a95babbe777145ff386a56e6637ae968ae10b01f7c7d3edf83e66dfa8b022f1a8297e6f4c188950d82eb72565cc1bfaf28511185f0579f703687c4410e6b21cbb30efc82cd4841b56ccf9fa66341a0c6c256b1820517f1eb3b06e7736cdd3b170b23bec6968f02e8ed6e4fab098b42652361e".to_string(),
-                    c: "097f71ae3a88062baabafc37e8d4356d00b4577c0fca127235922654ee91cd040d61065aa98b440a4a16829eb0def9ac7d03a1ab5f3b0c6219ff19bebd122b79".to_string()
+                    a: data.proof.pi_a.to_string(),
+                    b: data.proof.pi_b.to_string(),
+                    c: data.proof.pi_c.to_string()
                 };
                 println!("process_message proof {:?}", proof);
                 println!(
@@ -972,9 +970,9 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
                 let new_tally_commitment = uint256_from_decimal_string(&data.new_tally_commitment);
 
                 let tally_proof = Groth16ProofType {
-                    a: "1e0bd768d465ded5a9e699f052dd636be8ab48fe0c4a1d3d9cacf8d36913d8ae177af12ba0069288a86d9203373c5f8f60c37cbb3398b63df1b11991e6ca0c50".to_string(),
-                    b: "23dfa545c123e67c4c9fef8390afe9a3484df2058fa00d92ffc8f1f3379dcc1800584aff26615a81ab5f28d35e596b7b88d6cfd3b3ec205a8981f91aacd8aa6b2896a841947bd200cce364e04064c0b16533015c68c09d8dc2a4c6fa6e907c5b1fc331016aa03f8059a2bf73aa39b69ad5c36f07a9aede6817144e84dbfd9250".to_string(),
-                    c: "2bc0d5643a8fdc18712e4e0815f698539c3ed905fa8edd091a752d679270967109ac6f774c8b8bb002bfb07675cdeb4e3bf4ec2ade2bf6e5ed74c167dc3dee0a".to_string()
+                    a: data.proof.pi_a.to_string(),
+                    b: data.proof.pi_b.to_string(),
+                    c: data.proof.pi_c.to_string()
                 };
 
                 _ = maci_contract
@@ -1462,10 +1460,10 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
                 let nullifier = uint256_from_decimal_string(&data.nullifier);
 
                 let proof = Groth16ProofType {
-                                a: "2d72823f8f7e44117ab51f945a9b14899b56f8bc24ac93b68a42a0d3df1b815109535ff45d1694ad8299b55499065d5cd1fc03a222439d8f58ab0a3369d06739".to_string(),
-                                b: "2a83d66d8de353f284d8ab3d4d6beac737a8fd4528df53019f4f480bf224755525c910f7f36d59b8d5254cb79d20a229e0e0522c1b1d5501dbec4b71f8929bc6136cdc1cd58d2dfd73d52c7c6387a459420a7f2aba924a57b3eb32fc4d7d5dc311a262196bb79b95a66b5ebd6ccb89b0a06fb400d031f0ea0fe6c340b709cd69".to_string(),
-                                c: "184fc89744396e6069a589c662b41502cc7adc69feace7e07bb3a56ca24e100b087f4604dde84b86d75d581d4d5278369776076ad940f08f2d6d44651a599b8d".to_string()
-                            };
+                    a: data.proof.pi_a.to_string(),
+                    b: data.proof.pi_b.to_string(),
+                    c: data.proof.pi_c.to_string()
+                };
 
                 println!("add_new_key proof {:?}", proof);
                 _ = maci_contract
@@ -1544,9 +1542,9 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
 
                 let new_state_commitment = uint256_from_decimal_string(&data.new_state_commitment);
                 let proof = Groth16ProofType {
-                    a: "1d15cc37dcb272bbacd6793212775a2660be0df34138806c176b23b237b342811de490c5864a44aaff70e9f85d622b3f9a96f4a75b8f95ccabbb653b9e03bfdf".to_string(),
-                    b: "0de712129a430f3172d4ccd0241a95babbe777145ff386a56e6637ae968ae10b01f7c7d3edf83e66dfa8b022f1a8297e6f4c188950d82eb72565cc1bfaf28511185f0579f703687c4410e6b21cbb30efc82cd4841b56ccf9fa66341a0c6c256b1820517f1eb3b06e7736cdd3b170b23bec6968f02e8ed6e4fab098b42652361e".to_string(),
-                    c: "097f71ae3a88062baabafc37e8d4356d00b4577c0fca127235922654ee91cd040d61065aa98b440a4a16829eb0def9ac7d03a1ab5f3b0c6219ff19bebd122b79".to_string()
+                    a: data.proof.pi_a.to_string(),
+                    b: data.proof.pi_b.to_string(),
+                    c: data.proof.pi_c.to_string()
                 };
                 println!("process_message proof {:?}", proof);
                 println!(
@@ -1584,9 +1582,9 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
                 let new_tally_commitment = uint256_from_decimal_string(&data.new_tally_commitment);
 
                 let tally_proof = Groth16ProofType {
-                    a: "1e0bd768d465ded5a9e699f052dd636be8ab48fe0c4a1d3d9cacf8d36913d8ae177af12ba0069288a86d9203373c5f8f60c37cbb3398b63df1b11991e6ca0c50".to_string(),
-                    b: "23dfa545c123e67c4c9fef8390afe9a3484df2058fa00d92ffc8f1f3379dcc1800584aff26615a81ab5f28d35e596b7b88d6cfd3b3ec205a8981f91aacd8aa6b2896a841947bd200cce364e04064c0b16533015c68c09d8dc2a4c6fa6e907c5b1fc331016aa03f8059a2bf73aa39b69ad5c36f07a9aede6817144e84dbfd9250".to_string(),
-                    c: "2bc0d5643a8fdc18712e4e0815f698539c3ed905fa8edd091a752d679270967109ac6f774c8b8bb002bfb07675cdeb4e3bf4ec2ade2bf6e5ed74c167dc3dee0a".to_string()
+                    a: data.proof.pi_a.to_string(),
+                    b: data.proof.pi_b.to_string(),
+                    c: data.proof.pi_c.to_string()
                 };
 
                 _ = maci_contract
