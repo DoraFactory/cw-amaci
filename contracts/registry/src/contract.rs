@@ -184,13 +184,16 @@ pub fn execute_create_round(
     let total_fee = required_fee;
     let admin = ADMIN.load(deps.storage)?.admin;
     let admin_fee = circuit_charge_config.fee_rate * total_fee;
-    let operator_fee: Uint128 = total_fee - admin_fee;
+    
+    // No longer send admin_fee directly to admin, instead send all fees to amaci contract
+    // Add admin_fee information in the instantiate message for potential refunds in the future
 
     let init_msg = AMaciInstantiateMsg {
         parameters: maci_parameters,
         coordinator: operator_pubkey,
         operator,
-        admin: info.sender,
+        admin: info.sender.clone(),
+        fee_recipient: admin.clone(),
         max_vote_options: max_option,
         voice_credit_amount,
         round_info,
@@ -206,25 +209,19 @@ pub fn execute_create_round(
             admin: Some(env.contract.address.to_string()),
             code_id: amaci_code_id,
             msg: to_json_binary(&init_msg)?,
-            funds: coins(operator_fee.u128(), "peaka"),
+            funds: coins(total_fee.u128(), "peaka"), // Send all fees, including admin_fee
             label: "AMACI".to_string(),
         },
         CREATED_GROTH16_ROUND_REPLY_ID,
     );
 
-    // 添加转账admin_fee给admin的消息
-    let send_admin_fee = BankMsg::Send {
-        to_address: admin.to_string(),
-        amount: coins(admin_fee.u128(), "peaka"),
-    };
-
     let resp = Response::new()
         .add_submessage(instantiate_msg)
-        .add_message(send_admin_fee)
         .add_attribute("action", "create_round")
         .add_attribute("amaci_code_id", &amaci_code_id.to_string())
         .add_attribute("admin_fee", admin_fee.to_string())
-        .add_attribute("operator_fee", operator_fee.to_string());
+        .add_attribute("total_fee", total_fee.to_string())
+        .add_attribute("fee_recipient", admin.to_string());
 
     Ok(resp)
 }

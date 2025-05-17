@@ -120,7 +120,7 @@ impl AmaciRegistryContract {
         label: &str,
     ) -> AnyResult<Self> {
         let init_msg = InstantiateMsg {
-            admin: sender.clone(),
+            admin: admin().clone(),
             operator,
             amaci_code_id,
         };
@@ -392,8 +392,8 @@ pub fn user5() -> Addr {
     Addr::unchecked("4")
 }
 
-pub fn owner() -> Addr {
-    Addr::unchecked("dora1qdagdkg9me4253h9qyvx83sd4gpta6rzh2fa0j")
+pub fn admin() -> Addr {
+    Addr::unchecked("admin")
 }
 
 pub fn validator() -> Addr {
@@ -414,6 +414,10 @@ pub fn operator2() -> Addr {
 
 pub fn operator3() -> Addr {
     Addr::unchecked("operator3")
+}
+
+pub fn creator() -> Addr {
+    Addr::unchecked("creator")
 }
 
 pub fn contract_address() -> Addr {
