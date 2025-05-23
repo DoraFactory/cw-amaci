@@ -7,7 +7,7 @@ use cosmwasm_std::{
 use bech32::{self};
 
 use crate::error::ContractError;
-use crate::migrates::migrate_v0_1_3::migrate_v0_1_3;
+use crate::migrates::migrate_v0_1_4::migrate_v0_1_4;
 use crate::msg::{ExecuteMsg, InstantiateMsg, InstantiationData, MigrateMsg, QueryMsg};
 use crate::state::{
     Admin, CircuitChargeConfig, ValidatorSet, ADMIN, AMACI_CODE_ID, CIRCUIT_CHARGE_CONFIG,
@@ -151,7 +151,6 @@ pub fn execute_create_round(
     
     let maci_parameters: MaciParameters;
     let required_fee: Uint128;
-    let circuit_charge_config = CIRCUIT_CHARGE_CONFIG.load(deps.storage)?;
 
     if max_voter <= Uint256::from_u128(25u128) && max_option <= Uint256::from_u128(5u128) {
         // state_tree_depth: 2
@@ -204,7 +203,6 @@ pub fn execute_create_round(
 
     let total_fee = required_fee;
     let admin = ADMIN.load(deps.storage)?.admin;
-    let admin_fee = circuit_charge_config.fee_rate * total_fee;
     
     // No longer send admin_fee directly to admin, instead send all fees to amaci contract
     // Add admin_fee information in the instantiate message for potential refunds in the future
@@ -240,7 +238,6 @@ pub fn execute_create_round(
         .add_submessage(instantiate_msg)
         .add_attribute("action", "create_round")
         .add_attribute("amaci_code_id", &amaci_code_id.to_string())
-        .add_attribute("admin_fee", admin_fee.to_string())
         .add_attribute("total_fee", total_fee.to_string())
         .add_attribute("fee_recipient", admin.to_string());
 
@@ -653,5 +650,5 @@ pub fn reply_created_round(
 pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
     cw2::ensure_from_older_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    migrate_v0_1_3(deps)
+    migrate_v0_1_4(deps)
 }
