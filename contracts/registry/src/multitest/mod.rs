@@ -405,15 +405,15 @@ pub fn validator2() -> Addr {
 }
 
 pub fn operator() -> Addr {
-    Addr::unchecked("operator1")
+    Addr::unchecked("dora1eu7mhp4ggxd6utnz8uzurw395natgs6jskl4ug")
 }
 
 pub fn operator2() -> Addr {
-    Addr::unchecked("operator2")
+    Addr::unchecked("dora1x0lkxq7g7eaq2u3uh2l39yhzf5046h00w2mlsf")
 }
 
 pub fn operator3() -> Addr {
-    Addr::unchecked("operator3")
+    Addr::unchecked("dora1xp0twdzsdeq4qg3c64v66552deax8zmvq4zw78")
 }
 
 pub fn creator() -> Addr {

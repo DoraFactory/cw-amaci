@@ -1,9 +1,10 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    attr, coins, from_json, to_json_binary, Addr, BankMsg, Binary, Deps, DepsMut, Env, MessageInfo,
+    attr, coins, from_json, to_json_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo,
     Reply, Response, StdError, StdResult, SubMsg, SubMsgResponse, Uint128, Uint256, WasmMsg,
 };
+use bech32::{self};
 
 use crate::error::ContractError;
 use crate::migrates::migrate_v0_1_3::migrate_v0_1_3;
@@ -113,6 +114,24 @@ pub fn execute(
     }
 }
 
+// validate address is valid dora prefix cosmos address
+pub fn validate_dora_address(address: &str) -> Result<(), ContractError> {
+    match bech32::decode(address) {
+        Ok((prefix, _data, _variant)) => {
+            if prefix != "dora" {
+                return Err(ContractError::InvalidAddressPrefix {
+                    expected: "dora".to_string(),
+                    actual: prefix,
+                });
+            }
+            Ok(())
+        }
+        Err(_) => Err(ContractError::InvalidAddress {
+            address: address.to_string(),
+        }),
+    }
+}
+
 pub fn execute_create_round(
     deps: DepsMut,
     env: Env,
@@ -128,6 +147,8 @@ pub fn execute_create_round(
     circuit_type: Uint256,
     certification_system: Uint256,
 ) -> Result<Response, ContractError> {
+    validate_dora_address(operator.as_str())?;
+    
     let maci_parameters: MaciParameters;
     let required_fee: Uint128;
     let circuit_charge_config = CIRCUIT_CHARGE_CONFIG.load(deps.storage)?;
@@ -233,6 +254,8 @@ pub fn execute_set_maci_operator(
     info: MessageInfo,
     operator: Addr,
 ) -> Result<Response, ContractError> {
+    validate_dora_address(operator.as_str())?;
+    
     if !is_validator(deps.as_ref(), &info.sender)? {
         return Err(ContractError::Unauthorized {});
     }
@@ -409,6 +432,8 @@ pub fn execute_change_operator(
     info: MessageInfo,
     address: Addr,
 ) -> Result<Response, ContractError> {
+    validate_dora_address(address.as_str())?;
+    
     if !is_admin(deps.as_ref(), info.sender.as_ref())? {
         Err(ContractError::Unauthorized {})
     } else {
