@@ -6,11 +6,11 @@ use cw_multi_test::App;
 use crate::{
     multitest::{
         operator, operator2, operator3, operator_pubkey1, operator_pubkey2, operator_pubkey3,
-        owner, user1, user2, user3, user4, AmaciRegistryCodeId, InstantiationData, DORA_DEMON,
+        admin, creator, user1, user2, user3, user4, AmaciRegistryCodeId, InstantiationData, DORA_DEMON,
     },
     state::ValidatorSet,
 };
-use cw_amaci::multitest::{MaciCodeId, MaciContract};
+use cw_amaci::multitest::{fee_recipient, owner, MaciCodeId, MaciContract};
 use cw_amaci::ContractError as AmaciContractError;
 
 use cw_amaci::msg::Groth16ProofType;
@@ -411,12 +411,17 @@ pub fn next_block_4_days(block: &mut BlockInfo) {
 
 #[test]
 fn create_round_with_reward_should_works() {
-    let owner_coin_amount = 1000000000000000000000u128; // 1000 DORA (register 500, create round 50)
+    let admin_coin_amount = 1000000000000000000000u128; // 1000 DORA (register 500, create round 50)
+    let creator_coin_amount = 1000000000000000000000u128; // 1000 DORA
 
     let mut app = App::new(|router, _api, storage| {
         router
             .bank
-            .init_balance(storage, &owner(), coins(owner_coin_amount, DORA_DEMON))
+            .init_balance(storage, &admin(), coins(admin_coin_amount, DORA_DEMON))
+            .unwrap();
+        router
+            .bank
+            .init_balance(storage, &creator(), coins(creator_coin_amount, DORA_DEMON))
             .unwrap();
     });
 
@@ -425,10 +430,10 @@ fn create_round_with_reward_should_works() {
 
     let label = "Dora AMaci Registry";
     let contract = register_code_id
-        .instantiate(&mut app, owner(), amaci_code_id.id(), label)
+        .instantiate(&mut app, creator(), amaci_code_id.id(), label)
         .unwrap();
 
-    _ = contract.set_validators(&mut app, owner());
+    _ = contract.set_validators(&mut app, admin());
 
     let validator_set = contract.get_validators(&app).unwrap();
     assert_eq!(
@@ -457,7 +462,7 @@ fn create_round_with_reward_should_works() {
     let create_round_with_wrong_circuit_type = contract
         .create_round(
             &mut app,
-            owner(),
+            creator(),
             operator(),
             Uint256::from_u128(2u128),
             Uint256::from_u128(0u128),
@@ -472,7 +477,7 @@ fn create_round_with_reward_should_works() {
     let create_round_with_wrong_certification_system = contract
         .create_round(
             &mut app,
-            owner(),
+            creator(),
             operator(),
             Uint256::from_u128(0u128),
             Uint256::from_u128(1u128),
@@ -486,10 +491,20 @@ fn create_round_with_reward_should_works() {
             .unwrap()
     );
 
+    // Record creator balance before creating round
+    let creator_balance_before = contract
+        .balance_of(&app, creator().to_string(), DORA_DEMON.to_string())
+        .unwrap();
+
+    // Record admin balance before creating round
+    let admin_balance_before = contract
+        .balance_of(&app, admin().to_string(), DORA_DEMON.to_string())
+        .unwrap();
+
     let resp = contract
         .create_round(
             &mut app,
-            owner(),
+            creator(),
             operator(),
             Uint256::from_u128(0u128),
             Uint256::from_u128(0u128),
@@ -502,7 +517,7 @@ fn create_round_with_reward_should_works() {
     let maci_contract = MaciContract::new(amaci_contract_addr.addr.clone());
     let amaci_admin = maci_contract.amaci_query_admin(&app).unwrap();
     println!("{:?}", amaci_admin);
-    assert_eq!(owner(), amaci_admin);
+    assert_eq!(creator(), amaci_admin);
 
     let amaci_operator = maci_contract.amaci_query_operator(&app).unwrap();
     println!("{:?}", amaci_operator);
@@ -510,6 +525,28 @@ fn create_round_with_reward_should_works() {
 
     let amaci_round_info = maci_contract.amaci_query_round_info(&app).unwrap();
     println!("{:?}", amaci_round_info);
+
+    // Record creator balance after creating round
+    let creator_balance_after = contract
+        .balance_of(&app, creator().to_string(), DORA_DEMON.to_string())
+        .unwrap();
+    
+    // Record admin balance after creating round
+    let admin_balance_after = contract
+        .balance_of(&app, admin().to_string(), DORA_DEMON.to_string())
+        .unwrap();
+    
+    // Verify that creator balance decreased by small_base_payamount
+    assert_eq!(
+        creator_balance_before.amount - Uint128::from(small_base_payamount),
+        creator_balance_after.amount
+    );
+    
+    // Verify that admin balance did not change
+    assert_eq!(
+        admin_balance_before.amount,
+        admin_balance_after.amount
+    );
 
     let amaci_round_balance = contract
         .balance_of(
@@ -520,10 +557,10 @@ fn create_round_with_reward_should_works() {
         .unwrap();
     let circuit_charge_config = contract.get_circuit_charge_config(&app).unwrap();
     let total_fee = Uint128::from(small_base_payamount);
-    let admin_fee = circuit_charge_config.fee_rate * total_fee;
-    let operator_fee = total_fee - admin_fee;
+    let operator_fee = total_fee;
 
-    assert_eq!(Uint128::from(operator_fee), amaci_round_balance.amount);
+    // Verify that contract balance is correct
+    assert_eq!(Uint128::from(operator_fee), amaci_round_balance.amount); // Creating contract will transfer operator fee to the contract
 }
 
 #[test]
@@ -562,22 +599,14 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
     let logs_data: Vec<AMaciLogEntry> =
         serde_json::from_str(&logs_content).expect("Failed to parse JSON");
 
-    let owner_coin_amount = 50000000000000000000u128; // 50 DORA (register 500, create round 50)
+    let creator_coin_amount = 50000000000000000000u128; // 50 DORA
     let _operator_coin_amount = 1000000000000000000000u128; // 1000 DORA
 
     let mut app = App::new(|router, _api, storage| {
         router
             .bank
-            .init_balance(storage, &owner(), coins(owner_coin_amount, DORA_DEMON))
+            .init_balance(storage, &creator(), coins(creator_coin_amount, DORA_DEMON))
             .unwrap();
-        // router
-        //     .bank
-        //     .init_balance(
-        //         storage,
-        //         &operator(),
-        //         coins(operator_coin_amount, DORA_DEMON),
-        //     )
-        //     .unwrap();
     });
 
     let register_code_id = AmaciRegistryCodeId::store_code(&mut app);
@@ -585,10 +614,10 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
 
     let label = "Dora AMaci Registry";
     let contract = register_code_id
-        .instantiate(&mut app, owner(), amaci_code_id.id(), label)
+        .instantiate(&mut app, creator(), amaci_code_id.id(), label)
         .unwrap();
 
-    _ = contract.set_validators(&mut app, owner());
+    _ = contract.set_validators(&mut app, admin());
 
     let validator_set = contract.get_validators(&app).unwrap();
     assert_eq!(
@@ -615,23 +644,43 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
 
     let small_base_payamount = 20000000000000000000u128; // 20 DORA
 
+    // Record balance before creating round
+    let creator_balance_before = contract
+        .balance_of(&app, creator().to_string(), DORA_DEMON.to_string())
+        .unwrap();
+    
+    let admin_balance_before = contract
+        .balance_of(&app, admin().to_string(), DORA_DEMON.to_string())
+        .unwrap();
+
     let resp = contract
         .create_round_with_whitelist(
             &mut app,
-            owner(),
+            creator(),
             operator(),
             Uint256::from_u128(1u128),
             Uint256::from_u128(0u128),
             &coins(small_base_payamount, DORA_DEMON),
         )
         .unwrap();
+    
+    // Record balance after creating round
+    let creator_balance_after = contract
+        .balance_of(&app, creator().to_string(), DORA_DEMON.to_string())
+        .unwrap();
+    
+    // Verify that creator balance decreased by small_base_payamount
+    assert_eq!(
+        creator_balance_before.amount - Uint128::from(small_base_payamount),
+        creator_balance_after.amount
+    );
 
     let amaci_contract_addr: InstantiationData = from_json(&resp.data.unwrap()).unwrap();
     println!("{:?}", amaci_contract_addr);
     let maci_contract = MaciContract::new(amaci_contract_addr.addr.clone());
     let amaci_admin = maci_contract.amaci_query_admin(&app).unwrap();
     println!("{:?}", amaci_admin);
-    assert_eq!(owner(), amaci_admin);
+    assert_eq!(creator(), amaci_admin);
 
     let amaci_operator = maci_contract.amaci_query_operator(&app).unwrap();
     println!("{:?}", amaci_operator);
@@ -649,19 +698,10 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
         .unwrap();
     let circuit_charge_config = contract.get_circuit_charge_config(&app).unwrap();
     let total_fee = Uint128::from(small_base_payamount);
-    let admin_fee = circuit_charge_config.fee_rate * total_fee;
-    let operator_fee = total_fee - admin_fee;
+    // let admin_fee = circuit_charge_config.fee_rate * total_fee;
+    let operator_fee = total_fee;
 
     assert_eq!(Uint128::from(operator_fee), amaci_round_balance.amount);
-
-    // let start_voting_error = contract.start_voting(&mut app, owner()).unwrap_err();
-
-    // assert_eq!(
-    //     ContractError::AlreadySetVotingTime {
-    //         time_name: String::from("start_time")
-    //     },
-    //     start_voting_error.downcast().unwrap()
-    // );
 
     let num_sign_up = maci_contract.amaci_num_sign_up(&app).unwrap();
     assert_eq!(num_sign_up, Uint256::from_u128(0u128));
@@ -670,7 +710,7 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
     let max_vote_options = maci_contract.amaci_max_vote_options(&app).unwrap();
     assert_eq!(vote_option_map, vec!["", "", "", "", ""]);
     assert_eq!(max_vote_options, Uint256::from_u128(5u128));
-    _ = maci_contract.amaci_set_vote_option_map(&mut app, owner());
+    _ = maci_contract.amaci_set_vote_option_map(&mut app, creator());
     let new_vote_option_map = maci_contract.amaci_vote_option_map(&app).unwrap();
     assert_eq!(
         new_vote_option_map,
@@ -682,7 +722,6 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
             String::from("abstain"),
         ]
     );
-    // assert_eq!(num_sign_up, Uint256::from_u128(0u128));
 
     let test_pubkey = PubKey {
         x: uint256_from_decimal_string(&data.current_state_leaves[0][0]),
@@ -698,21 +737,20 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
     assert_eq!(
         AmaciContractError::PeriodError {},
         sign_up_error.downcast().unwrap()
-    ); // 不能在voting环节之前进行signup
+    );
 
-    _ = maci_contract.amaci_set_vote_option_map(&mut app, owner());
+    _ = maci_contract.amaci_set_vote_option_map(&mut app, creator());
 
     app.update_block(next_block); // Start Voting
     let set_whitelist_only_in_pending = maci_contract
-        .amaci_set_whitelist(&mut app, owner())
+        .amaci_set_whitelist(&mut app, creator())
         .unwrap_err();
     assert_eq!(
-        // 注册之后不能再进行注册
         AmaciContractError::PeriodError {},
         set_whitelist_only_in_pending.downcast().unwrap()
     );
     let set_vote_option_map_error = maci_contract
-        .amaci_set_vote_option_map(&mut app, owner())
+        .amaci_set_vote_option_map(&mut app, creator())
         .unwrap_err();
     assert_eq!(
         AmaciContractError::PeriodError {},
@@ -720,7 +758,7 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
     );
 
     let error_start_process_in_voting = maci_contract
-        .amaci_start_process(&mut app, owner())
+        .amaci_start_process(&mut app, creator())
         .unwrap_err();
     assert_eq!(
         AmaciContractError::PeriodError {},
@@ -822,7 +860,7 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
                 _ = maci_contract
                     .amaci_process_deactivate_message(
                         &mut app,
-                        owner(),
+                        creator(),
                         size,
                         new_deactivate_commitment,
                         new_deactivate_root,
@@ -855,7 +893,7 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
 
                 println!("add_new_key proof {:?}", proof);
                 _ = maci_contract
-                    .amaci_add_key(&mut app, owner(), new_key_pub, nullifier, d, proof)
+                    .amaci_add_key(&mut app, creator(), new_key_pub, nullifier, d, proof)
                     .unwrap();
             }
             "publishMessage" => {
@@ -897,15 +935,7 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
                     sign_up_after_voting_end_error.downcast().unwrap()
                 );
 
-                // let stop_voting_error = contract.stop_voting(&mut app, owner()).unwrap_err();
-                // assert_eq!(
-                //     ContractError::AlreadySetVotingTime {
-                //         time_name: String::from("end_time")
-                //     },
-                //     stop_voting_error.downcast().unwrap()
-                // );
-
-                _ = maci_contract.amaci_start_process(&mut app, owner());
+                _ = maci_contract.amaci_start_process(&mut app, creator());
                 assert_eq!(
                     Period {
                         status: PeriodStatus::Processing
@@ -919,7 +949,7 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
                 );
 
                 let error_stop_processing_with_not_finish_process = maci_contract
-                    .amaci_stop_processing(&mut app, owner())
+                    .amaci_stop_processing(&mut app, creator())
                     .unwrap_err();
                 assert_eq!(
                     AmaciContractError::MsgLeftProcess {},
@@ -941,20 +971,20 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
                 );
                 println!("------ processMessage ------");
                 _ = maci_contract
-                    .amaci_process_message(&mut app, owner(), new_state_commitment, proof)
+                    .amaci_process_message(&mut app, creator(), new_state_commitment, proof)
                     .unwrap();
             }
             "processTally" => {
                 let data: ProcessTallyData = deserialize_data(&entry.data);
 
-                _ = maci_contract.amaci_stop_processing(&mut app, owner());
+                _ = maci_contract.amaci_stop_processing(&mut app, creator());
                 println!(
                     "after stop process: {:?}",
                     maci_contract.amaci_get_period(&app).unwrap()
                 );
 
                 let error_start_process_in_talling = maci_contract
-                    .amaci_start_process(&mut app, owner())
+                    .amaci_start_process(&mut app, creator())
                     .unwrap_err();
                 assert_eq!(
                     AmaciContractError::PeriodError {},
@@ -976,7 +1006,7 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
                 };
 
                 _ = maci_contract
-                    .amaci_process_tally(&mut app, owner(), new_tally_commitment, tally_proof)
+                    .amaci_process_tally(&mut app, creator(), new_tally_commitment, tally_proof)
                     .unwrap();
             }
             "stopTallyingPeriod" => {
@@ -992,19 +1022,19 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
 
                 let salt = uint256_from_decimal_string(&data.salt);
 
-                let withdraw_error = maci_contract.amaci_claim(&mut app, owner()).unwrap_err();
+                let withdraw_error = maci_contract.amaci_claim(&mut app, creator()).unwrap_err();
                 assert_eq!(
                     AmaciContractError::PeriodError {},
                     withdraw_error.downcast().unwrap()
                 );
 
                 app.update_block(next_block_3_hours);
-                _ = maci_contract.amaci_stop_tallying(&mut app, owner(), results, salt);
+                _ = maci_contract.amaci_stop_tallying(&mut app, creator(), results, salt);
 
                 let all_result = maci_contract.amaci_get_all_result(&app);
                 println!("all_result: {:?}", all_result);
                 let error_start_process = maci_contract
-                    .amaci_start_process(&mut app, owner())
+                    .amaci_start_process(&mut app, creator())
                     .unwrap_err();
                 assert_eq!(
                     AmaciContractError::PeriodError {},
@@ -1048,7 +1078,6 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
         }
     );
 
-
     let round_balance_before_claim = contract
         .balance_of(
             &app,
@@ -1061,14 +1090,13 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
         round_balance_before_claim
     );
 
-    let owner_balance_before_claim = contract
-        .balance_of(&app, owner().to_string(), DORA_DEMON.to_string())
+    let creator_balance_before_claim = contract
+        .balance_of(&app, creator().to_string(), DORA_DEMON.to_string())
         .unwrap();
     println!(
-        "owner_balance_before_claim: {:?}",
-        owner_balance_before_claim
+        "creator_balance_before_claim: {:?}",
+        creator_balance_before_claim
     );
-    // assert_eq!(owner_balance.amount, round_balance_before_withdraw.amount + Uint128::from(delay));
 
     let operator_balance_before_claim = contract
         .balance_of(&app, operator().to_string(), DORA_DEMON.to_string())
@@ -1077,21 +1105,23 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
         "operator_balance_before_claim: {:?}",
         operator_balance_before_claim
     );
-    // assert_eq!(operator_balance.amount, Uint128::from(0u128));
 
-    // app.update_block(next_block_4_days); // after 4 days, operator reward is 0, all funds are returned to admin
-    _ = maci_contract.amaci_claim(&mut app, owner());
-    let owner_balance = contract
-        .balance_of(&app, owner().to_string(), DORA_DEMON.to_string())
+    // app.update_block(next_block_4_days); // after 4 days, operator reward is 0, all funds are returned to creator
+    _ = maci_contract.amaci_claim(&mut app, creator());
+    let creator_balance = contract
+        .balance_of(&app, creator().to_string(), DORA_DEMON.to_string())
         .unwrap();
-    println!("owner_balance: {:?}", owner_balance);
-    // assert_eq!(owner_balance.amount, round_balance_before_withdraw.amount + Uint128::from(delay));
+    println!("creator_balance: {:?}", creator_balance);
 
     let operator_balance = contract
         .balance_of(&app, operator().to_string(), DORA_DEMON.to_string())
         .unwrap();
     println!("operator_balance: {:?}", operator_balance);
-    // assert_eq!(operator_balance.amount, Uint128::from(0u128));
+
+    let admin_balance = contract
+        .balance_of(&app, admin().to_string(), DORA_DEMON.to_string())
+        .unwrap();
+    println!("admin_balance: {:?}", admin_balance);
 
     let round_balance_after_claim = contract
         .balance_of(
@@ -1104,30 +1134,41 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
         "round_balance_after_claim: {:?}",
         round_balance_after_claim
     );
-    // assert_eq!(round_balance_after_claim.amount, Uint128::from(0u128));
 
-    let claim_amount = Uint128::from(round_balance_before_claim.amount);
+    let total_amount = Uint128::from(round_balance_before_claim.amount);
+    let admin_fee = circuit_charge_config.fee_rate * total_amount;
+    println!("admin_fee: {:?}", admin_fee);
+    let claim_amount = total_amount - admin_fee;
+    println!("claim_amount: {:?}", claim_amount);
     let operator_reward = claim_amount.multiply_ratio(100u128 - (50u128 + 5u128 * 2), 100u128);
-    // let operator_reward = Uint128::from(0u128); // after 4 days, operator reward is 0, all funds are returned to admin
     let penalty_amount = claim_amount - operator_reward;
     println!("operator_reward: {:?}", operator_reward);
     println!("penalty_amount: {:?}", penalty_amount);
+    
     assert_eq!(
         operator_balance.amount,
         operator_reward + operator_balance_before_claim.amount
-        // Uint128::from(0u128) // after 4 days, operator reward is 0, all funds are returned to admin
+        // Uint128::from(0u128) // after 4 days, operator reward is 0, all funds are returned to creator
     );
+    
     assert_eq!(
-        owner_balance.amount,
-        penalty_amount + owner_balance_before_claim.amount
+        admin_balance.amount,
+        admin_fee
     );
+    
+    assert_eq!(
+        creator_balance.amount,
+        penalty_amount + creator_balance_before_claim.amount
+    );
+    
     assert_eq!(
         round_balance_after_claim.amount,
-        round_balance_before_claim.amount - claim_amount
+        round_balance_before_claim.amount - claim_amount - admin_fee
     );
+    
     assert_eq!(round_balance_after_claim.amount, Uint128::from(0u128));
 
-    let claim_error = maci_contract.amaci_claim(&mut app, owner()).unwrap_err();
+    let claim_error = maci_contract.amaci_claim(&mut app, creator()).unwrap_err();
     assert_eq!(
         AmaciContractError::AllFundsClaimed {},
         claim_error.downcast().unwrap()
@@ -1136,7 +1177,6 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
     let tally_delay = maci_contract.amaci_query_tally_delay(&app).unwrap();
     println!("tally_delay: {:?}", tally_delay);
 }
-
 
 #[test]
 fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_should_works() {
@@ -1174,22 +1214,14 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
     let logs_data: Vec<AMaciLogEntry> =
         serde_json::from_str(&logs_content).expect("Failed to parse JSON");
 
-    let owner_coin_amount = 50000000000000000000u128; // 50 DORA (register 500, create round 50)
+    let creator_coin_amount = 50000000000000000000u128; // 50 DORA
     let _operator_coin_amount = 1000000000000000000000u128; // 1000 DORA
 
     let mut app = App::new(|router, _api, storage| {
         router
             .bank
-            .init_balance(storage, &owner(), coins(owner_coin_amount, DORA_DEMON))
+            .init_balance(storage, &creator(), coins(creator_coin_amount, DORA_DEMON))
             .unwrap();
-        // router
-        //     .bank
-        //     .init_balance(
-        //         storage,
-        //         &operator(),
-        //         coins(operator_coin_amount, DORA_DEMON),
-        //     )
-        //     .unwrap();
     });
 
     let register_code_id = AmaciRegistryCodeId::store_code(&mut app);
@@ -1197,10 +1229,10 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
 
     let label = "Dora AMaci Registry";
     let contract = register_code_id
-        .instantiate(&mut app, owner(), amaci_code_id.id(), label)
+        .instantiate(&mut app, creator(), amaci_code_id.id(), label)
         .unwrap();
 
-    _ = contract.set_validators(&mut app, owner());
+    _ = contract.set_validators(&mut app, admin());
 
     let validator_set = contract.get_validators(&app).unwrap();
     assert_eq!(
@@ -1227,23 +1259,39 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
 
     let small_base_payamount = 20000000000000000000u128; // 20 DORA
 
+    // Record balance before creating the round
+    let creator_balance_before = contract
+        .balance_of(&app, creator().to_string(), DORA_DEMON.to_string())
+        .unwrap();
+    
     let resp = contract
         .create_round_with_whitelist(
             &mut app,
-            owner(),
+            creator(),
             operator(),
             Uint256::from_u128(1u128),
             Uint256::from_u128(0u128),
             &coins(small_base_payamount, DORA_DEMON),
         )
         .unwrap();
+    
+    // Record balance after creating the round
+    let creator_balance_after = contract
+        .balance_of(&app, creator().to_string(), DORA_DEMON.to_string())
+        .unwrap();
+    
+    // Verify that the creator's balance decreased by small_base_payamount
+    assert_eq!(
+        creator_balance_before.amount - Uint128::from(small_base_payamount),
+        creator_balance_after.amount
+    );
 
     let amaci_contract_addr: InstantiationData = from_json(&resp.data.unwrap()).unwrap();
     println!("{:?}", amaci_contract_addr);
     let maci_contract = MaciContract::new(amaci_contract_addr.addr.clone());
     let amaci_admin = maci_contract.amaci_query_admin(&app).unwrap();
     println!("{:?}", amaci_admin);
-    assert_eq!(owner(), amaci_admin);
+    assert_eq!(creator(), amaci_admin);
 
     let amaci_operator = maci_contract.amaci_query_operator(&app).unwrap();
     println!("{:?}", amaci_operator);
@@ -1261,19 +1309,9 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
         .unwrap();
     let circuit_charge_config = contract.get_circuit_charge_config(&app).unwrap();
     let total_fee = Uint128::from(small_base_payamount);
-    let admin_fee = circuit_charge_config.fee_rate * total_fee;
-    let operator_fee = total_fee - admin_fee;
+    let operator_fee = total_fee;
 
     assert_eq!(Uint128::from(operator_fee), amaci_round_balance.amount);
-
-    // let start_voting_error = contract.start_voting(&mut app, owner()).unwrap_err();
-
-    // assert_eq!(
-    //     ContractError::AlreadySetVotingTime {
-    //         time_name: String::from("start_time")
-    //     },
-    //     start_voting_error.downcast().unwrap()
-    // );
 
     let num_sign_up = maci_contract.amaci_num_sign_up(&app).unwrap();
     assert_eq!(num_sign_up, Uint256::from_u128(0u128));
@@ -1282,7 +1320,7 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
     let max_vote_options = maci_contract.amaci_max_vote_options(&app).unwrap();
     assert_eq!(vote_option_map, vec!["", "", "", "", ""]);
     assert_eq!(max_vote_options, Uint256::from_u128(5u128));
-    _ = maci_contract.amaci_set_vote_option_map(&mut app, owner());
+    _ = maci_contract.amaci_set_vote_option_map(&mut app, creator());
     let new_vote_option_map = maci_contract.amaci_vote_option_map(&app).unwrap();
     assert_eq!(
         new_vote_option_map,
@@ -1294,7 +1332,6 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
             String::from("abstain"),
         ]
     );
-    // assert_eq!(num_sign_up, Uint256::from_u128(0u128));
 
     let test_pubkey = PubKey {
         x: uint256_from_decimal_string(&data.current_state_leaves[0][0]),
@@ -1310,21 +1347,20 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
     assert_eq!(
         AmaciContractError::PeriodError {},
         sign_up_error.downcast().unwrap()
-    ); // 不能在voting环节之前进行signup
+    );
 
-    _ = maci_contract.amaci_set_vote_option_map(&mut app, owner());
+    _ = maci_contract.amaci_set_vote_option_map(&mut app, creator());
 
     app.update_block(next_block); // Start Voting
     let set_whitelist_only_in_pending = maci_contract
-        .amaci_set_whitelist(&mut app, owner())
+        .amaci_set_whitelist(&mut app, creator())
         .unwrap_err();
     assert_eq!(
-        // 注册之后不能再进行注册
         AmaciContractError::PeriodError {},
         set_whitelist_only_in_pending.downcast().unwrap()
     );
     let set_vote_option_map_error = maci_contract
-        .amaci_set_vote_option_map(&mut app, owner())
+        .amaci_set_vote_option_map(&mut app, creator())
         .unwrap_err();
     assert_eq!(
         AmaciContractError::PeriodError {},
@@ -1332,7 +1368,7 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
     );
 
     let error_start_process_in_voting = maci_contract
-        .amaci_start_process(&mut app, owner())
+        .amaci_start_process(&mut app, creator())
         .unwrap_err();
     assert_eq!(
         AmaciContractError::PeriodError {},
@@ -1434,7 +1470,7 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
                 _ = maci_contract
                     .amaci_process_deactivate_message(
                         &mut app,
-                        owner(),
+                        creator(),
                         size,
                         new_deactivate_commitment,
                         new_deactivate_root,
@@ -1467,7 +1503,7 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
 
                 println!("add_new_key proof {:?}", proof);
                 _ = maci_contract
-                    .amaci_add_key(&mut app, owner(), new_key_pub, nullifier, d, proof)
+                    .amaci_add_key(&mut app, creator(), new_key_pub, nullifier, d, proof)
                     .unwrap();
             }
             "publishMessage" => {
@@ -1509,15 +1545,7 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
                     sign_up_after_voting_end_error.downcast().unwrap()
                 );
 
-                // let stop_voting_error = contract.stop_voting(&mut app, owner()).unwrap_err();
-                // assert_eq!(
-                //     ContractError::AlreadySetVotingTime {
-                //         time_name: String::from("end_time")
-                //     },
-                //     stop_voting_error.downcast().unwrap()
-                // );
-
-                _ = maci_contract.amaci_start_process(&mut app, owner());
+                _ = maci_contract.amaci_start_process(&mut app, creator());
                 assert_eq!(
                     Period {
                         status: PeriodStatus::Processing
@@ -1531,7 +1559,7 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
                 );
 
                 let error_stop_processing_with_not_finish_process = maci_contract
-                    .amaci_stop_processing(&mut app, owner())
+                    .amaci_stop_processing(&mut app, creator())
                     .unwrap_err();
                 assert_eq!(
                     AmaciContractError::MsgLeftProcess {},
@@ -1553,20 +1581,20 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
                 );
                 println!("------ processMessage ------");
                 _ = maci_contract
-                    .amaci_process_message(&mut app, owner(), new_state_commitment, proof)
+                    .amaci_process_message(&mut app, creator(), new_state_commitment, proof)
                     .unwrap();
             }
             "processTally" => {
                 let data: ProcessTallyData = deserialize_data(&entry.data);
 
-                _ = maci_contract.amaci_stop_processing(&mut app, owner());
+                _ = maci_contract.amaci_stop_processing(&mut app, creator());
                 println!(
                     "after stop process: {:?}",
                     maci_contract.amaci_get_period(&app).unwrap()
                 );
 
                 let error_start_process_in_talling = maci_contract
-                    .amaci_start_process(&mut app, owner())
+                    .amaci_start_process(&mut app, creator())
                     .unwrap_err();
                 assert_eq!(
                     AmaciContractError::PeriodError {},
@@ -1588,7 +1616,7 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
                 };
 
                 _ = maci_contract
-                    .amaci_process_tally(&mut app, owner(), new_tally_commitment, tally_proof)
+                    .amaci_process_tally(&mut app, creator(), new_tally_commitment, tally_proof)
                     .unwrap();
             }
             "stopTallyingPeriod" => {
@@ -1604,19 +1632,19 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
 
                 let salt = uint256_from_decimal_string(&data.salt);
 
-                let withdraw_error = maci_contract.amaci_claim(&mut app, owner()).unwrap_err();
+                let withdraw_error = maci_contract.amaci_claim(&mut app, creator()).unwrap_err();
                 assert_eq!(
                     AmaciContractError::PeriodError {},
                     withdraw_error.downcast().unwrap()
                 );
 
                 app.update_block(next_block_3_hours);
-                _ = maci_contract.amaci_stop_tallying(&mut app, owner(), results, salt);
+                _ = maci_contract.amaci_stop_tallying(&mut app, creator(), results, salt);
 
                 let all_result = maci_contract.amaci_get_all_result(&app);
                 println!("all_result: {:?}", all_result);
                 let error_start_process = maci_contract
-                    .amaci_start_process(&mut app, owner())
+                    .amaci_start_process(&mut app, creator())
                     .unwrap_err();
                 assert_eq!(
                     AmaciContractError::PeriodError {},
@@ -1672,14 +1700,13 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
         round_balance_before_claim
     );
 
-    let owner_balance_before_claim = contract
-        .balance_of(&app, owner().to_string(), DORA_DEMON.to_string())
+    let creator_balance_before_claim = contract
+        .balance_of(&app, creator().to_string(), DORA_DEMON.to_string())
         .unwrap();
     println!(
-        "owner_balance_before_claim: {:?}",
-        owner_balance_before_claim
+        "creator_balance_before_claim: {:?}",
+        creator_balance_before_claim
     );
-    // assert_eq!(owner_balance.amount, round_balance_before_withdraw.amount + Uint128::from(delay));
 
     let operator_balance_before_claim = contract
         .balance_of(&app, operator().to_string(), DORA_DEMON.to_string())
@@ -1688,21 +1715,23 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
         "operator_balance_before_claim: {:?}",
         operator_balance_before_claim
     );
-    // assert_eq!(operator_balance.amount, Uint128::from(0u128));
 
-    app.update_block(next_block_4_days); // after 4 days, operator reward is 0, all funds are returned to admin
-    _ = maci_contract.amaci_claim(&mut app, owner());
-    let owner_balance = contract
-        .balance_of(&app, owner().to_string(), DORA_DEMON.to_string())
+    app.update_block(next_block_4_days); // after 4 days, operator reward is 0, all funds are returned to creator
+    _ = maci_contract.amaci_claim(&mut app, creator());
+    let creator_balance = contract
+        .balance_of(&app, creator().to_string(), DORA_DEMON.to_string())
         .unwrap();
-    println!("owner_balance: {:?}", owner_balance);
-    // assert_eq!(owner_balance.amount, round_balance_before_withdraw.amount + Uint128::from(delay));
+    println!("creator_balance: {:?}", creator_balance);
 
     let operator_balance = contract
         .balance_of(&app, operator().to_string(), DORA_DEMON.to_string())
         .unwrap();
     println!("operator_balance: {:?}", operator_balance);
-    // assert_eq!(operator_balance.amount, Uint128::from(0u128));
+
+    let admin_balance = contract
+        .balance_of(&app, admin().to_string(), DORA_DEMON.to_string())
+        .unwrap();
+    println!("admin_balance: {:?}", admin_balance);
 
     let round_balance_after_claim = contract
         .balance_of(
@@ -1715,30 +1744,41 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
         "round_balance_after_claim: {:?}",
         round_balance_after_claim
     );
-    // assert_eq!(round_balance_after_claim.amount, Uint128::from(0u128));
 
-    let claim_amount = Uint128::from(round_balance_before_claim.amount);
+    let total_amount = Uint128::from(round_balance_before_claim.amount);
+    // let admin_fee = circuit_charge_config.fee_rate * total_amount;
+    let admin_fee = Uint128::from(0u128);
+    let claim_amount = total_amount;
+    println!("claim_amount: {:?}", claim_amount);
     let operator_reward = claim_amount.multiply_ratio(100u128 - (50u128 + 5u128 * 1), 100u128);
-    let operator_reward = Uint128::from(0u128); // after 4 days, operator reward is 0, all funds are returned to admin
+    let operator_reward = Uint128::from(0u128); // after 4 days, operator reward is 0, all funds are returned to creator
     let penalty_amount = claim_amount - operator_reward;
     println!("operator_reward: {:?}", operator_reward);
     println!("penalty_amount: {:?}", penalty_amount);
+    
     assert_eq!(
         operator_balance.amount,
-        // operator_reward + operator_balance_before_claim.amount
-        Uint128::from(0u128) // after 4 days, operator reward is 0, all funds are returned to admin
+        Uint128::from(0u128) // after 4 days, operator reward is 0, all funds are returned to creator
     );
+    
     assert_eq!(
-        owner_balance.amount,
-        penalty_amount + owner_balance_before_claim.amount
+        admin_balance.amount,
+        admin_fee
     );
+    
+    assert_eq!(
+        creator_balance.amount,
+        penalty_amount + creator_balance_before_claim.amount
+    );
+    
     assert_eq!(
         round_balance_after_claim.amount,
-        round_balance_before_claim.amount - claim_amount
+        round_balance_before_claim.amount - claim_amount - admin_fee
     );
+    
     assert_eq!(round_balance_after_claim.amount, Uint128::from(0u128));
 
-    let claim_error = maci_contract.amaci_claim(&mut app, owner()).unwrap_err();
+    let claim_error = maci_contract.amaci_claim(&mut app, creator()).unwrap_err();
     assert_eq!(
         AmaciContractError::AllFundsClaimed {},
         claim_error.downcast().unwrap()

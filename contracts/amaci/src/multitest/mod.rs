@@ -335,6 +335,7 @@ impl MaciContract {
             certification_system,
             operator: operator(),
             admin: owner(),
+            fee_recipient: fee_recipient(),
         };
 
         app.instantiate_contract(
@@ -387,6 +388,7 @@ impl MaciContract {
             certification_system,
             operator: operator(),
             admin: owner(),
+            fee_recipient: fee_recipient(),
         };
 
         app.instantiate_contract(
@@ -1110,7 +1112,11 @@ pub fn user3() -> Addr {
 }
 
 pub fn owner() -> Addr {
-    Addr::unchecked("dora1qdagdkg9me4253h9qyvx83sd4gpta6rzh2fa0j")
+    Addr::unchecked("owner")
+}
+
+pub fn fee_recipient() -> Addr {
+    Addr::unchecked("fee_recipient")
 }
 
 pub fn operator() -> Addr {

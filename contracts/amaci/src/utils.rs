@@ -109,7 +109,7 @@ pub fn hash_256_uint256_list(arrays: &[Uint256]) -> String {
 
     let hash_result = Sha256::digest(&result);
 
-    // 使用 hex crate 将二进制数据转换为十六进制字符串
+    // Use hex crate to convert binary data to hexadecimal string
     hex::encode(hash_result)
 }
 // pub fn hash_256_uint256_list(arrays: &[Uint256]) -> String {

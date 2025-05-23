@@ -18,7 +18,7 @@ use crate::state::{
     PROCESSED_DMSG_COUNT, PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO,
     SIGNUPED, STATEIDXINC, STATE_ROOT_BY_DMSG, TALLY_TIMEOUT, TOTAL_RESULT,
     VOICECREDITBALANCE, VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS,
-    ZEROS_H10, TALLY_DELAY_MAX_HOURS
+    ZEROS_H10, TALLY_DELAY_MAX_HOURS, FEE_RECIPIENT
 };
 use cosmwasm_schema::cw_serde;
 #[cfg(not(feature = "library"))]
@@ -30,7 +30,7 @@ use pairing_ce::bn256::Bn256;
 use crate::utils::{hash2, hash5, hash_256_uint256_list, uint256_from_hex_string};
 use cosmwasm_std::{
     attr, coins, to_json_binary, Addr, BankMsg, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
-    Response, StdResult, Timestamp, Uint128, Uint256,
+    Response, StdResult, Timestamp, Uint128, Uint256, Decimal,
 };
 
 use bellman_ce_verifier::{prepare_verifying_key, verify_proof as groth16_verify};
@@ -293,6 +293,8 @@ pub fn instantiate(
     PERIOD.save(deps.storage, &period)?;
 
     MACI_OPERATOR.save(deps.storage, &msg.operator)?;
+    
+    FEE_RECIPIENT.save(deps.storage, &msg.fee_recipient)?;
 
     let circuit_type = if msg.circuit_type == Uint256::from_u128(0u128) {
         "0" // 1p1v
@@ -1779,6 +1781,7 @@ fn execute_claim(deps: DepsMut, env: Env, _info: MessageInfo) -> Result<Response
     let current_time = env.block.time;
     let admin = ADMIN.load(deps.storage)?.admin;
     let operator = MACI_OPERATOR.load(deps.storage)?;
+    let fee_recipient = FEE_RECIPIENT.load(deps.storage)?;
 
     let denom = "peaka".to_string();
     let contract_address = env.contract.address.clone();
@@ -1790,7 +1793,7 @@ fn execute_claim(deps: DepsMut, env: Env, _info: MessageInfo) -> Result<Response
     }
 
     let tally_timeout: Timestamp = TALLY_TIMEOUT.load(deps.storage)?;
-    // If more than 3 days have passed, slash regardless of status; if less than 3 days and status is not Ended, return an error
+    // If exceeding the timeout, return all funds to admin
     if current_time > voting_time.end_time.plus_seconds(tally_timeout.seconds()) {
         let message = BankMsg::Send {
             to_address: admin.to_string(),
@@ -1810,14 +1813,19 @@ fn execute_claim(deps: DepsMut, env: Env, _info: MessageInfo) -> Result<Response
             .add_attribute("is_tally_timeout", "true"));
     }
 
-    // If less than 3 days and status is not Ended, return an error
+    // If less than timeout and status is not Ended, return an error
     if period.status != PeriodStatus::Ended {
         return Err(ContractError::PeriodError {});
     }
 
-    // Calculate operator performance
+    // First allocate 10% to fee_recipient
+    let fee_rate = Decimal::from_ratio(1u128, 10u128); // 10%
+    let fee_amount = Uint128::from(contract_balance_amount) * fee_rate;
+    let remaining_amount = Uint128::from(contract_balance_amount) - fee_amount;
+
+    // Calculate distribution between operator and admin
     let performance = calculate_operator_performance(deps.as_ref())?;
-    let withdraw_amount = Uint256::from_u128(contract_balance_amount);
+    let withdraw_amount = Uint256::from_u128(remaining_amount.u128());
 
     // Calculate operator reward based on miss rate
     let operator_reward =
@@ -1826,12 +1834,21 @@ fn execute_claim(deps: DepsMut, env: Env, _info: MessageInfo) -> Result<Response
     let penalty_amount = withdraw_amount - operator_reward;
 
     let mut messages: Vec<CosmosMsg> = vec![];
+    
+    // Send 10% to fee_recipient
+    if !fee_amount.is_zero() {
+        messages.push(CosmosMsg::Bank(BankMsg::Send {
+            to_address: fee_recipient.to_string(),
+            amount: coins(fee_amount.u128(), denom.clone()),
+        }));
+    }
+
+    // Send penalty amount to admin
     let penalty_u128_amount = penalty_amount
         .try_into() // Uint256 -> Uint128
         .map(|x: Uint128| x.u128()) // Uint128 -> u128
         .map_err(|_| ContractError::ValueTooLarge {})?;
 
-    // Send penalty amount to admin
     if !penalty_amount.is_zero() {
         messages.push(CosmosMsg::Bank(BankMsg::Send {
             to_address: admin.to_string(),
@@ -1839,12 +1856,12 @@ fn execute_claim(deps: DepsMut, env: Env, _info: MessageInfo) -> Result<Response
         }));
     }
 
+    // Send remaining reward to operator
     let operator_reward_u128_amount = operator_reward
         .try_into()
         .map(|x: Uint128| x.u128())
         .map_err(|_| ContractError::ValueTooLarge {})?;
 
-    // Send remaining reward to operator
     if !operator_reward.is_zero() {
         messages.push(CosmosMsg::Bank(BankMsg::Send {
             to_address: operator.to_string(),
@@ -1856,6 +1873,7 @@ fn execute_claim(deps: DepsMut, env: Env, _info: MessageInfo) -> Result<Response
         .add_messages(messages)
         .add_attribute("action", "claim")
         .add_attribute("is_ended", "true")
+        .add_attribute("fee_to_recipient", fee_amount.to_string())
         .add_attribute("operator_reward", operator_reward_u128_amount.to_string())
         .add_attribute("penalty_amount", penalty_u128_amount.to_string())
         .add_attribute("miss_rate", performance.miss_rate.to_string())

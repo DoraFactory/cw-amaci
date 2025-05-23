@@ -239,14 +239,14 @@ mod test {
         assert_eq!(
             ContractError::PeriodError {},
             sign_up_error.downcast().unwrap()
-        ); // 不能在voting环节之前进行signup
+        ); // Cannot signup before the voting period
 
         _ = contract.set_vote_option_map(&mut app, owner());
 
         app.update_block(next_block); // Start Voting
         let set_whitelist_only_in_pending = contract.set_whitelist(&mut app, owner()).unwrap_err();
         assert_eq!(
-            // 注册之后不能再进行注册
+            // Cannot register again after registration
             ContractError::PeriodError {},
             set_whitelist_only_in_pending.downcast().unwrap()
         );
@@ -332,7 +332,7 @@ mod test {
             )
             .unwrap_err();
         assert_eq!(
-            // 不能投票环节结束之后不能进行sign up
+            // Cannot sign up after the voting period has ended
             ContractError::PeriodError {},
             sign_up_after_voting_end_error.downcast().unwrap()
         );
@@ -523,14 +523,14 @@ mod test {
         assert_eq!(
             ContractError::PeriodError {},
             sign_up_error.downcast().unwrap()
-        ); // 不能在voting环节之前进行signup
+        ); // Cannot signup before the voting period
 
         _ = contract.set_vote_option_map(&mut app, owner());
 
         app.update_block(next_block); // Start Voting
         let set_whitelist_only_in_pending = contract.set_whitelist(&mut app, owner()).unwrap_err();
         assert_eq!(
-            // 注册之后不能再进行注册
+            // Cannot register again after registration
             ContractError::PeriodError {},
             set_whitelist_only_in_pending.downcast().unwrap()
         );
@@ -616,7 +616,7 @@ mod test {
             )
             .unwrap_err();
         assert_eq!(
-            // 不能投票环节结束之后不能进行sign up
+            // Cannot sign up after the voting period has ended
             ContractError::PeriodError {},
             sign_up_after_voting_end_error.downcast().unwrap()
         );
@@ -816,14 +816,14 @@ mod test {
         assert_eq!(
             ContractError::PeriodError {},
             sign_up_error.downcast().unwrap()
-        ); // 不能在voting环节之前进行signup
+        ); // Cannot signup before the voting period
 
         _ = contract.set_vote_option_map(&mut app, owner());
 
         app.update_block(next_block); // Start Voting
         let set_whitelist_only_in_pending = contract.set_whitelist(&mut app, owner()).unwrap_err();
         assert_eq!(
-            // 注册之后不能再进行注册
+            // Cannot register again after registration
             ContractError::PeriodError {},
             set_whitelist_only_in_pending.downcast().unwrap()
         );
@@ -984,7 +984,7 @@ mod test {
                         )
                         .unwrap_err();
                     assert_eq!(
-                        // 不能投票环节结束之后不能进行sign up
+                        // Cannot sign up after the voting period has ended
                         ContractError::PeriodError {},
                         sign_up_after_voting_end_error.downcast().unwrap()
                     );
@@ -1201,14 +1201,14 @@ mod test {
         assert_eq!(
             ContractError::PeriodError {},
             sign_up_error.downcast().unwrap()
-        ); // 不能在voting环节之前进行signup
+        ); // Cannot signup before the voting period
 
         _ = contract.set_vote_option_map(&mut app, owner());
 
         app.update_block(next_block); // Start Voting
         let set_whitelist_only_in_pending = contract.set_whitelist(&mut app, owner()).unwrap_err();
         assert_eq!(
-            // 注册之后不能再进行注册
+            // Cannot register again after registration
             ContractError::PeriodError {},
             set_whitelist_only_in_pending.downcast().unwrap()
         );
@@ -1393,7 +1393,7 @@ mod test {
                         )
                         .unwrap_err();
                     assert_eq!(
-                        // 不能投票环节结束之后不能进行sign up
+                        // Cannot sign up after the voting period has ended
                         ContractError::PeriodError {},
                         sign_up_after_voting_end_error.downcast().unwrap()
                     );
@@ -1640,14 +1640,14 @@ mod test {
         assert_eq!(
             ContractError::PeriodError {},
             sign_up_error.downcast().unwrap()
-        ); // 不能在voting环节之前进行signup
+        ); // Cannot signup before the voting period
 
         _ = contract.set_vote_option_map(&mut app, owner());
 
         app.update_block(next_block); // Start Voting
         let set_whitelist_only_in_pending = contract.set_whitelist(&mut app, owner()).unwrap_err();
         assert_eq!(
-            // 注册之后不能再进行注册
+            // Cannot register again after registration
             ContractError::PeriodError {},
             set_whitelist_only_in_pending.downcast().unwrap()
         );

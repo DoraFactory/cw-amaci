@@ -82,4 +82,10 @@ pub enum ContractError {
 
     #[error("Operator {operator} is not healthy")]
     UnhealthyOperator { operator: String },
+    
+    #[error("Invalid address: {address}")]
+    InvalidAddress { address: String },
+    
+    #[error("Invalid address prefix. Expected: {expected}, Actual: {actual}")]
+    InvalidAddressPrefix { expected: String, actual: String },
 }
