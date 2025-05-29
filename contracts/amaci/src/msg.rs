@@ -10,6 +10,7 @@ pub struct InstantiateMsg {
     pub parameters: MaciParameters,
     pub coordinator: PubKey,
     pub admin: Addr,
+    pub fee_recipient: Addr,
     pub operator: Addr,
     // pub qtr_lib: QuinaryTreeRoot,
     // pub groth16_process_vkey: Groth16VKeyType,

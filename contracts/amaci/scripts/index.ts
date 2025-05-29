@@ -10,10 +10,7 @@ import {
 } from "@cosmjs/stargate";
 import { MsgSend } from "cosmjs-types/cosmos/bank/v1beta1/tx";
 import { Tx } from "cosmjs-types/cosmos/tx/v1beta1/tx";
-import {
-  MaciClient,
-  MaciQueryClient,
-} from "../ts/Maci.client";
+import { MaciClient, MaciQueryClient } from "../ts/Maci.client";
 import {
   CosmWasmClient,
   SigningCosmWasmClient,
@@ -21,7 +18,7 @@ import {
 
 const rpcEndpoint = "https://vota-testnet-rpc.dorafactory.org";
 const restEndpoint = "https://vota-testnet-rest.dorafactory.org";
-const mnemonic = "";// dora1t58t7azqzq26406uwehgnfekal5kzym3m9lz4k;
+const mnemonic = ""; // dora1t58t7azqzq26406uwehgnfekal5kzym3m9lz4k;
 const chainId = "doravota-devnet";
 const prefix = "dora";
 // const recipient = "dora1nt4elvrtc8yg772h9u24fusv78c2wv9zv0zusr";

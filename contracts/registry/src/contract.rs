@@ -1,12 +1,13 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    attr, coins, from_json, to_json_binary, Addr, BankMsg, Binary, Deps, DepsMut, Env, MessageInfo,
+    attr, coins, from_json, to_json_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo,
     Reply, Response, StdError, StdResult, SubMsg, SubMsgResponse, Uint128, Uint256, WasmMsg,
 };
+use bech32::{self};
 
 use crate::error::ContractError;
-use crate::migrates::migrate_v0_1_3::migrate_v0_1_3;
+use crate::migrates::migrate_v0_1_4::migrate_v0_1_4;
 use crate::msg::{ExecuteMsg, InstantiateMsg, InstantiationData, MigrateMsg, QueryMsg};
 use crate::state::{
     Admin, CircuitChargeConfig, ValidatorSet, ADMIN, AMACI_CODE_ID, CIRCUIT_CHARGE_CONFIG,
@@ -113,6 +114,24 @@ pub fn execute(
     }
 }
 
+// validate address is valid dora prefix cosmos address
+pub fn validate_dora_address(address: &str) -> Result<(), ContractError> {
+    match bech32::decode(address) {
+        Ok((prefix, _data, _variant)) => {
+            if prefix != "dora" {
+                return Err(ContractError::InvalidAddressPrefix {
+                    expected: "dora".to_string(),
+                    actual: prefix,
+                });
+            }
+            Ok(())
+        }
+        Err(_) => Err(ContractError::InvalidAddress {
+            address: address.to_string(),
+        }),
+    }
+}
+
 pub fn execute_create_round(
     deps: DepsMut,
     env: Env,
@@ -128,9 +147,10 @@ pub fn execute_create_round(
     circuit_type: Uint256,
     certification_system: Uint256,
 ) -> Result<Response, ContractError> {
+    validate_dora_address(operator.as_str())?;
+    
     let maci_parameters: MaciParameters;
     let required_fee: Uint128;
-    let circuit_charge_config = CIRCUIT_CHARGE_CONFIG.load(deps.storage)?;
 
     if max_voter <= Uint256::from_u128(25u128) && max_option <= Uint256::from_u128(5u128) {
         // state_tree_depth: 2
@@ -183,14 +203,16 @@ pub fn execute_create_round(
 
     let total_fee = required_fee;
     let admin = ADMIN.load(deps.storage)?.admin;
-    let admin_fee = circuit_charge_config.fee_rate * total_fee;
-    let operator_fee: Uint128 = total_fee - admin_fee;
+    
+    // No longer send admin_fee directly to admin, instead send all fees to amaci contract
+    // Add admin_fee information in the instantiate message for potential refunds in the future
 
     let init_msg = AMaciInstantiateMsg {
         parameters: maci_parameters,
         coordinator: operator_pubkey,
         operator,
-        admin: info.sender,
+        admin: info.sender.clone(),
+        fee_recipient: admin.clone(),
         max_vote_options: max_option,
         voice_credit_amount,
         round_info,
@@ -206,25 +228,18 @@ pub fn execute_create_round(
             admin: Some(env.contract.address.to_string()),
             code_id: amaci_code_id,
             msg: to_json_binary(&init_msg)?,
-            funds: coins(operator_fee.u128(), "peaka"),
+            funds: coins(total_fee.u128(), "peaka"), // Send all fees, including admin_fee
             label: "AMACI".to_string(),
         },
         CREATED_GROTH16_ROUND_REPLY_ID,
     );
 
-    // 添加转账admin_fee给admin的消息
-    let send_admin_fee = BankMsg::Send {
-        to_address: admin.to_string(),
-        amount: coins(admin_fee.u128(), "peaka"),
-    };
-
     let resp = Response::new()
         .add_submessage(instantiate_msg)
-        .add_message(send_admin_fee)
         .add_attribute("action", "create_round")
         .add_attribute("amaci_code_id", &amaci_code_id.to_string())
-        .add_attribute("admin_fee", admin_fee.to_string())
-        .add_attribute("operator_fee", operator_fee.to_string());
+        .add_attribute("total_fee", total_fee.to_string())
+        .add_attribute("fee_recipient", admin.to_string());
 
     Ok(resp)
 }
@@ -236,6 +251,8 @@ pub fn execute_set_maci_operator(
     info: MessageInfo,
     operator: Addr,
 ) -> Result<Response, ContractError> {
+    validate_dora_address(operator.as_str())?;
+    
     if !is_validator(deps.as_ref(), &info.sender)? {
         return Err(ContractError::Unauthorized {});
     }
@@ -412,6 +429,8 @@ pub fn execute_change_operator(
     info: MessageInfo,
     address: Addr,
 ) -> Result<Response, ContractError> {
+    validate_dora_address(address.as_str())?;
+    
     if !is_admin(deps.as_ref(), info.sender.as_ref())? {
         Err(ContractError::Unauthorized {})
     } else {
@@ -631,5 +650,5 @@ pub fn reply_created_round(
 pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
     cw2::ensure_from_older_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    migrate_v0_1_3(deps)
+    migrate_v0_1_4(deps)
 }
