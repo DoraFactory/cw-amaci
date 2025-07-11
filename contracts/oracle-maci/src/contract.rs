@@ -1,17 +1,21 @@
+use crate::circuit_params::match_vkeys;
 use crate::error::ContractError;
 use crate::groth16_parser::{parse_groth16_proof, parse_groth16_vkey};
 use crate::msg::{ExecuteMsg, Groth16ProofType, InstantiateMsg, PlonkProofType, QueryMsg};
 use crate::plonk_parser::{parse_plonk_proof, parse_plonk_vkey};
 use crate::state::{
-    Admin, Groth16ProofStr, Groth16VkeyStr, MessageData, Period, PeriodStatus, PlonkProofStr,
-    PlonkVkeyStr, PubKey, RoundInfo, StateLeaf, VotingTime, Whitelist, ADMIN, CERTSYSTEM,
-    CIRCUITTYPE, COORDINATORHASH, CURRENT_STATE_COMMITMENT, CURRENT_TALLY_COMMITMENT, FEEGRANTS,
-    GROTH16_PROCESS_VKEYS, GROTH16_TALLY_VKEYS, LEAF_IDX_0, MACIPARAMETERS, MACI_OPERATOR,
-    MAX_LEAVES_COUNT, MAX_VOTE_OPTIONS, MSG_CHAIN_LENGTH, MSG_HASHES, NODES, NUMSIGNUPS, PERIOD,
-    PLONK_PROCESS_VKEYS, PLONK_TALLY_VKEYS, PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB,
-    RESULT, ROUNDINFO, STATEIDXINC, TOTAL_RESULT, VOICECREDITBALANCE, VOTEOPTIONMAP, VOTINGTIME,
-    WHITELIST, ZEROS,
+    Admin, FeeGrantOperator, GrantConfig, Groth16ProofStr, Groth16VkeyStr, MaciParameters,
+    MessageData, OracleWhitelistConfig, Period, PeriodStatus, PlonkProofStr, PlonkVkeyStr, PubKey,
+    QuinaryTreeRoot, RoundInfo, StateLeaf, VotingPowerConfig, VotingPowerMode, VotingTime,
+    WhitelistConfig, ADMIN, CERTSYSTEM, CIRCUITTYPE, COORDINATORHASH, CURRENT_STATE_COMMITMENT,
+    CURRENT_TALLY_COMMITMENT, FEEGRANTOPERATOR, FEEGRANTS, GRANTLIST, GROTH16_PROCESS_VKEYS,
+    GROTH16_TALLY_VKEYS, LEAF_IDX_0, MACIPARAMETERS, MACI_OPERATOR, MAX_LEAVES_COUNT,
+    MAX_VOTE_OPTIONS, MAX_WHITELIST_NUM, MSG_CHAIN_LENGTH, MSG_HASHES, NODES, NUMSIGNUPS,
+    ORACLE_WHITELIST_CONFIG, PERIOD, PLONK_PROCESS_VKEYS, PLONK_TALLY_VKEYS, PROCESSED_MSG_COUNT,
+    PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO, STATEIDXINC, TOTAL_RESULT,
+    VOICECREDITBALANCE, VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS,
 };
+use sha2::{Digest as ShaDigest, Sha256};
 
 use pairing_ce::bn256::Bn256;
 use pairing_ce::bn256::Bn256 as MBn256;
@@ -31,7 +35,7 @@ use cosmos_sdk_proto::Any;
 use prost_types::Timestamp as SdkTimestamp;
 
 use cosmwasm_std::{
-    attr, coins, to_json_binary, BankMsg, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
+    attr, coins, to_json_binary, Addr, BankMsg, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
     Response, StdResult, Uint128, Uint256,
 };
 
@@ -45,6 +49,8 @@ use ff_ce::PrimeField as Fr;
 
 use hex;
 
+use serde_json;
+
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
@@ -53,135 +59,72 @@ pub fn instantiate(
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     // Create an admin with the sender address
-    let admin = Admin {
-        admin: info.sender.clone(),
-    };
+    let admin = Admin { admin: info.sender };
     ADMIN.save(deps.storage, &admin)?;
 
-    // Initialize MACI operator with the same address as admin
-    MACI_OPERATOR.save(deps.storage, &info.sender)?;
-
+    let parameters = MaciParameters {
+        state_tree_depth: Uint256::from_u128(6u128),
+        int_state_tree_depth: Uint256::from_u128(3u128),
+        vote_option_tree_depth: Uint256::from_u128(3u128),
+        message_batch_size: Uint256::from_u128(125u128),
+    };
     // Save the MACI parameters to storage
-    MACIPARAMETERS.save(deps.storage, &msg.parameters)?;
+    MACIPARAMETERS.save(deps.storage, &parameters)?;
 
     // Save the qtr_lib value to storage
-    QTR_LIB.save(deps.storage, &msg.qtr_lib)?;
-    CERTSYSTEM.save(deps.storage, &msg.certification_system)?;
+    let qtr_lab = QuinaryTreeRoot {
+        zeros: [
+            Uint256::from_u128(0u128),
+            uint256_from_hex_string(
+                "2066be41bebe6caf7e079360abe14fbf9118c62eabc42e2fe75e342b160a95bc",
+            ),
+            uint256_from_hex_string(
+                "2a956d37d8e73692877b104630a08cc6840036f235f2134b0606769a369d85c1",
+            ),
+            uint256_from_hex_string(
+                "2f9791ba036a4148ff026c074e713a4824415530dec0f0b16c5115aa00e4b825",
+            ),
+            uint256_from_hex_string(
+                "2c41a7294c7ef5c9c5950dc627c55a00adb6712548bcbd6cd8569b1f2e5acc2a",
+            ),
+            uint256_from_hex_string(
+                "2594ba68eb0f314eabbeea1d847374cc2be7965944dec513746606a1f2fadf2e",
+            ),
+            uint256_from_hex_string(
+                "5c697158c9032bfd7041223a7dba696396388129118ae8f867266eb64fe7636",
+            ),
+            uint256_from_hex_string(
+                "272b3425fcc3b2c45015559b9941fde27527aab5226045bf9b0a6c1fe902d601",
+            ),
+            uint256_from_hex_string(
+                "268d82cc07023a1d5e7c987cbd0328b34762c9ea21369bea418f08b71b16846a",
+            ),
+        ],
+    };
+    // Save the qtr_lib value to storage
+    QTR_LIB.save(deps.storage, &qtr_lab)?;
+
+    let vkey = match_vkeys()?;
+
+    const CIRCUIT_TYPE_1P1V: u128 = 0;  // one person one vote
+    const CIRCUIT_TYPE_QV: u128 = 1;    // quadratic voting
+
+    if msg.circuit_type == Uint256::from_u128(CIRCUIT_TYPE_1P1V) || 
+       msg.circuit_type == Uint256::from_u128(CIRCUIT_TYPE_QV) {
+        CIRCUITTYPE.save(deps.storage, &msg.circuit_type)?;
+    } else {
+        return Err(ContractError::UnsupportedCircuitType {});
+    }
 
     if msg.certification_system == Uint256::from_u128(0u128) {
         // groth16
-        if let Some(groth16_process_vkey) = msg.groth16_process_vkey {
-            // Create a process_vkeys struct from the process_vkey in the message
-            let groth16_process_vkeys = Groth16VkeyStr {
-                alpha_1: hex::decode(groth16_process_vkey.vk_alpha1)
-                    .map_err(|_| ContractError::HexDecodingError {})?,
-                beta_2: hex::decode(groth16_process_vkey.vk_beta_2)
-                    .map_err(|_| ContractError::HexDecodingError {})?,
-                gamma_2: hex::decode(groth16_process_vkey.vk_gamma_2)
-                    .map_err(|_| ContractError::HexDecodingError {})?,
-                delta_2: hex::decode(groth16_process_vkey.vk_delta_2)
-                    .map_err(|_| ContractError::HexDecodingError {})?,
-                ic0: hex::decode(groth16_process_vkey.vk_ic0)
-                    .map_err(|_| ContractError::HexDecodingError {})?,
-                ic1: hex::decode(groth16_process_vkey.vk_ic1)
-                    .map_err(|_| ContractError::HexDecodingError {})?,
-            };
-            let _ = parse_groth16_vkey::<Bn256>(groth16_process_vkeys.clone())?;
-            GROTH16_PROCESS_VKEYS.save(deps.storage, &groth16_process_vkeys)?;
-        }
-
-        // Create a tally_vkeys struct from the tally_vkey in the message
-        if let Some(groth16_tally_vkey) = msg.groth16_tally_vkey {
-            // Create a process_vkeys struct from the process_vkey in the message
-            let groth16_tally_vkeys = Groth16VkeyStr {
-                alpha_1: hex::decode(groth16_tally_vkey.vk_alpha1)
-                    .map_err(|_| ContractError::HexDecodingError {})?,
-                beta_2: hex::decode(groth16_tally_vkey.vk_beta_2)
-                    .map_err(|_| ContractError::HexDecodingError {})?,
-                gamma_2: hex::decode(groth16_tally_vkey.vk_gamma_2)
-                    .map_err(|_| ContractError::HexDecodingError {})?,
-                delta_2: hex::decode(groth16_tally_vkey.vk_delta_2)
-                    .map_err(|_| ContractError::HexDecodingError {})?,
-                ic0: hex::decode(groth16_tally_vkey.vk_ic0)
-                    .map_err(|_| ContractError::HexDecodingError {})?,
-                ic1: hex::decode(groth16_tally_vkey.vk_ic1)
-                    .map_err(|_| ContractError::HexDecodingError {})?,
-            };
-            let _ = parse_groth16_vkey::<Bn256>(groth16_tally_vkeys.clone())?;
-            GROTH16_TALLY_VKEYS.save(deps.storage, &groth16_tally_vkeys)?;
-        }
+        GROTH16_PROCESS_VKEYS.save(deps.storage, &vkey.process_vkey)?;
+        GROTH16_TALLY_VKEYS.save(deps.storage, &vkey.tally_vkey)?;
     } else {
-        // plonk
-        if let Some(plonk_process_vkey) = msg.plonk_process_vkey {
-            // Create a process_vkeys struct from the process_vkey in the message
-            let plonk_process_vkeys = PlonkVkeyStr {
-                n: plonk_process_vkey.n,
-                num_inputs: plonk_process_vkey.num_inputs,
-                selector_commitments: plonk_process_vkey
-                    .selector_commitments
-                    .into_iter()
-                    .map(|x| hex::decode(x).unwrap())
-                    .collect(),
-                next_step_selector_commitments: plonk_process_vkey
-                    .next_step_selector_commitments
-                    .into_iter()
-                    .map(|x| hex::decode(x).unwrap())
-                    .collect(),
-                permutation_commitments: plonk_process_vkey
-                    .permutation_commitments
-                    .into_iter()
-                    .map(|x| hex::decode(x).unwrap())
-                    .collect(),
-                non_residues: plonk_process_vkey.non_residues,
-                g2_elements: plonk_process_vkey
-                    .g2_elements
-                    .into_iter()
-                    .map(|x| hex::decode(x).unwrap())
-                    .collect(),
-            };
+        return Err(ContractError::UnsupportedCertificationSystem {});
+    };
 
-            // jsut check the vkey is valid
-            let _ = parse_plonk_vkey::<MBn256, PlonkCsWidth4WithNextStepParams>(
-                plonk_process_vkeys.clone(),
-            )?;
-            PLONK_PROCESS_VKEYS.save(deps.storage, &plonk_process_vkeys)?;
-        }
-
-        if let Some(plonk_tally_vkey) = msg.plonk_tally_vkey {
-            // Create a tally_vkeys struct from the tally_vkey in the message
-            let plonk_tally_vkeys = PlonkVkeyStr {
-                n: plonk_tally_vkey.n,
-                num_inputs: plonk_tally_vkey.num_inputs,
-                selector_commitments: plonk_tally_vkey
-                    .selector_commitments
-                    .into_iter()
-                    .map(|x| hex::decode(x).unwrap())
-                    .collect(),
-                next_step_selector_commitments: plonk_tally_vkey
-                    .next_step_selector_commitments
-                    .into_iter()
-                    .map(|x| hex::decode(x).unwrap())
-                    .collect(),
-                permutation_commitments: plonk_tally_vkey
-                    .permutation_commitments
-                    .into_iter()
-                    .map(|x| hex::decode(x).unwrap())
-                    .collect(),
-                non_residues: plonk_tally_vkey.non_residues,
-                g2_elements: plonk_tally_vkey
-                    .g2_elements
-                    .into_iter()
-                    .map(|x| hex::decode(x).unwrap())
-                    .collect(),
-            };
-
-            // jsut check the vkey is valid
-            let _ = parse_plonk_vkey::<MBn256, PlonkCsWidth4WithNextStepParams>(
-                plonk_tally_vkeys.clone(),
-            )?;
-            PLONK_TALLY_VKEYS.save(deps.storage, &plonk_tally_vkeys)?;
-        }
-    }
+    CERTSYSTEM.save(deps.storage, &msg.certification_system)?;
 
     // Compute the coordinator hash from the coordinator values in the message
     let coordinator_hash = hash2([msg.coordinator.x, msg.coordinator.y]);
@@ -189,7 +132,7 @@ pub fn instantiate(
 
     // Compute the maximum number of leaves based on the state tree depth
     let max_leaves_count =
-        Uint256::from_u128(5u128.pow(msg.parameters.state_tree_depth.to_string().parse().unwrap()));
+        Uint256::from_u128(5u128.pow(parameters.state_tree_depth.to_string().parse().unwrap()));
     MAX_LEAVES_COUNT.save(deps.storage, &max_leaves_count)?;
 
     // Calculate the index of the first leaf in the tree
@@ -203,7 +146,7 @@ pub fn instantiate(
     )?;
 
     // Define an array of zero values
-    let zeros: [Uint256; 8] = [
+    let zeros: [Uint256; 10] = [
         uint256_from_hex_string("2066be41bebe6caf7e079360abe14fbf9118c62eabc42e2fe75e342b160a95bc"),
         //     "14655542659562014735865511769057053982292279840403315552050801315682099828156",
         uint256_from_hex_string("2a956d37d8e73692877b104630a08cc6840036f235f2134b0606769a369d85c1"),
@@ -220,6 +163,10 @@ pub fn instantiate(
         //     "17716535433480122581515618850811568065658392066947958324371350481921422579201",
         uint256_from_hex_string("268d82cc07023a1d5e7c987cbd0328b34762c9ea21369bea418f08b71b16846a"),
         //     "17437916409890180001398333108882255895598851862997171508841759030332444017770",
+        uint256_from_hex_string("2e002d67c30ee0a2bd5fdecc4fb81646ecd6eb0746f5ff2d9b1d1b522a4a3f68"),
+        //      "20806704410832383274034364623685369279680495689837539882650535326035351322472"
+        uint256_from_hex_string("f14c3fb900b66f523694106f7fc3cbec1f5eee571f047a9eb05bef717d3e064"),
+        //      "6821382292698461711184253213986441870942786410912797736722948342942530789476"
     ];
     ZEROS.save(deps.storage, &zeros)?;
 
@@ -235,20 +182,30 @@ pub fn instantiate(
     CURRENT_TALLY_COMMITMENT.save(deps.storage, &Uint256::from_u128(0u128))?;
     PROCESSED_USER_COUNT.save(deps.storage, &Uint256::from_u128(0u128))?;
     NUMSIGNUPS.save(deps.storage, &Uint256::from_u128(0u128))?;
-    MAX_VOTE_OPTIONS.save(deps.storage, &msg.max_vote_options)?;
+    // MAX_VOTE_OPTIONS.save(deps.storage, &msg.max_vote_options)?;
 
-    let mut vote_option_map: Vec<String> = Vec::new();
-    for _ in 0..msg.max_vote_options.to_string().parse().unwrap() {
-        vote_option_map.push(String::new());
+    // let mut vote_option_map: Vec<String> = Vec::new();
+    // for _ in 0..msg.max_vote_options.to_string().parse().unwrap() {
+    //     vote_option_map.push(String::new());
+    // }
+
+    let max_vote_options = msg.vote_option_map.len() as u128;
+    if max_vote_options > 125 { // 6-3-3-125, 5^3 options max
+        return Err(ContractError::VoteOptionsExceedLimit { max_options: 125 });
     }
-    VOTEOPTIONMAP.save(deps.storage, &vote_option_map)?;
+    VOTEOPTIONMAP.save(deps.storage, &msg.vote_option_map)?;
+    // Save the maximum vote options
+    MAX_VOTE_OPTIONS.save(deps.storage, &Uint256::from_u128(max_vote_options))?;
+    // let res = Response::new()
+    //     .add_attribute("action", "set_vote_option")
+    //     .add_attribute("vote_option_map", format!("{:?}", vote_option_map))
+    //     .add_attribute("max_vote_options", max_vote_options.to_string());
+
+    // VOTEOPTIONMAP.save(deps.storage, &vote_option_map)?;
     ROUNDINFO.save(deps.storage, &msg.round_info)?;
-    CIRCUITTYPE.save(deps.storage, &msg.circuit_type)?;
+    MAX_WHITELIST_NUM.save(deps.storage, &0u128)?;
 
-    match msg.whitelist {
-        Some(content) => WHITELIST.save(deps.storage, &content)?,
-        None => {}
-    }
+    FEEGRANTS.save(deps.storage, &Uint128::from(0u128))?;
 
     match msg.voting_time {
         Some(content) => {
@@ -264,6 +221,24 @@ pub fn instantiate(
         }
         None => {}
     }
+    let whitelist_backend_pubkey_binary = Binary::from_base64(&msg.whitelist_backend_pubkey)
+        .map_err(|_| ContractError::InvalidBase64 {})?;
+
+    let oracle_whitelist_config = OracleWhitelistConfig {
+        backend_pubkey: whitelist_backend_pubkey_binary,
+        ecosystem: msg.whitelist_ecosystem,
+        snapshot_height: msg.whitelist_snapshot_height,
+        voting_power_mode: msg.whitelist_voting_power_args.mode,
+        slope: msg.whitelist_voting_power_args.slope,
+        threshold: msg.whitelist_voting_power_args.threshold,
+    };
+    ORACLE_WHITELIST_CONFIG.save(deps.storage, &oracle_whitelist_config)?;
+    FEEGRANTOPERATOR.save(
+        deps.storage,
+        &FeeGrantOperator {
+            operator: msg.feegrant_operator,
+        },
+    )?;
 
     // Create a period struct with the initial status set to Voting
     let period = Period {
@@ -273,7 +248,21 @@ pub fn instantiate(
     // Save the initial period to storage
     PERIOD.save(deps.storage, &period)?;
 
-    Ok(Response::default().add_attribute("action", "instantiate"))
+    Ok(Response::default()
+        .add_attribute("action", "instantiate")
+        .add_attribute("state_tree_depth", parameters.state_tree_depth.to_string())
+        .add_attribute(
+            "int_state_tree_depth",
+            parameters.int_state_tree_depth.to_string(),
+        )
+        .add_attribute(
+            "vote_option_tree_depth",
+            parameters.vote_option_tree_depth.to_string(),
+        )
+        .add_attribute(
+            "message_batch_size",
+            parameters.message_batch_size.to_string(),
+        ))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -284,31 +273,21 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        // ExecuteMsg::SetParams {
-        //     state_tree_depth,
-        //     int_state_tree_depth,
-        //     message_batch_size,
-        //     vote_option_tree_depth,
-        // } => execute_set_parameters(
-        //     deps,
-        //     env,
-        //     info,
-        //     state_tree_depth,
-        //     int_state_tree_depth,
-        //     message_batch_size,
-        //     vote_option_tree_depth,
-        // ),
         ExecuteMsg::SetRoundInfo { round_info } => {
             execute_set_round_info(deps, env, info, round_info)
         }
-        ExecuteMsg::SetWhitelists { whitelists } => {
-            execute_set_whitelists(deps, env, info, whitelists)
-        }
+        // ExecuteMsg::SetWhitelists { whitelists } => {
+        //     execute_set_whitelists(deps, env, info, whitelists)
+        // }
         ExecuteMsg::SetVoteOptionsMap { vote_option_map } => {
             execute_set_vote_options_map(deps, env, info, vote_option_map)
         }
         ExecuteMsg::StartVotingPeriod {} => execute_start_voting_period(deps, env, info),
-        ExecuteMsg::SignUp { pubkey } => execute_sign_up(deps, env, info, pubkey),
+        ExecuteMsg::SignUp {
+            pubkey,
+            amount,
+            certificate,
+        } => execute_sign_up(deps, env, info, pubkey, amount, certificate),
         ExecuteMsg::StopVotingPeriod {} => execute_stop_voting_period(deps, env, info),
         ExecuteMsg::PublishMessage {
             message,
@@ -343,8 +322,11 @@ pub fn execute(
         ExecuteMsg::StopTallyingPeriod { results, salt } => {
             execute_stop_tallying_period(deps, env, info, results, salt)
         }
-        ExecuteMsg::Grant { max_amount } => execute_grant(deps, env, info, max_amount),
-        ExecuteMsg::Revoke {} => execute_revoke(deps, env, info),
+        ExecuteMsg::Grant {
+            base_amount,
+            grantee,
+        } => execute_grant(deps, env, info, base_amount, grantee),
+        ExecuteMsg::Revoke { grantee } => execute_revoke(deps, env, info, grantee),
         ExecuteMsg::Bond {} => execute_bond(deps, env, info),
         ExecuteMsg::Withdraw { amount } => execute_withdraw(deps, env, info, amount),
     }
@@ -426,30 +408,6 @@ pub fn execute_start_voting_period(
     }
 }
 
-// pub fn execute_set_parameters(
-//     deps: DepsMut,
-//     _env: Env,
-//     info: MessageInfo,
-//     state_tree_depth: Uint256,
-//     int_state_tree_depth: Uint256,
-//     message_batch_size: Uint256,
-//     vote_option_tree_depth: Uint256,
-// ) -> Result<Response, ContractError> {
-//     if !can_execute(deps.as_ref(), info.sender.as_ref())? {
-//         Err(ContractError::Unauthorized {})
-//     } else {
-//         let mut cfg = MACIPARAMETERS.load(deps.storage)?;
-//         cfg.state_tree_depth = state_tree_depth;
-//         cfg.int_state_tree_depth = int_state_tree_depth;
-//         cfg.message_batch_size = message_batch_size;
-//         cfg.vote_option_tree_depth = vote_option_tree_depth;
-
-//         MACIPARAMETERS.save(deps.storage, &cfg)?;
-//         let res = Response::new().add_attribute("action", "set_parameters");
-//         Ok(res)
-//     }
-// }
-
 pub fn execute_set_round_info(
     deps: DepsMut,
     _env: Env,
@@ -477,49 +435,6 @@ pub fn execute_set_round_info(
         }
 
         Ok(Response::new().add_attributes(attributes))
-    }
-}
-
-// in pending
-pub fn execute_set_whitelists(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    whitelists: Whitelist,
-) -> Result<Response, ContractError> {
-    let period = PERIOD.load(deps.storage)?;
-
-    if FEEGRANTS.exists(deps.storage) {
-        return Err(ContractError::FeeGrantAlreadyExists);
-    }
-
-    if VOTINGTIME.exists(deps.storage) {
-        let voting_time = VOTINGTIME.load(deps.storage)?;
-
-        if let Some(start_time) = voting_time.start_time {
-            if env.block.time >= start_time {
-                return Err(ContractError::PeriodError {});
-            }
-        } else {
-            return Err(ContractError::PeriodError {});
-        }
-    } else {
-        // Check if the period status is Pending
-        if period.status != PeriodStatus::Pending {
-            return Err(ContractError::PeriodError {});
-        }
-    }
-
-    // if WHITELIST.exists(deps.storage) {
-    //     return Err(ContractError::AlreadyHaveWhitelist {});
-    // }
-
-    if !can_execute(deps.as_ref(), info.sender.as_ref())? {
-        Err(ContractError::Unauthorized {})
-    } else {
-        WHITELIST.save(deps.storage, &whitelists)?;
-        let res = Response::new().add_attribute("action", "set_whitelists");
-        Ok(res)
     }
 }
 
@@ -553,6 +468,9 @@ pub fn execute_set_vote_options_map(
         Err(ContractError::Unauthorized {})
     } else {
         let max_vote_options = vote_option_map.len() as u128;
+        if max_vote_options > 125 { // 6-3-3-125, 5^3 options max
+            return Err(ContractError::VoteOptionsExceedLimit { max_options: 125 });
+        }
         VOTEOPTIONMAP.save(deps.storage, &vote_option_map)?;
         // Save the maximum vote options
         MAX_VOTE_OPTIONS.save(deps.storage, &Uint256::from_u128(max_vote_options))?;
@@ -570,6 +488,8 @@ pub fn execute_sign_up(
     env: Env,
     info: MessageInfo,
     pubkey: PubKey,
+    amount: Uint256,
+    certificate: String,
 ) -> Result<Response, ContractError> {
     let period = PERIOD.load(deps.storage)?;
     if VOTINGTIME.exists(deps.storage) {
@@ -579,12 +499,60 @@ pub fn execute_sign_up(
         check_voting_time(env, None, period.status)?;
     }
 
-    let user_balance = user_balance_of(deps.as_ref(), info.sender.as_ref())?;
-    if user_balance == Uint256::from_u128(0u128) {
-        return Err(ContractError::Unauthorized {});
+    if amount == Uint256::from_u128(0u128) {
+        return Err(ContractError::AmountIsZero {});
+    }
+
+    let oracle_whitelist_config = ORACLE_WHITELIST_CONFIG.load(deps.storage)?;
+    let whitelist_snapshot_height = oracle_whitelist_config.snapshot_height;
+    let whitelist_ecosystem = oracle_whitelist_config.ecosystem;
+    let whitelist_backend_pubkey = oracle_whitelist_config.backend_pubkey;
+    let payload = serde_json::json!({
+        "address": info.sender.to_string(),
+        "amount": amount.to_string(),
+        "height": whitelist_snapshot_height.to_string(),
+        "ecosystem": whitelist_ecosystem.to_string(),
+    });
+
+    let msg = payload.to_string().into_bytes();
+
+    let hash = Sha256::digest(&msg);
+
+    let certificate_binary =
+        Binary::from_base64(&certificate).map_err(|_| ContractError::InvalidBase64 {})?;
+    let verify_result = deps
+        .api
+        .secp256k1_verify(
+            hash.as_ref(),
+            certificate_binary.as_slice(),
+            whitelist_backend_pubkey.as_slice(),
+        )
+        .map_err(|_| ContractError::VerificationFailed {})?;
+    if !verify_result {
+        return Err(ContractError::InvalidSignature {});
+    }
+
+    if WHITELIST.has(deps.storage, &info.sender) {
+        return Err(ContractError::AlreadySignedUp {});
+    }
+
+    let voting_power = calculate_voting_power(
+        amount,
+        &VotingPowerConfig {
+            mode: oracle_whitelist_config.voting_power_mode,
+            slope: oracle_whitelist_config.slope,
+            threshold: oracle_whitelist_config.threshold,
+        },
+    );
+
+    if voting_power == Uint256::from_u128(0u128) {
+        return Err(ContractError::VotingPowerIsZero {});
     }
 
     let mut num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
+    if num_sign_ups + Uint256::from_u128(1u128) > Uint256::from_u128(15625u128) { // 6-3-3-125, 5^6 voters max
+        return Err(ContractError::MaxVotersReached { max_voters: 15625 });
+    }
 
     let max_leaves_count = MAX_LEAVES_COUNT.load(deps.storage)?;
 
@@ -606,30 +574,31 @@ pub fn execute_sign_up(
     // Create a state leaf with the provided pubkey and amount
     let state_leaf = StateLeaf {
         pub_key: pubkey.clone(),
-        voice_credit_balance: user_balance,
+        voice_credit_balance: voting_power,
         vote_option_tree_root: Uint256::from_u128(0),
         nonce: Uint256::from_u128(0),
     }
     .hash_state_leaf();
 
     let state_index = num_sign_ups;
-    // Enqueue the state leaf
     state_enqueue(&mut deps, state_leaf)?;
     num_sign_ups += Uint256::from_u128(1u128);
 
-    // Save the updated state index, voice credit balance, and number of sign-ups
-    // STATEIDXINC.save(deps.storage, &info.sender, &num_sign_ups)?;
     STATEIDXINC.save(deps.storage, &info.sender, &num_sign_ups)?;
     VOICECREDITBALANCE.save(
         deps.storage,
         state_index.to_be_bytes().to_vec(),
-        &user_balance,
+        &voting_power,
     )?;
     NUMSIGNUPS.save(deps.storage, &num_sign_ups)?;
 
-    let mut white_curr = WHITELIST.load(deps.storage)?;
-    white_curr.register(info.sender);
-    WHITELIST.save(deps.storage, &white_curr)?;
+    let white_curr = WhitelistConfig {
+        balance: voting_power,
+        is_register: true,
+        fee_amount: Uint128::from(0u128),
+        fee_grant: false,
+    };
+    WHITELIST.save(deps.storage, &info.sender, &white_curr)?;
 
     Ok(Response::new()
         .add_attribute("action", "sign_up")
@@ -638,7 +607,7 @@ pub fn execute_sign_up(
             "pubkey",
             format!("{:?},{:?}", pubkey.x.to_string(), pubkey.y.to_string()),
         )
-        .add_attribute("balance", user_balance.to_string()))
+        .add_attribute("balance", voting_power.to_string()))
 }
 
 // in voting
@@ -755,6 +724,15 @@ pub fn execute_stop_voting_period(
             None => {}
         }
 
+        // let leaf_idx_0 = LEAF_IDX_0.load(deps.storage)?;
+        // let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
+
+        // let _ = state_update_at(
+        //     &mut deps,
+        //     leaf_idx_0 + num_sign_ups - Uint256::from_u128(1u128),
+        //     true,
+        // );
+
         // Return a success response
         Ok(Response::new()
             .add_attribute("action", "stop_voting_period")
@@ -763,9 +741,9 @@ pub fn execute_stop_voting_period(
 }
 
 pub fn execute_start_process_period(
-    deps: DepsMut,
+    mut deps: DepsMut,
     env: Env,
-    info: MessageInfo,
+    _info: MessageInfo,
 ) -> Result<Response, ContractError> {
     let period = PERIOD.load(deps.storage)?;
     let voting_time = VOTINGTIME.may_load(deps.storage)?;
@@ -788,6 +766,15 @@ pub fn execute_start_process_period(
     } else {
         return Err(ContractError::PeriodError {});
     }
+
+    let leaf_idx_0 = LEAF_IDX_0.load(deps.storage)?;
+    let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
+
+    let _ = state_update_at(
+        &mut deps,
+        leaf_idx_0 + num_sign_ups - Uint256::from_u128(1u128),
+        true,
+    );
 
     // Update the period status to Processing
     let period = Period {
@@ -1007,7 +994,7 @@ pub fn execute_process_message(
 pub fn execute_stop_processing_period(
     deps: DepsMut,
     _env: Env,
-    info: MessageInfo,
+    _info: MessageInfo,
 ) -> Result<Response, ContractError> {
     let period = PERIOD.load(deps.storage)?;
     // Check if the period status is Processing
@@ -1015,13 +1002,13 @@ pub fn execute_stop_processing_period(
         return Err(ContractError::PeriodError {});
     }
 
-    // Check that all messages have been processed
+    // Check that all users have not been processed yet
     let processed_msg_count = PROCESSED_MSG_COUNT.load(deps.storage)?;
     let msg_chain_length = MSG_CHAIN_LENGTH.load(deps.storage)?;
-    if processed_msg_count < msg_chain_length {
+
+    if processed_msg_count != msg_chain_length {
         return Err(ContractError::MsgLeftProcess {});
     }
-
     // Update the period status to Tallying
     let period = Period {
         status: PeriodStatus::Tallying,
@@ -1325,10 +1312,11 @@ fn execute_grant(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    max_amount: Uint128,
+    base_amount: Uint128,
+    grantee: Addr,
 ) -> Result<Response, ContractError> {
     // Check if the sender is authorized to execute the function
-    if !can_execute(deps.as_ref(), info.sender.as_ref())? {
+    if !is_feegrant_operator(deps.as_ref(), info.sender.as_ref())? {
         return Err(ContractError::Unauthorized {});
     }
 
@@ -1340,9 +1328,9 @@ fn execute_grant(
         check_voting_time(env.clone(), None, period.status)?;
     }
 
-    if FEEGRANTS.exists(deps.storage) {
-        return Err(ContractError::FeeGrantAlreadyExists {});
-    }
+    // if FEEGRANTS.exists(deps.storage) {
+    //     return Err(ContractError::FeeGrantAlreadyExists {});
+    // }
 
     let denom = "peaka".to_string();
 
@@ -1353,11 +1341,13 @@ fn execute_grant(
             amount = fund.amount;
         }
     });
-    FEEGRANTS.save(deps.storage, &max_amount)?;
+    // FEEGRANTS.save(deps.storage, &max_amount)?;
 
-    let whitelist = WHITELIST.load(deps.storage)?;
+    let feegrants = FEEGRANTS.load(deps.storage)?;
 
-    let base_amount = max_amount / Uint128::from(whitelist.users.len() as u128);
+    // let whitelist = WHITELIST.load(deps.storage)?;z
+
+    // let base_amount = max_amount / Uint128::from(whitelist.users.len() as u128);
 
     let mut expiration_time: Option<SdkTimestamp> = None;
 
@@ -1388,49 +1378,74 @@ fn execute_grant(
         allowed_messages: vec!["/cosmwasm.wasm.v1.MsgExecuteContract".to_string()],
     };
 
-    let mut messages = vec![];
-    for i in 0..whitelist.users.len() {
-        let grant_msg = MsgGrantAllowance {
-            granter: env.contract.address.to_string(),
-            grantee: whitelist.users[i].addr.to_string(),
-            allowance: Some(Any {
-                type_url: AllowedMsgAllowance::TYPE_URL.to_string(),
-                value: allowed_allowance.encode_to_vec(),
-            }),
-        };
+    // for i in 0..whitelists.users.len() {
+    // let addr_str = whitelists.users[i].addr.to_string();
+    // let addr = &Addr::unchecked(&addr_str);
 
-        let message = CosmosMsg::Stargate {
-            type_url: MsgGrantAllowance::TYPE_URL.to_string(),
-            value: grant_msg.encode_to_vec().into(),
-        };
-        messages.push(message);
+    let mut curr;
+    if GRANTLIST.has(deps.storage, &grantee) {
+        curr = GRANTLIST.load(deps.storage, &grantee)?;
+    } else {
+        curr = GrantConfig {
+            fee_amount: Uint128::from(0u128),
+            fee_grant: false,
+        }
     }
+
+    if curr.fee_grant == true {
+        return Err(ContractError::AlreadySetFeeGrant {
+            grantee: grantee.to_string(),
+        });
+    }
+    let grant_msg = MsgGrantAllowance {
+        granter: env.contract.address.to_string(),
+        grantee: grantee.to_string(),
+        allowance: Some(Any {
+            type_url: AllowedMsgAllowance::TYPE_URL.to_string(),
+            value: allowed_allowance.encode_to_vec(),
+        }),
+    };
+
+    let mut messages = vec![];
+    let message = CosmosMsg::Stargate {
+        type_url: MsgGrantAllowance::TYPE_URL.to_string(),
+        value: grant_msg.encode_to_vec().into(),
+    };
+    messages.push(message);
+
+    curr.grant(base_amount);
+    GRANTLIST.save(deps.storage, &grantee, &curr)?;
+
+    let total_feegrant_amount = feegrants + base_amount;
+    FEEGRANTS.save(deps.storage, &total_feegrant_amount)?;
 
     Ok(Response::default().add_messages(messages).add_attributes([
         ("action", "grant"),
-        ("max_amount", max_amount.to_string().as_str()),
+        ("total_amount", total_feegrant_amount.to_string().as_str()),
+        ("update_amount", base_amount.to_string().as_str()),
         ("base_amount", base_amount.to_string().as_str()),
         ("bond_amount", amount.to_string().as_str()),
+        ("grantee", grantee.to_string().as_str()),
     ]))
 }
 
-fn execute_revoke(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
+fn execute_revoke(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    grantee: Addr,
+) -> Result<Response, ContractError> {
     // Check if the sender is authorized to execute the function
     if !can_execute(deps.as_ref(), info.sender.as_ref())? {
         return Err(ContractError::Unauthorized {});
     }
 
-    if !FEEGRANTS.exists(deps.storage) {
-        return Err(ContractError::FeeGrantIsNotExists {});
-    }
-
-    let whitelist = WHITELIST.load(deps.storage)?;
-
     let mut messages = vec![];
-    for i in 0..whitelist.users.len() {
+    let mut curr = WHITELIST.load(deps.storage, &grantee)?;
+    if curr.fee_grant == true {
         let revoke_msg = MsgRevokeAllowance {
             granter: env.contract.address.to_string(),
-            grantee: whitelist.users[i].addr.to_string(),
+            grantee: grantee.to_string(),
         };
         let message = CosmosMsg::Stargate {
             type_url: MsgRevokeAllowance::TYPE_URL.to_string(),
@@ -1438,11 +1453,13 @@ fn execute_revoke(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response
         };
         messages.push(message);
     }
-    FEEGRANTS.remove(deps.storage);
+    curr.revoke();
+    WHITELIST.save(deps.storage, &grantee, &curr)?;
 
-    Ok(Response::default()
-        .add_messages(messages)
-        .add_attributes([("action", "revoke")]))
+    Ok(Response::default().add_messages(messages).add_attributes([
+        ("action", "revoke"),
+        ("grantee", grantee.to_string().as_str()),
+    ]))
 }
 
 fn execute_bond(deps: DepsMut, _env: Env, info: MessageInfo) -> Result<Response, ContractError> {
@@ -1494,16 +1511,77 @@ fn execute_withdraw(
         .add_attribute("amount", withdraw_amount.to_string()))
 }
 
-fn can_sign_up(deps: Deps, sender: &str) -> StdResult<bool> {
-    let cfg = WHITELIST.load(deps.storage)?;
-    let can = cfg.is_whitelist(&sender);
-    Ok(can)
+fn can_sign_up(deps: Deps, sender: &str, amount: Uint256, certificate: String) -> StdResult<bool> {
+    let oracle_whitelist_config = ORACLE_WHITELIST_CONFIG.load(deps.storage)?;
+    let whitelist_snapshot_height = oracle_whitelist_config.snapshot_height;
+    let whitelist_ecosystem = oracle_whitelist_config.ecosystem;
+    let whitelist_backend_pubkey = oracle_whitelist_config.backend_pubkey;
+    let payload = serde_json::json!({
+        "address": sender.to_string(),
+        "amount": amount.to_string(),
+        "height": whitelist_snapshot_height.to_string(),
+        "ecosystem": whitelist_ecosystem.to_string(),
+    });
+
+    let msg = payload.to_string().into_bytes();
+
+    let hash = Sha256::digest(&msg);
+
+    let certificate_binary = Binary::from_base64(&certificate)?;
+    let verify_result = deps.api.secp256k1_verify(
+        hash.as_ref(),
+        certificate_binary.as_slice(), // 使用解码后的 binary 数据
+        whitelist_backend_pubkey.as_slice(),
+    )?;
+
+    Ok(verify_result)
 }
 
-fn user_balance_of(deps: Deps, sender: &str) -> StdResult<Uint256> {
-    let cfg = WHITELIST.load(deps.storage)?;
-    let balance = cfg.balance_of(&sender);
-    Ok(balance)
+fn user_balance_of(
+    deps: Deps,
+    sender: &str,
+    amount: Uint256,
+    certificate: String,
+) -> StdResult<Uint256> {
+    let addr = Addr::unchecked(sender);
+    if WHITELIST.has(deps.storage, &addr) {
+        let cfg = WHITELIST.load(deps.storage, &addr)?;
+        return Ok(cfg.balance_of());
+    }
+
+    let oracle_whitelist_config = ORACLE_WHITELIST_CONFIG.load(deps.storage)?;
+    let whitelist_snapshot_height = oracle_whitelist_config.snapshot_height;
+    let whitelist_ecosystem = oracle_whitelist_config.ecosystem;
+    let whitelist_backend_pubkey = oracle_whitelist_config.backend_pubkey;
+    let payload = serde_json::json!({
+        "address": sender.to_string(),
+        "amount": amount.to_string(),
+        "height": whitelist_snapshot_height.to_string(),
+        "ecosystem": whitelist_ecosystem.to_string(),
+    });
+
+    let msg = payload.to_string().into_bytes();
+
+    let hash = Sha256::digest(&msg);
+
+    let certificate_binary = Binary::from_base64(&certificate)?;
+    let verify_result = deps.api.secp256k1_verify(
+        hash.as_ref(),
+        certificate_binary.as_slice(),
+        whitelist_backend_pubkey.as_slice(),
+    )?;
+    if verify_result {
+        let voting_power = calculate_voting_power(
+            amount,
+            &VotingPowerConfig {
+                mode: oracle_whitelist_config.voting_power_mode,
+                slope: oracle_whitelist_config.slope,
+                threshold: oracle_whitelist_config.threshold,
+            },
+        );
+        return Ok(voting_power);
+    }
+    Ok(Uint256::zero())
 }
 
 // Load the root node of the state tree
@@ -1524,11 +1602,11 @@ fn state_enqueue(deps: &mut DepsMut, leaf: Uint256) -> Result<bool, ContractErro
 
     let leaf_idx = leaf_idx0 + num_sign_ups;
     NODES.save(deps.storage, leaf_idx.to_be_bytes().to_vec(), &leaf)?;
-    state_update_at(deps, leaf_idx)
+    state_update_at(deps, leaf_idx, false)
 }
 
 // Updates the state at the given index in the tree
-fn state_update_at(deps: &mut DepsMut, index: Uint256) -> Result<bool, ContractError> {
+fn state_update_at(deps: &mut DepsMut, index: Uint256, full: bool) -> Result<bool, ContractError> {
     let leaf_idx0 = LEAF_IDX_0.load(deps.storage).unwrap();
     if index < leaf_idx0 {
         return Err(ContractError::MustUpdate {});
@@ -1540,7 +1618,9 @@ fn state_update_at(deps: &mut DepsMut, index: Uint256) -> Result<bool, ContractE
 
     let zeros = ZEROS.load(deps.storage).unwrap();
 
-    while idx > Uint256::from_u128(0u128) {
+    while idx > Uint256::from_u128(0u128)
+        && (full || idx % Uint256::from_u128(5u128) == Uint256::from_u128(0u128))
+    {
         let parent_idx = (idx - Uint256::one()) / Uint256::from(5u8);
         let children_idx0 = parent_idx * Uint256::from(5u8) + Uint256::one();
 
@@ -1589,6 +1669,19 @@ fn state_update_at(deps: &mut DepsMut, index: Uint256) -> Result<bool, ContractE
     }
 
     Ok(true)
+}
+
+fn calculate_voting_power(amount: Uint256, config: &VotingPowerConfig) -> Uint256 {
+    match config.mode {
+        VotingPowerMode::Slope => amount / config.slope,
+        VotingPowerMode::Threshold => {
+            if amount >= config.threshold {
+                Uint256::from(1u128)
+            } else {
+                Uint256::zero()
+            }
+        }
+    }
 }
 
 fn check_voting_time(
@@ -1654,6 +1747,18 @@ fn can_execute(deps: Deps, sender: &str) -> StdResult<bool> {
     Ok(can)
 }
 
+// Only feegrant_operator/admin can execute
+fn is_feegrant_operator(deps: Deps, sender: &str) -> StdResult<bool> {
+    let admin = ADMIN.load(deps.storage)?;
+    let can_admin = admin.is_admin(&sender);
+
+    let operator = FEEGRANTOPERATOR.load(deps.storage)?;
+    let can_operator = operator.is_operator(&sender);
+
+    let can = can_admin || can_operator;
+    Ok(can)
+}
+
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
@@ -1698,13 +1803,31 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 .load(deps.storage, index.to_be_bytes().to_vec())
                 .unwrap(),
         ),
-        QueryMsg::WhiteList {} => to_json_binary::<Whitelist>(&query_white_list(deps)?),
-        QueryMsg::IsWhiteList { sender } => {
-            to_json_binary::<bool>(&query_can_sign_up(deps, sender)?)
-        }
-        QueryMsg::WhiteBalanceOf { sender } => {
-            to_json_binary::<Uint256>(&query_user_balance_of(deps, sender)?)
-        }
+        QueryMsg::IsWhiteList {
+            sender,
+            amount,
+            certificate,
+        } => to_json_binary::<bool>(&query_can_sign_up(deps, sender, amount, certificate)?),
+        QueryMsg::WhiteBalanceOf {
+            sender,
+            amount,
+            certificate,
+        } => to_json_binary::<Uint256>(&query_user_balance_of(deps, sender, amount, certificate)?),
+        QueryMsg::WhiteInfo { sender } => to_json_binary::<WhitelistConfig>(
+            &WHITELIST
+                .load(deps.storage, &Addr::unchecked(sender))
+                .unwrap(),
+        ),
+        QueryMsg::GrantInfo { grantee } => to_json_binary::<GrantConfig>(
+            &GRANTLIST
+                .load(deps.storage, &Addr::unchecked(grantee))
+                .unwrap(),
+        ),
+        QueryMsg::MaxWhitelistNum {} => to_json_binary::<u128>(
+            &MAX_WHITELIST_NUM
+                .may_load(deps.storage)?
+                .unwrap_or_default(),
+        ),
         QueryMsg::VoteOptionMap {} => {
             to_json_binary::<Vec<String>>(&VOTEOPTIONMAP.load(deps.storage).unwrap())
         }
@@ -1720,22 +1843,28 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::QueryCertSystem {} => {
             to_json_binary::<Uint256>(&CERTSYSTEM.may_load(deps.storage)?.unwrap_or_default())
         }
+        QueryMsg::QueryOracleWhitelistConfig {} => {
+            to_json_binary::<OracleWhitelistConfig>(&ORACLE_WHITELIST_CONFIG.load(deps.storage)?)
+        }
     }
 }
 
-pub fn query_white_list(deps: Deps) -> StdResult<Whitelist> {
-    let cfg = WHITELIST.load(deps.storage)?;
-    Ok(Whitelist {
-        users: cfg.users.into_iter().map(|a| a.into()).collect(),
-    })
+pub fn query_can_sign_up(
+    deps: Deps,
+    sender: String,
+    amount: Uint256,
+    certificate: String,
+) -> StdResult<bool> {
+    Ok(can_sign_up(deps, &sender, amount, certificate)?)
 }
 
-pub fn query_can_sign_up(deps: Deps, sender: String) -> StdResult<bool> {
-    Ok(can_sign_up(deps, &sender)?)
-}
-
-pub fn query_user_balance_of(deps: Deps, sender: String) -> StdResult<Uint256> {
-    Ok(user_balance_of(deps, &sender)?)
+pub fn query_user_balance_of(
+    deps: Deps,
+    sender: String,
+    amount: Uint256,
+    certificate: String,
+) -> StdResult<Uint256> {
+    Ok(user_balance_of(deps, &sender, amount, certificate)?)
 }
 
 #[cfg(test)]

@@ -1,8 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_json_binary, Addr, BankMsg, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Response,
-    StdResult, SubMsg, Uint128, Uint256, WasmMsg,
+    to_json_binary, Addr, BankMsg, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Reply, ReplyOn,
+    Response, StdResult, SubMsg, SubMsgResult, Uint128, Uint256, WasmMsg,
 };
 use cw2::set_contract_version;
 use cw_storage_plus::Bound;
@@ -11,8 +11,9 @@ use cw_utils::may_pay;
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
 use crate::state::{
-    Config, ConsumptionRecord, FeeGrantRecord, OperatorInfo, CONFIG, CONSUMPTION_COUNTER,
-    CONSUMPTION_RECORDS, FEEGRANT_RECORDS, OPERATORS, TOTAL_BALANCE,
+    Config, ConsumptionRecord, FeeGrantRecord, MaciContractInfo, OperatorInfo, CONFIG,
+    CONSUMPTION_COUNTER, CONSUMPTION_RECORDS, FEEGRANT_RECORDS, MACI_CONTRACTS,
+    MACI_CONTRACTS_BY_OPERATOR, MACI_CONTRACT_COUNTER, OPERATORS, TOTAL_BALANCE,
 };
 
 // Version info for migration
@@ -37,6 +38,7 @@ pub fn instantiate(
     CONFIG.save(deps.storage, &config)?;
     TOTAL_BALANCE.save(deps.storage, &Uint128::zero())?;
     CONSUMPTION_COUNTER.save(deps.storage, &0u64)?;
+    MACI_CONTRACT_COUNTER.save(deps.storage, &0u64)?;
 
     Ok(Response::new()
         .add_attribute("method", "instantiate")
@@ -93,6 +95,49 @@ pub fn execute(
             circuit_type,
             certification_system,
         ),
+        ExecuteMsg::CreateMaciRound {
+            maci_code_id,
+            parameters,
+            coordinator,
+            qtr_lib,
+            groth16_process_vkey,
+            groth16_tally_vkey,
+            plonk_process_vkey,
+            plonk_tally_vkey,
+            max_vote_options,
+            round_info,
+            voting_time,
+            whitelist,
+            circuit_type,
+            certification_system,
+            admin_override,
+            label,
+        } => execute_create_maci_round(
+            deps,
+            env,
+            info,
+            maci_code_id,
+            parameters,
+            coordinator,
+            qtr_lib,
+            groth16_process_vkey,
+            groth16_tally_vkey,
+            plonk_process_vkey,
+            plonk_tally_vkey,
+            max_vote_options,
+            round_info,
+            voting_time,
+            whitelist,
+            circuit_type,
+            certification_system,
+            admin_override,
+            label,
+        ),
+        ExecuteMsg::ExecuteContract {
+            contract_addr,
+            msg,
+            funds,
+        } => execute_execute_contract(deps, env, info, contract_addr, msg, funds),
     }
 }
 
@@ -517,6 +562,221 @@ pub fn execute_create_amaci_round(
         .add_attribute("new_balance", new_balance.to_string()))
 }
 
+pub fn execute_execute_contract(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    contract_addr: String,
+    msg: Binary,
+    funds: Vec<Coin>,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+
+    // Only operators can execute contracts
+    if !OPERATORS.has(deps.storage, &info.sender) {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    // Validate the contract address format
+    let target_addr = deps.api.addr_validate(&contract_addr)?;
+
+    // Calculate total funds amount for recording
+    let total_amount = funds
+        .iter()
+        .filter(|coin| coin.denom == config.denom)
+        .map(|coin| coin.amount)
+        .fold(Uint128::zero(), |acc, amount| acc + amount);
+
+    // If funds are being sent with the message, check if SaaS has sufficient balance
+    if !total_amount.is_zero() {
+        let total_balance = TOTAL_BALANCE.load(deps.storage)?;
+        if total_balance < total_amount {
+            return Err(ContractError::InsufficientBalance {});
+        }
+
+        // Update total balance
+        let new_balance = total_balance - total_amount;
+        TOTAL_BALANCE.save(deps.storage, &new_balance)?;
+    }
+
+    // Record the execution
+    let mut counter = CONSUMPTION_COUNTER.load(deps.storage)?;
+    counter += 1;
+    CONSUMPTION_COUNTER.save(deps.storage, &counter)?;
+
+    let record = ConsumptionRecord {
+        operator: info.sender.clone(),
+        action: "execute_contract".to_string(),
+        amount: total_amount,
+        timestamp: env.block.time,
+        description: format!(
+            "Execute contract {} with {} {} funds",
+            contract_addr, total_amount, config.denom
+        ),
+    };
+
+    CONSUMPTION_RECORDS.save(deps.storage, counter, &record)?;
+
+    // Execute the contract call
+    let execute_msg = WasmMsg::Execute {
+        contract_addr: target_addr.to_string(),
+        msg,
+        funds,
+    };
+
+    Ok(Response::new()
+        .add_message(execute_msg)
+        .add_attribute("method", "execute_contract")
+        .add_attribute("operator", info.sender.to_string())
+        .add_attribute("target_contract", contract_addr)
+        .add_attribute("funds_amount", total_amount.to_string()))
+}
+
+pub fn execute_create_maci_round(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    maci_code_id: u64,
+    parameters: crate::msg::MaciParameters,
+    coordinator: crate::msg::PubKey,
+    qtr_lib: crate::msg::QuinaryTreeRoot,
+    groth16_process_vkey: Option<crate::msg::Groth16VKeyType>,
+    groth16_tally_vkey: Option<crate::msg::Groth16VKeyType>,
+    plonk_process_vkey: Option<crate::msg::PlonkVKeyType>,
+    plonk_tally_vkey: Option<crate::msg::PlonkVKeyType>,
+    max_vote_options: Uint256,
+    round_info: cw_amaci::state::RoundInfo,
+    voting_time: Option<crate::msg::MaciVotingTime>,
+    whitelist: Option<crate::msg::Whitelist>,
+    circuit_type: Uint256,
+    certification_system: Uint256,
+    admin_override: Option<Addr>,
+    label: String,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+
+    // Only operators can create MACI rounds
+    if !OPERATORS.has(deps.storage, &info.sender) {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    // Calculate deployment fee - base fee of 50 DORA for contract deployment
+    let deployment_fee = Uint128::from(50000000000000000000u128); // 50 DORA
+
+    // Check if SaaS has sufficient balance
+    let total_balance = TOTAL_BALANCE.load(deps.storage)?;
+    if total_balance < deployment_fee {
+        return Err(ContractError::InsufficientFundsForRound {
+            required: deployment_fee,
+            available: total_balance,
+        });
+    }
+
+    // Update total balance
+    let new_balance = total_balance - deployment_fee;
+    TOTAL_BALANCE.save(deps.storage, &new_balance)?;
+
+    // Record the consumption
+    let mut counter = CONSUMPTION_COUNTER.load(deps.storage)?;
+    counter += 1;
+    CONSUMPTION_COUNTER.save(deps.storage, &counter)?;
+
+    let record = ConsumptionRecord {
+        operator: info.sender.clone(),
+        action: "create_maci_round".to_string(),
+        amount: deployment_fee,
+        timestamp: env.block.time,
+        description: format!(
+            "Create MACI round '{}' - deployment fee: {} {}",
+            round_info.title, deployment_fee, config.denom
+        ),
+    };
+
+    CONSUMPTION_RECORDS.save(deps.storage, counter, &record)?;
+
+    // Convert VotingTime if provided
+    let maci_voting_time = voting_time.map(|vt| {
+        serde_json::json!({
+            "start_time": vt.start_time.map(|t| t.nanos().to_string()),
+            "end_time": vt.end_time.map(|t| t.nanos().to_string())
+        })
+    });
+
+    // Convert Whitelist if provided
+    let maci_whitelist = whitelist.map(|wl| {
+        serde_json::json!({
+            "users": wl.users.into_iter().map(|user| {
+                serde_json::json!({
+                    "addr": user.addr,
+                    "balance": user.balance.to_string()
+                })
+            }).collect::<Vec<_>>()
+        })
+    });
+
+    // Create MACI InstantiateMsg
+    let maci_instantiate_msg = serde_json::json!({
+        "parameters": {
+            "state_tree_depth": parameters.state_tree_depth.to_string(),
+            "int_state_tree_depth": parameters.int_state_tree_depth.to_string(),
+            "message_batch_size": parameters.message_batch_size.to_string(),
+            "vote_option_tree_depth": parameters.vote_option_tree_depth.to_string()
+        },
+        "coordinator": {
+            "x": coordinator.x.to_string(),
+            "y": coordinator.y.to_string()
+        },
+        "qtr_lib": {
+            "zeros": qtr_lib.zeros.iter().map(|z| z.to_string()).collect::<Vec<_>>()
+        },
+        "groth16_process_vkey": groth16_process_vkey,
+        "groth16_tally_vkey": groth16_tally_vkey,
+        "plonk_process_vkey": plonk_process_vkey,
+        "plonk_tally_vkey": plonk_tally_vkey,
+        "max_vote_options": max_vote_options.to_string(),
+        "round_info": {
+            "title": round_info.title,
+            "description": round_info.description,
+            "link": round_info.link
+        },
+        "voting_time": maci_voting_time,
+        "whitelist": maci_whitelist,
+        "circuit_type": circuit_type.to_string(),
+        "certification_system": certification_system.to_string()
+    });
+
+    // Get the next MACI contract counter
+    let mut maci_counter = MACI_CONTRACT_COUNTER.load(deps.storage)?;
+    maci_counter += 1;
+    MACI_CONTRACT_COUNTER.save(deps.storage, &maci_counter)?;
+
+    // Prepare the instantiate message
+    let instantiate_msg = WasmMsg::Instantiate {
+        admin: admin_override.map(|a| a.to_string()),
+        code_id: maci_code_id,
+        msg: to_json_binary(&maci_instantiate_msg)?,
+        funds: vec![],
+        label: format!("{}_{}", label, maci_counter),
+    };
+
+    // Create SubMsg with reply to capture the new contract address
+    let submsg = SubMsg {
+        id: maci_counter,
+        msg: instantiate_msg.into(),
+        gas_limit: None,
+        reply_on: ReplyOn::Success,
+    };
+
+    Ok(Response::new()
+        .add_submessage(submsg)
+        .add_attribute("method", "create_maci_round")
+        .add_attribute("operator", info.sender.to_string())
+        .add_attribute("round_title", round_info.title)
+        .add_attribute("deployment_fee", deployment_fee.to_string())
+        .add_attribute("new_balance", new_balance.to_string())
+        .add_attribute("maci_counter", maci_counter.to_string()))
+}
+
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
@@ -540,6 +800,22 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             start_after,
             limit,
         )?),
+        QueryMsg::MaciContracts { start_after, limit } => {
+            to_json_binary(&query_maci_contracts(deps, start_after, limit)?)
+        }
+        QueryMsg::OperatorMaciContracts {
+            operator,
+            start_after,
+            limit,
+        } => to_json_binary(&query_operator_maci_contracts(
+            deps,
+            operator,
+            start_after,
+            limit,
+        )?),
+        QueryMsg::MaciContract { contract_id } => {
+            to_json_binary(&query_maci_contract(deps, contract_id)?)
+        }
     }
 }
 
@@ -615,6 +891,127 @@ fn query_operator_consumption_records(
         .take(limit)
         .map(|item| item.map(|(_, record)| record))
         .collect()
+}
+
+fn query_maci_contracts(
+    deps: Deps,
+    start_after: Option<u64>,
+    limit: Option<u32>,
+) -> StdResult<Vec<MaciContractInfo>> {
+    let limit = limit.unwrap_or(30).min(100) as usize;
+    let start = start_after.map(|s| s + 1);
+
+    MACI_CONTRACTS
+        .range(
+            deps.storage,
+            start.map(|s| Bound::exclusive(s)),
+            None,
+            cosmwasm_std::Order::Ascending,
+        )
+        .take(limit)
+        .map(|item| item.map(|(_, info)| info))
+        .collect()
+}
+
+fn query_operator_maci_contracts(
+    deps: Deps,
+    operator: Addr,
+    start_after: Option<u64>,
+    limit: Option<u32>,
+) -> StdResult<Vec<MaciContractInfo>> {
+    let limit = limit.unwrap_or(30).min(100) as usize;
+    let start = start_after.map(|s| s + 1);
+
+    MACI_CONTRACTS
+        .range(
+            deps.storage,
+            start.map(|s| Bound::exclusive(s)),
+            None,
+            cosmwasm_std::Order::Ascending,
+        )
+        .filter(|item| {
+            if let Ok((_, info)) = item {
+                info.creator_operator == operator
+            } else {
+                false
+            }
+        })
+        .take(limit)
+        .map(|item| item.map(|(_, info)| info))
+        .collect()
+}
+
+fn query_maci_contract(deps: Deps, contract_id: u64) -> StdResult<Option<MaciContractInfo>> {
+    MACI_CONTRACTS.may_load(deps.storage, contract_id)
+}
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
+    handle_maci_contract_reply(deps, env, msg)
+}
+
+fn handle_maci_contract_reply(
+    deps: DepsMut,
+    env: Env,
+    msg: Reply,
+) -> Result<Response, ContractError> {
+    let maci_counter = msg.id;
+
+    if let SubMsgResult::Ok(response) = msg.result {
+        // Parse the contract address from the response
+        let contract_addr = response
+            .events
+            .iter()
+            .find(|event| event.ty == "instantiate")
+            .and_then(|event| {
+                event
+                    .attributes
+                    .iter()
+                    .find(|attr| attr.key == "_contract_address")
+                    .map(|attr| attr.value.clone())
+            })
+            .ok_or(ContractError::ContractInstantiationFailed {})?;
+
+        let contract_address = deps.api.addr_validate(&contract_addr)?;
+
+        // We need to get operator info from the last consumption record
+        // Since we just created a consumption record in execute_create_maci_round
+        let consumption_counter = CONSUMPTION_COUNTER.load(deps.storage)?;
+        let consumption_record = CONSUMPTION_RECORDS.load(deps.storage, consumption_counter)?;
+
+        // Get round title from the consumption record description
+        let round_title = consumption_record
+            .description
+            .split("'")
+            .nth(1)
+            .unwrap_or("Unknown Round")
+            .to_string();
+
+        // Create and save the MACI contract info
+        let maci_info = MaciContractInfo {
+            contract_address: contract_address.clone(),
+            creator_operator: consumption_record.operator.clone(),
+            round_title,
+            created_at: env.block.time,
+            code_id: 0, // We'll need to get this from somewhere else or store it differently
+            creation_fee: consumption_record.amount,
+        };
+
+        MACI_CONTRACTS.save(deps.storage, maci_counter, &maci_info)?;
+        MACI_CONTRACTS_BY_OPERATOR.save(
+            deps.storage,
+            (&consumption_record.operator, maci_counter),
+            &true,
+        )?;
+
+        Ok(Response::new()
+            .add_attribute("action", "maci_contract_created")
+            .add_attribute("contract_address", contract_address.to_string())
+            .add_attribute("creator", consumption_record.operator.to_string())
+            .add_attribute("maci_id", maci_counter.to_string()))
+    } else {
+        Err(ContractError::ContractInstantiationFailed {})
+    }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]

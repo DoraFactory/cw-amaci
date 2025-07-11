@@ -9,6 +9,12 @@ pub struct Config {
     pub denom: String,
 }
 
+impl Config {
+    pub fn is_admin(&self, addr: &Addr) -> bool {
+        self.admin == *addr
+    }
+}
+
 #[cw_serde]
 pub struct OperatorInfo {
     pub address: Addr,
@@ -33,16 +39,27 @@ pub struct FeeGrantRecord {
     pub granted_by: Addr,
 }
 
-// Storage keys
+// 新增: MACI 合约信息跟踪
+#[cw_serde]
+pub struct MaciContractInfo {
+    pub contract_address: Addr,
+    pub creator_operator: Addr,
+    pub round_title: String,
+    pub created_at: Timestamp,
+    pub code_id: u64,
+    pub creation_fee: Uint128,
+}
+
+// Storage items
 pub const CONFIG: Item<Config> = Item::new("config");
 pub const OPERATORS: Map<&Addr, OperatorInfo> = Map::new("operators");
-pub const CONSUMPTION_RECORDS: Map<u64, ConsumptionRecord> = Map::new("consumption_records");
-pub const CONSUMPTION_COUNTER: Item<u64> = Item::new("consumption_counter");
-pub const FEEGRANT_RECORDS: Map<&Addr, FeeGrantRecord> = Map::new("feegrant_records");
 pub const TOTAL_BALANCE: Item<Uint128> = Item::new("total_balance");
+pub const CONSUMPTION_COUNTER: Item<u64> = Item::new("consumption_counter");
+pub const CONSUMPTION_RECORDS: Map<u64, ConsumptionRecord> = Map::new("consumption_records");
+pub const FEEGRANT_RECORDS: Map<&Addr, FeeGrantRecord> = Map::new("feegrant_records");
 
-impl Config {
-    pub fn is_admin(&self, addr: &Addr) -> bool {
-        self.admin == *addr
-    }
-}
+// 新增: MACI 合约跟踪存储
+pub const MACI_CONTRACT_COUNTER: Item<u64> = Item::new("maci_contract_counter");
+pub const MACI_CONTRACTS: Map<u64, MaciContractInfo> = Map::new("maci_contracts");
+pub const MACI_CONTRACTS_BY_OPERATOR: Map<(&Addr, u64), bool> =
+    Map::new("maci_contracts_by_operator");
