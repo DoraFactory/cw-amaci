@@ -105,7 +105,8 @@ pub fn instantiate(
     ADMIN.save(deps.storage, &admin)?;
 
     // Calculate appropriate circuit parameters based on max_voters and max_vote_options
-    let parameters = calculate_circuit_params(msg.max_voters, msg.max_vote_options)?;
+    let max_vote_options = msg.vote_option_map.len() as u128;
+    let parameters = calculate_circuit_params(msg.max_voters, max_vote_options)?;
     // Save the MACI parameters to storage
     MACIPARAMETERS.save(deps.storage, &parameters)?;
 
@@ -226,8 +227,6 @@ pub fn instantiate(
     // for _ in 0..msg.max_vote_options.to_string().parse().unwrap() {
     //     vote_option_map.push(String::new());
     // }
-
-    let max_vote_options = msg.vote_option_map.len() as u128;
     // Calculate maximum vote options based on circuit parameters (optimization: use pre-computed values)
     let circuit_max_vote_options = get_circuit_max_vote_options(&parameters.vote_option_tree_depth);
     if max_vote_options > circuit_max_vote_options {

@@ -29,7 +29,7 @@ pub struct InstantiateMsg {
     pub coordinator: PubKey,
     // pub qtr_lib: QuinaryTreeRoot,
     pub max_voters: u128, // Maximum number of voters, used for calculating circuit scale
-    pub max_vote_options: u128, // Maximum number of vote options, used for calculating circuit scale
+    // pub max_vote_options: u128, // Maximum number of vote options, used for calculating circuit scale
     pub vote_option_map: Vec<String>,
 
     pub round_info: RoundInfo,
