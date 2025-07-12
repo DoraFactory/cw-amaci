@@ -618,7 +618,7 @@ pub fn execute_sign_up(
 
     // Create a state leaf with the provided pubkey and amount (optimization: avoid unnecessary cloning)
     let state_leaf = StateLeaf {
-        pub_key: pubkey,
+        pub_key: pubkey.clone(),
         voice_credit_balance: voting_power,
         vote_option_tree_root: Uint256::from_u128(0),
         nonce: Uint256::from_u128(0),
@@ -648,6 +648,10 @@ pub fn execute_sign_up(
     Ok(Response::new()
         .add_attribute("action", "sign_up")
         .add_attribute("state_idx", state_index.to_string())
+        .add_attribute(
+            "pubkey",
+            format!("{:?},{:?}", pubkey.x.to_string(), pubkey.y.to_string()),
+        )
         .add_attribute("balance", voting_power.to_string()))
 }
 
