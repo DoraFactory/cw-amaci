@@ -28,8 +28,8 @@ pub struct InstantiateMsg {
     // pub parameters: MaciParameters,
     pub coordinator: PubKey,
     // pub qtr_lib: QuinaryTreeRoot,
-    pub max_voters: u128,       // 最大投票者数量，用于计算电路规模
-    pub max_vote_options: u128, // 最大投票选项数量，用于计算电路规模
+    pub max_voters: u128, // Maximum number of voters, used for calculating circuit scale
+    pub max_vote_options: u128, // Maximum number of vote options, used for calculating circuit scale
     pub vote_option_map: Vec<String>,
 
     pub round_info: RoundInfo,

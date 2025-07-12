@@ -113,14 +113,14 @@ mod test {
         assert_eq!(
             ContractError::PeriodError {},
             sign_up_error.downcast().unwrap()
-        ); // 不能在voting环节之前进行signup
+        ); // Cannot signup before voting phase
 
         _ = contract.start_voting(&mut app, owner());
         app.update_block(next_block);
 
         // let set_whitelist_only_in_pending = contract.set_whitelist(&mut app, owner()).unwrap_err();
         // assert_eq!(
-        //     // 注册之后不能再进行注册
+        //     // Cannot register again after registration
         //     ContractError::PeriodError {},
         //     set_whitelist_only_in_pending.downcast().unwrap()
         // );
@@ -212,7 +212,7 @@ mod test {
             )
             .unwrap_err();
         assert_eq!(
-            // 注册之后不能再进行注册
+            // Cannot register again after registration
             ContractError::AlreadySignedUp {},
             sign_up_after_voting_end_error.downcast().unwrap()
         );
@@ -230,7 +230,7 @@ mod test {
             )
             .unwrap_err();
         assert_eq!(
-            // 不能投票环节结束之后不能进行sign up
+            // Cannot signup after voting phase ends
             ContractError::PeriodError {},
             sign_up_after_voting_end_error.downcast().unwrap()
         );
@@ -424,14 +424,14 @@ mod test {
         assert_eq!(
             ContractError::PeriodError {},
             sign_up_error.downcast().unwrap()
-        ); // 不能在voting环节之前进行signup
+        ); // Cannot signup before voting phase
 
         _ = contract.set_vote_option_map(&mut app, owner());
 
         app.update_block(next_block); // Start Voting
                                       // let set_whitelist_only_in_pending = contract.set_whitelist(&mut app, owner()).unwrap_err();
                                       // assert_eq!(
-                                      //     // 注册之后不能再进行注册
+                                      //     // Cannot register again after registration
                                       //     ContractError::PeriodError {},
                                       //     set_whitelist_only_in_pending.downcast().unwrap()
                                       // );
@@ -499,7 +499,7 @@ mod test {
             )
             .unwrap_err();
         assert_eq!(
-            // 注册之后不能再进行注册
+            // Cannot register again after registration
             ContractError::AlreadySignedUp {},
             sign_up_after_voting_end_error.downcast().unwrap()
         );
@@ -527,7 +527,7 @@ mod test {
             )
             .unwrap_err();
         assert_eq!(
-            // 不能投票环节结束之后不能进行sign up
+            // Cannot signup after voting phase ends
             ContractError::PeriodError {},
             sign_up_after_voting_end_error.downcast().unwrap()
         );
@@ -703,7 +703,7 @@ mod test {
         assert_eq!(
             ContractError::PeriodError {},
             sign_up_error.downcast().unwrap()
-        ); // 不能在voting环节之前进行signup
+        ); // Cannot signup before voting phase
 
         _ = contract.set_vote_option_map(&mut app, owner());
 
@@ -777,7 +777,7 @@ mod test {
             )
             .unwrap_err();
         assert_eq!(
-            // 注册之后不能再进行注册
+            // Cannot register again after registration
             ContractError::AlreadySignedUp {},
             sign_up_after_voting_end_error.downcast().unwrap()
         );
@@ -796,7 +796,7 @@ mod test {
             )
             .unwrap_err();
         assert_eq!(
-            // 不能投票环节结束之后不能进行sign up
+            // Cannot signup after voting phase ends
             ContractError::PeriodError {},
             sign_up_after_voting_end_error.downcast().unwrap()
         );
@@ -943,7 +943,7 @@ mod test {
         assert_eq!(
             ContractError::PeriodError {},
             sign_up_error.downcast().unwrap()
-        ); // 不能在voting环节之前进行signup
+        ); // Cannot signup before voting phase
 
         _ = contract.set_vote_option_map(&mut app, owner());
 
@@ -1019,7 +1019,7 @@ mod test {
             )
             .unwrap_err();
         assert_eq!(
-            // 注册之后不能再进行注册
+            // Cannot register again after registration
             ContractError::AlreadySignedUp {},
             sign_up_after_voting_end_error.downcast().unwrap()
         );
@@ -1038,7 +1038,7 @@ mod test {
             )
             .unwrap_err();
         assert_eq!(
-            // 不能投票环节结束之后不能进行sign up
+            // Cannot signup after voting phase ends
             ContractError::PeriodError {},
             sign_up_after_voting_end_error.downcast().unwrap()
         );
@@ -1227,14 +1227,14 @@ mod test {
         assert_eq!(
             ContractError::PeriodError {},
             sign_up_error.downcast().unwrap()
-        ); // 不能在voting环节之前进行signup
+        ); // Cannot signup before voting phase
 
         _ = contract.set_vote_option_map(&mut app, owner());
 
         app.update_block(next_block); // Start Voting
                                       // let set_whitelist_only_in_pending = contract.set_whitelist(&mut app, owner()).unwrap_err();
                                       // assert_eq!(
-                                      //     // 注册之后不能再进行注册
+                                      //     // Cannot register again after registration
                                       //     ContractError::PeriodError {},
                                       //     set_whitelist_only_in_pending.downcast().unwrap()
                                       // );
@@ -1404,7 +1404,7 @@ mod test {
             )
             .unwrap_err();
         assert_eq!(
-            // 不能投票环节结束之后不能进行sign up
+            // Cannot signup after voting phase ends
             ContractError::PeriodError {},
             sign_up_after_voting_end_error.downcast().unwrap()
         );
@@ -1597,14 +1597,14 @@ mod test {
         assert_eq!(
             ContractError::PeriodError {},
             sign_up_error.downcast().unwrap()
-        ); // 不能在voting环节之前进行signup
+        ); // Cannot signup before voting phase
 
         _ = contract.set_vote_option_map(&mut app, owner());
 
         app.update_block(next_block); // Start Voting
                                       // let set_whitelist_only_in_pending = contract.set_whitelist(&mut app, owner()).unwrap_err();
                                       // assert_eq!(
-                                      //     // 注册之后不能再进行注册
+                                      //     // Cannot register again after registration
                                       //     ContractError::PeriodError {},
                                       //     set_whitelist_only_in_pending.downcast().unwrap()
                                       // );
@@ -1672,7 +1672,7 @@ mod test {
             )
             .unwrap_err();
         assert_eq!(
-            // 注册之后不能再进行注册
+            // Cannot register again after registration
             ContractError::AlreadySignedUp {},
             sign_up_after_voting_end_error.downcast().unwrap()
         );
@@ -1700,7 +1700,7 @@ mod test {
             )
             .unwrap_err();
         assert_eq!(
-            // 不能投票环节结束之后不能进行sign up
+            // Cannot signup after voting phase ends
             ContractError::PeriodError {},
             sign_up_after_voting_end_error.downcast().unwrap()
         );
@@ -2018,7 +2018,7 @@ mod test {
         assert_eq!(
             ContractError::PeriodError {},
             sign_up_error.downcast().unwrap()
-        ); // 不能在voting环节之前进行signup
+        ); // Cannot signup before voting phase
 
         _ = contract.set_vote_option_map(&mut app, owner());
 
@@ -2082,22 +2082,22 @@ mod test {
     //         .instantiate_with_voting_time(&mut app, owner(), label)
     //         .unwrap();
 
-    //     // 测试 VoteOptionsExceedLimit 错误
-    //     let vote_options = vec![String::new(); 126]; // 超过125的限制
+    //     // Test VoteOptionsExceedLimit error
+    //     let vote_options = vec![String::new(); 126]; // Exceeds the limit of 125
     //     let err = contract.set_vote_option_map_with_list(&mut app, owner(), vote_options).unwrap_err();
     //     assert_eq!(
     //         ContractError::VoteOptionsExceedLimit { max_options: 125 },
     //         err.downcast().unwrap()
     //     );
 
-    //     // 测试 MaxVotersReached 错误
+    //     // Test MaxVotersReached error
     //     let pubkey = PubKey {
     //         x: uint256_from_decimal_string("1"),
     //         y: uint256_from_decimal_string("1"),
     //     };
     //     app.update_block(next_block);
 
-    //     // 先注册9个用户
+    //     // Register 9 users first
     //     for i in 0..9 {
     //         let _ = contract.sign_up(
     //             &mut app,
@@ -2108,7 +2108,7 @@ mod test {
     //         );
     //     }
 
-    //     // 尝试注册第10个用户，应该失败
+    //     // Try to register the 10th user, should fail
     //     let err = contract.sign_up(
     //         &mut app,
     //         Addr::unchecked("9"),

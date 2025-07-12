@@ -36,9 +36,9 @@ pub fn calculate_circuit_params(
     max_voters: u128,
     max_vote_options: u128,
 ) -> Result<MaciParameters, ContractError> {
-    // 根据max_voters和max_vote_options选择最小的能满足需求的电路参数
+    // Select the minimum circuit parameters that can meet the requirements based on max_voters and max_vote_options
     if max_voters <= 25 && max_vote_options <= 5 {
-        // 2-1-1-5规模：支持最多25个voters，5个options
+        // 2-1-1-5 scale: supports up to 25 voters, 5 options
         Ok(MaciParameters {
             state_tree_depth: Uint256::from_u128(2u128),
             int_state_tree_depth: Uint256::from_u128(1u128),
@@ -46,7 +46,7 @@ pub fn calculate_circuit_params(
             message_batch_size: Uint256::from_u128(5u128),
         })
     } else if max_voters <= 625 && max_vote_options <= 25 {
-        // 4-2-2-25规模：支持最多625个voters，25个options
+        // 4-2-2-25 scale: supports up to 625 voters, 25 options
         Ok(MaciParameters {
             state_tree_depth: Uint256::from_u128(4u128),
             int_state_tree_depth: Uint256::from_u128(2u128),
@@ -54,7 +54,7 @@ pub fn calculate_circuit_params(
             message_batch_size: Uint256::from_u128(25u128),
         })
     } else if max_voters <= 15625 && max_vote_options <= 125 {
-        // 6-3-3-125规模：支持最多15625个voters，125个options
+        // 6-3-3-125 scale: supports up to 15625 voters, 125 options
         Ok(MaciParameters {
             state_tree_depth: Uint256::from_u128(6u128),
             int_state_tree_depth: Uint256::from_u128(3u128),
@@ -72,7 +72,7 @@ pub fn match_oracle_vkeys(parameters: &MaciParameters) -> Result<OracleVkeyParam
         && parameters.vote_option_tree_depth == Uint256::from_u128(1)
         && parameters.message_batch_size == Uint256::from_u128(5)
     {
-        // 2-1-1-5规模的vkey
+        // vkey for 2-1-1-5 scale
         let groth16_process_vkey = Groth16VKeyType {
             vk_alpha1: "2d4d9aa7e302d9df41749d5507949d05dbea33fbb16c643b22f599a2be6df2e214bedd503c37ceb061d8ec60209fe345ce89830a19230301f076caff004d1926".to_string(),
             vk_beta_2: "0967032fcbf776d1afc985f88877f182d38480a653f2decaa9794cbc3bf3060c0e187847ad4c798374d0d6732bf501847dd68bc0e071241e0213bc7fc13db7ab304cfbd1e08a704a99f5e847d93f8c3caafddec46b7a0d379da69a4d112346a71739c1b1a457a8c7313123d24d2f9192f896b7c63eea05a9d57f06547ad0cec8".to_string(),
@@ -104,7 +104,7 @@ pub fn match_oracle_vkeys(parameters: &MaciParameters) -> Result<OracleVkeyParam
         && parameters.vote_option_tree_depth == Uint256::from_u128(2)
         && parameters.message_batch_size == Uint256::from_u128(25)
     {
-        // 4-2-2-25规模的vkey
+        // vkey for 4-2-2-25 scale
         let groth16_process_vkey = Groth16VKeyType {
             vk_alpha1: "2d4d9aa7e302d9df41749d5507949d05dbea33fbb16c643b22f599a2be6df2e214bedd503c37ceb061d8ec60209fe345ce89830a19230301f076caff004d1926".to_string(),
             vk_beta_2: "0967032fcbf776d1afc985f88877f182d38480a653f2decaa9794cbc3bf3060c0e187847ad4c798374d0d6732bf501847dd68bc0e071241e0213bc7fc13db7ab304cfbd1e08a704a99f5e847d93f8c3caafddec46b7a0d379da69a4d112346a71739c1b1a457a8c7313123d24d2f9192f896b7c63eea05a9d57f06547ad0cec8".to_string(),
@@ -136,7 +136,7 @@ pub fn match_oracle_vkeys(parameters: &MaciParameters) -> Result<OracleVkeyParam
         && parameters.vote_option_tree_depth == Uint256::from_u128(3)
         && parameters.message_batch_size == Uint256::from_u128(125)
     {
-        // 6-3-3-125规模的vkey
+        // vkey for 6-3-3-125 scale
         let groth16_process_vkey = Groth16VKeyType {
             vk_alpha1: "2d4d9aa7e302d9df41749d5507949d05dbea33fbb16c643b22f599a2be6df2e214bedd503c37ceb061d8ec60209fe345ce89830a19230301f076caff004d1926".to_string(),
             vk_beta_2: "0967032fcbf776d1afc985f88877f182d38480a653f2decaa9794cbc3bf3060c0e187847ad4c798374d0d6732bf501847dd68bc0e071241e0213bc7fc13db7ab304cfbd1e08a704a99f5e847d93f8c3caafddec46b7a0d379da69a4d112346a71739c1b1a457a8c7313123d24d2f9192f896b7c63eea05a9d57f06547ad0cec8".to_string(),

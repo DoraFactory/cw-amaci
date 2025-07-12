@@ -359,8 +359,8 @@ impl MaciContract {
                 ),
             },
             certification_system: Uint256::from_u128(0u128),
-            max_voters: 25,      // 使用2-1-1-5规模，支持最多25个voters
-            max_vote_options: 5, // 支持最多5个投票选项
+            max_voters: 25,      // Use 2-1-1-5 scale, supports up to 25 voters
+            max_vote_options: 5, // Supports up to 5 vote options
             vote_option_map: vec![
                 "1".to_string(),
                 "2".to_string(),
@@ -420,8 +420,8 @@ impl MaciContract {
                 ),
             },
             certification_system: Uint256::from_u128(1u128), // plonk system
-            max_voters: 25,                                  // 使用2-1-1-5规模，支持最多25个voters
-            max_vote_options: 5,                             // 支持最多5个投票选项
+            max_voters: 25,      // Use 2-1-1-5 scale, supports up to 25 voters
+            max_vote_options: 5, // Supports up to 5 vote options
             vote_option_map: vec![
                 "1".to_string(),
                 "2".to_string(),

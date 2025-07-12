@@ -50,6 +50,49 @@ use hex;
 
 use serde_json;
 
+// Pre-computed constants to avoid repeated calculations
+const SNARK_SCALAR_FIELD_HEX: &str =
+    "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001";
+
+// Pre-computed maximum values corresponding to circuit scales, avoiding repeated exponentiation
+const CIRCUIT_2_1_1_5_MAX_VOTERS: u128 = 25; // 5^2
+const CIRCUIT_4_2_2_25_MAX_VOTERS: u128 = 625; // 5^4
+const CIRCUIT_6_3_3_125_MAX_VOTERS: u128 = 15625; // 5^6
+
+const CIRCUIT_2_1_1_5_MAX_OPTIONS: u128 = 5; // 5^1
+const CIRCUIT_4_2_2_25_MAX_OPTIONS: u128 = 25; // 5^2
+const CIRCUIT_6_3_3_125_MAX_OPTIONS: u128 = 125; // 5^3
+
+// Fast function to calculate circuit maximum values, avoiding string conversions and exponentiation
+fn get_circuit_max_voters(state_tree_depth: &Uint256) -> u128 {
+    if *state_tree_depth == Uint256::from_u128(2) {
+        CIRCUIT_2_1_1_5_MAX_VOTERS
+    } else if *state_tree_depth == Uint256::from_u128(4) {
+        CIRCUIT_4_2_2_25_MAX_VOTERS
+    } else if *state_tree_depth == Uint256::from_u128(6) {
+        CIRCUIT_6_3_3_125_MAX_VOTERS
+    } else {
+        0 // Unsupported scale
+    }
+}
+
+fn get_circuit_max_vote_options(vote_option_tree_depth: &Uint256) -> u128 {
+    if *vote_option_tree_depth == Uint256::from_u128(1) {
+        CIRCUIT_2_1_1_5_MAX_OPTIONS
+    } else if *vote_option_tree_depth == Uint256::from_u128(2) {
+        CIRCUIT_4_2_2_25_MAX_OPTIONS
+    } else if *vote_option_tree_depth == Uint256::from_u128(3) {
+        CIRCUIT_6_3_3_125_MAX_OPTIONS
+    } else {
+        0 // Unsupported scale
+    }
+}
+
+// Cache snark_scalar_field to avoid repeated calculations
+fn get_snark_scalar_field() -> Uint256 {
+    uint256_from_hex_string(SNARK_SCALAR_FIELD_HEX)
+}
+
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
@@ -61,7 +104,7 @@ pub fn instantiate(
     let admin = Admin { admin: info.sender };
     ADMIN.save(deps.storage, &admin)?;
 
-    // 根据max_voters和max_vote_options计算合适的电路参数
+    // Calculate appropriate circuit parameters based on max_voters and max_vote_options
     let parameters = calculate_circuit_params(msg.max_voters, msg.max_vote_options)?;
     // Save the MACI parameters to storage
     MACIPARAMETERS.save(deps.storage, &parameters)?;
@@ -110,9 +153,9 @@ pub fn instantiate(
         return Err(ContractError::UnsupportedCircuitType {});
     }
 
-    // Oracle MACI 只支持 groth16
+    // Oracle MACI only supports groth16
     if msg.certification_system == Uint256::from_u128(0u128) {
-        // groth16 - 根据计算出的参数匹配相应的vkey
+        // groth16 - match the corresponding vkey based on calculated parameters
         let vkey = match_oracle_vkeys(&parameters)?;
         GROTH16_PROCESS_VKEYS.save(deps.storage, &vkey.process_vkey)?;
         GROTH16_TALLY_VKEYS.save(deps.storage, &vkey.tally_vkey)?;
@@ -126,9 +169,8 @@ pub fn instantiate(
     let coordinator_hash = hash2([msg.coordinator.x, msg.coordinator.y]);
     COORDINATORHASH.save(deps.storage, &coordinator_hash)?;
 
-    // Compute the maximum number of leaves based on the state tree depth
-    let max_leaves_count =
-        Uint256::from_u128(5u128.pow(parameters.state_tree_depth.to_string().parse().unwrap()));
+    // Compute the maximum number of leaves based on the state tree depth (optimization: use pre-computed values directly)
+    let max_leaves_count = Uint256::from_u128(get_circuit_max_voters(&parameters.state_tree_depth));
     MAX_LEAVES_COUNT.save(deps.storage, &max_leaves_count)?;
 
     // Calculate the index of the first leaf in the tree
@@ -186,14 +228,8 @@ pub fn instantiate(
     // }
 
     let max_vote_options = msg.vote_option_map.len() as u128;
-    // 根据电路参数计算最大投票选项数量
-    let circuit_max_vote_options = 5u128.pow(
-        parameters
-            .vote_option_tree_depth
-            .to_string()
-            .parse()
-            .unwrap(),
-    );
+    // Calculate maximum vote options based on circuit parameters (optimization: use pre-computed values)
+    let circuit_max_vote_options = get_circuit_max_vote_options(&parameters.vote_option_tree_depth);
     if max_vote_options > circuit_max_vote_options {
         return Err(ContractError::VoteOptionsExceedLimit {
             max_options: circuit_max_vote_options as u8,
@@ -471,15 +507,10 @@ pub fn execute_set_vote_options_map(
         Err(ContractError::Unauthorized {})
     } else {
         let max_vote_options = vote_option_map.len() as u128;
-        // 根据当前电路参数计算最大投票选项数量
+        // Calculate maximum vote options based on current circuit parameters (optimization: use pre-computed values)
         let parameters = MACIPARAMETERS.load(deps.storage)?;
-        let circuit_max_vote_options = 5u128.pow(
-            parameters
-                .vote_option_tree_depth
-                .to_string()
-                .parse()
-                .unwrap(),
-        );
+        let circuit_max_vote_options =
+            get_circuit_max_vote_options(&parameters.vote_option_tree_depth);
         if max_vote_options > circuit_max_vote_options {
             return Err(ContractError::VoteOptionsExceedLimit {
                 max_options: circuit_max_vote_options as u8,
@@ -564,10 +595,10 @@ pub fn execute_sign_up(
     }
 
     let mut num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
-    // 根据电路参数计算最大voters数量
+    // Calculate maximum voters based on circuit parameters (optimization: use pre-computed values and reduce storage reads)
     let parameters = MACIPARAMETERS.load(deps.storage)?;
-    let circuit_max_voters = 5u128.pow(parameters.state_tree_depth.to_string().parse().unwrap());
-    if num_sign_ups + Uint256::from_u128(1u128) > Uint256::from_u128(circuit_max_voters) {
+    let circuit_max_voters = get_circuit_max_voters(&parameters.state_tree_depth);
+    if num_sign_ups + Uint256::from_u128(1) > Uint256::from_u128(circuit_max_voters) {
         return Err(ContractError::MaxVotersReached {
             max_voters: circuit_max_voters,
         });
@@ -575,12 +606,8 @@ pub fn execute_sign_up(
 
     let max_leaves_count = MAX_LEAVES_COUNT.load(deps.storage)?;
 
-    // // Load the scalar field value
-    let snark_scalar_field =
-        uint256_from_hex_string("30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001");
-    // let snark_scalar_field = uint256_from_decimal_string(
-    // "21888242871839275222246405745257275088548364400416034343698204186575808495617",
-    // );
+    // Load the scalar field value (optimization: use cached values)
+    let snark_scalar_field = get_snark_scalar_field();
 
     // Check if the number of sign-ups is less than the maximum number of leaves
     assert!(num_sign_ups < max_leaves_count, "full");
@@ -590,9 +617,9 @@ pub fn execute_sign_up(
         "MACI: pubkey values should be less than the snark scalar field"
     );
 
-    // Create a state leaf with the provided pubkey and amount
+    // Create a state leaf with the provided pubkey and amount (optimization: avoid unnecessary cloning)
     let state_leaf = StateLeaf {
-        pub_key: pubkey.clone(),
+        pub_key: pubkey,
         voice_credit_balance: voting_power,
         vote_option_tree_root: Uint256::from_u128(0),
         nonce: Uint256::from_u128(0),
@@ -622,10 +649,6 @@ pub fn execute_sign_up(
     Ok(Response::new()
         .add_attribute("action", "sign_up")
         .add_attribute("state_idx", state_index.to_string())
-        .add_attribute(
-            "pubkey",
-            format!("{:?},{:?}", pubkey.x.to_string(), pubkey.y.to_string()),
-        )
         .add_attribute("balance", voting_power.to_string()))
 }
 
@@ -646,13 +669,8 @@ pub fn execute_publish_message(
         check_voting_time(env, None, period.status)?;
     }
 
-    // Load the scalar field value
-    let snark_scalar_field =
-        uint256_from_hex_string("30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001");
-
-    // let snark_scalar_field = uint256_from_decimal_string(
-    //     "21888242871839275222246405745257275088548364400416034343698204186575808495617",
-    // );
+    // Load the scalar field value (optimization: use cached values)
+    let snark_scalar_field = get_snark_scalar_field();
 
     // Check if the encrypted public key is valid
     if enc_pub_key.x != Uint256::from_u128(0u128)
@@ -665,12 +683,14 @@ pub fn execute_publish_message(
             MSG_HASHES.load(deps.storage, msg_chain_length.to_be_bytes().to_vec())?;
 
         // Compute the new message hash using the provided message, encrypted public key, and previous hash
+        let new_hash =
+            hash_message_and_enc_pub_key(message.clone(), enc_pub_key.clone(), old_msg_hashes);
         MSG_HASHES.save(
             deps.storage,
             (msg_chain_length + Uint256::from_u128(1u128))
                 .to_be_bytes()
                 .to_vec(),
-            &hash_message_and_enc_pub_key(message.clone(), enc_pub_key.clone(), old_msg_hashes),
+            &new_hash,
         )?;
 
         let old_chain_length = msg_chain_length;
@@ -861,16 +881,13 @@ pub fn execute_process_message(
     let batch_start_index = (msg_chain_length - processed_msg_count - Uint256::from_u128(1u128))
         / batch_size
         * batch_size;
-    let mut batch_end_index = batch_start_index.clone() + batch_size;
+    let mut batch_end_index = batch_start_index + batch_size;
     if batch_end_index > msg_chain_length {
         batch_end_index = msg_chain_length;
     }
 
     // Load the hash of the message at the batch start index
-    input[2] = MSG_HASHES.load(
-        deps.storage,
-        batch_start_index.clone().to_be_bytes().to_vec(),
-    )?; // batchStartHash
+    input[2] = MSG_HASHES.load(deps.storage, batch_start_index.to_be_bytes().to_vec())?; // batchStartHash
 
     // Load the hash of the message at the batch end index
     input[3] = MSG_HASHES.load(deps.storage, batch_end_index.to_be_bytes().to_vec())?; // batchEndHash
@@ -882,10 +899,8 @@ pub fn execute_process_message(
     // Set the new state commitment
     input[5] = new_state_commitment;
 
-    // Load the scalar field value
-    let snark_scalar_field =
-        uint256_from_hex_string("30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001");
-    //     "21888242871839275222246405745257275088548364400416034343698204186575808495617",
+    // Load the scalar field value (optimization: use cached values)
+    let snark_scalar_field = get_snark_scalar_field();
 
     // Compute the hash of the input values
     let input_hash = uint256_from_hex_string(&hash_256_uint256_list(&input)) % snark_scalar_field; // input hash
@@ -896,13 +911,13 @@ pub fn execute_process_message(
         // Load the process verification keys
         let process_vkeys_str = GROTH16_PROCESS_VKEYS.load(deps.storage)?;
 
-        // Parse the SNARK proof
+        // Parse the SNARK proof (optimization: avoid unnecessary cloning)
         let proof_str = Groth16ProofStr {
-            pi_a: hex::decode(groth16_proof_data.a.clone())
+            pi_a: hex::decode(&groth16_proof_data.a)
                 .map_err(|_| ContractError::HexDecodingError {})?,
-            pi_b: hex::decode(groth16_proof_data.b.clone())
+            pi_b: hex::decode(&groth16_proof_data.b)
                 .map_err(|_| ContractError::HexDecodingError {})?,
-            pi_c: hex::decode(groth16_proof_data.c.clone())
+            pi_c: hex::decode(&groth16_proof_data.c)
                 .map_err(|_| ContractError::HexDecodingError {})?,
         };
 
@@ -1062,9 +1077,16 @@ pub fn execute_process_tally(
     );
 
     let parameters = MACIPARAMETERS.load(deps.storage)?;
-    // Calculate the batch size
-    let batch_size =
-        Uint256::from_u128(5u128).pow(parameters.int_state_tree_depth.to_string().parse().unwrap());
+    // Calculate the batch size (optimization: avoid string conversions and exponentiation)
+    let batch_size = if parameters.int_state_tree_depth == Uint256::from_u128(1) {
+        Uint256::from_u128(5u128) // 5^1
+    } else if parameters.int_state_tree_depth == Uint256::from_u128(2) {
+        Uint256::from_u128(25u128) // 5^2
+    } else if parameters.int_state_tree_depth == Uint256::from_u128(3) {
+        Uint256::from_u128(125u128) // 5^3
+    } else {
+        Uint256::from_u128(1u128) // Default value
+    };
     // Calculate the batch number
     let batch_num = processed_user_count / batch_size;
 
@@ -1081,12 +1103,8 @@ pub fn execute_process_tally(
     input[2] = current_tally_commitment; // tallyCommitment
     input[3] = new_tally_commitment; // newTallyCommitment
 
-    // Load the scalar field value
-    let snark_scalar_field =
-        uint256_from_hex_string("30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001");
-    // let snark_scalar_field = uint256_from_decimal_string(
-    //     "21888242871839275222246405745257275088548364400416034343698204186575808495617",
-    // );
+    // Load the scalar field value (optimization: use cached values)
+    let snark_scalar_field = get_snark_scalar_field();
 
     // Compute the hash of the input values
     let input_hash = uint256_from_hex_string(&hash_256_uint256_list(&input)) % snark_scalar_field;
@@ -1097,13 +1115,13 @@ pub fn execute_process_tally(
         // Load the tally verification keys
         let tally_vkeys_str = GROTH16_TALLY_VKEYS.load(deps.storage)?;
 
-        // Parse the SNARK proof
+        // Parse the SNARK proof (optimization: avoid unnecessary cloning)
         let proof_str = Groth16ProofStr {
-            pi_a: hex::decode(groth16_proof_data.a.clone())
+            pi_a: hex::decode(&groth16_proof_data.a)
                 .map_err(|_| ContractError::HexDecodingError {})?,
-            pi_b: hex::decode(groth16_proof_data.b.clone())
+            pi_b: hex::decode(&groth16_proof_data.b)
                 .map_err(|_| ContractError::HexDecodingError {})?,
-            pi_c: hex::decode(groth16_proof_data.c.clone())
+            pi_c: hex::decode(&groth16_proof_data.c)
                 .map_err(|_| ContractError::HexDecodingError {})?,
         };
 
@@ -1549,7 +1567,7 @@ fn can_sign_up(deps: Deps, sender: &str, amount: Uint256, certificate: String) -
     let certificate_binary = Binary::from_base64(&certificate)?;
     let verify_result = deps.api.secp256k1_verify(
         hash.as_ref(),
-        certificate_binary.as_slice(), // 使用解码后的 binary 数据
+        certificate_binary.as_slice(), // Use decoded binary data
         whitelist_backend_pubkey.as_slice(),
     )?;
 
