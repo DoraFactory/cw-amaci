@@ -1140,7 +1140,7 @@ mod test {
         assert_eq!(ContractError::WrongTimeSet {}, contract.downcast().unwrap());
     }
 
-    // #[test]
+    #[test]
     fn instantiate_with_voting_time_isqv_should_works() {
         let msg_file_path = "./src/test/qv_test/msg.json";
 
@@ -1195,7 +1195,7 @@ mod test {
 
         let vote_option_map = contract.vote_option_map(&app).unwrap();
         let max_vote_options = contract.max_vote_options(&app).unwrap();
-        assert_eq!(vote_option_map, vec!["", "", "", "", ""]);
+        assert_eq!(vote_option_map, vec!["1", "2", "3", "4", "5"]);
         assert_eq!(max_vote_options, Uint256::from_u128(5u128));
         _ = contract.set_vote_option_map(&mut app, owner());
         let new_vote_option_map = contract.vote_option_map(&app).unwrap();
@@ -2073,7 +2073,6 @@ mod test {
         );
     }
 
-
     // #[test]
     // fn test_voting_limits() {
     //     let mut app = create_app();
@@ -2117,11 +2116,10 @@ mod test {
     //         match_user_certificate(0).amount,
     //         match_user_certificate(0).certificate,
     //     ).unwrap_err();
-        
+
     //     assert_eq!(
     //         ContractError::MaxVotersReached { max_voters: 15625 },
     //         err.downcast().unwrap()
     //     );
     // }
-
 }

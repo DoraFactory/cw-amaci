@@ -359,7 +359,8 @@ impl MaciContract {
                 ),
             },
             certification_system: Uint256::from_u128(0u128),
-            // max_vote_options: Uint256::from_u128(5u128),
+            max_voters: 25,      // 使用2-1-1-5规模，支持最多25个voters
+            max_vote_options: 5, // 支持最多5个投票选项
             vote_option_map: vec![
                 "1".to_string(),
                 "2".to_string(),
@@ -419,6 +420,8 @@ impl MaciContract {
                 ),
             },
             certification_system: Uint256::from_u128(1u128), // plonk system
+            max_voters: 25,                                  // 使用2-1-1-5规模，支持最多25个voters
+            max_vote_options: 5,                             // 支持最多5个投票选项
             vote_option_map: vec![
                 "1".to_string(),
                 "2".to_string(),
@@ -564,19 +567,20 @@ impl MaciContract {
         )
     }
 
-
     #[track_caller]
-    pub fn set_vote_option_map_with_list(&self, app: &mut App, sender: Addr, vote_option_map: Vec<String>) -> AnyResult<AppResponse> {
+    pub fn set_vote_option_map_with_list(
+        &self,
+        app: &mut App,
+        sender: Addr,
+        vote_option_map: Vec<String>,
+    ) -> AnyResult<AppResponse> {
         app.execute_contract(
             sender,
             self.addr(),
-            &ExecuteMsg::SetVoteOptionsMap {
-                vote_option_map,
-            },
+            &ExecuteMsg::SetVoteOptionsMap { vote_option_map },
             &[],
         )
     }
-
 
     #[track_caller]
     pub fn start_voting(&self, app: &mut App, sender: Addr) -> AnyResult<AppResponse> {

@@ -1,6 +1,6 @@
 use crate::state::{
-    GrantConfig, MaciParameters, MessageData, OracleWhitelistConfig, PeriodStatus, PubKey,
-    QuinaryTreeRoot, RoundInfo, VotingPowerMode, VotingTime, WhitelistConfig,
+    GrantConfig, MessageData, OracleWhitelistConfig, PeriodStatus, PubKey, RoundInfo,
+    VotingPowerMode, VotingTime, WhitelistConfig,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128, Uint256};
@@ -28,7 +28,8 @@ pub struct InstantiateMsg {
     // pub parameters: MaciParameters,
     pub coordinator: PubKey,
     // pub qtr_lib: QuinaryTreeRoot,
-    // pub max_vote_options: Uint256,
+    pub max_voters: u128,       // 最大投票者数量，用于计算电路规模
+    pub max_vote_options: u128, // 最大投票选项数量，用于计算电路规模
     pub vote_option_map: Vec<String>,
 
     pub round_info: RoundInfo,

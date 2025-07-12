@@ -1,3 +1,4 @@
+pub mod circuit_params;
 pub mod contract;
 mod error;
 pub mod groth16_parser;
@@ -5,7 +6,6 @@ pub mod msg;
 pub mod plonk_parser;
 pub mod state;
 pub mod utils;
-pub mod circuit_params;
 
 #[cfg(test)]
 pub mod multitest;

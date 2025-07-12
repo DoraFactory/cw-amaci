@@ -113,4 +113,10 @@ pub enum ContractError {
 
     #[error("Maximum number of voters ({max_voters}) has been reached")]
     MaxVotersReached { max_voters: u128 },
+
+    #[error("Unsupported circuit size for the given parameters")]
+    UnsupportedCircuitSize {},
+
+    #[error("Circuit parameters do not match any supported configuration")]
+    NotMatchCircuitSize {},
 }

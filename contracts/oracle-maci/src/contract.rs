@@ -1,19 +1,18 @@
-use crate::circuit_params::match_vkeys;
+use crate::circuit_params::{calculate_circuit_params, match_oracle_vkeys};
 use crate::error::ContractError;
 use crate::groth16_parser::{parse_groth16_proof, parse_groth16_vkey};
 use crate::msg::{ExecuteMsg, Groth16ProofType, InstantiateMsg, PlonkProofType, QueryMsg};
 use crate::plonk_parser::{parse_plonk_proof, parse_plonk_vkey};
 use crate::state::{
-    Admin, FeeGrantOperator, GrantConfig, Groth16ProofStr, Groth16VkeyStr, MaciParameters,
-    MessageData, OracleWhitelistConfig, Period, PeriodStatus, PlonkProofStr, PlonkVkeyStr, PubKey,
-    QuinaryTreeRoot, RoundInfo, StateLeaf, VotingPowerConfig, VotingPowerMode, VotingTime,
-    WhitelistConfig, ADMIN, CERTSYSTEM, CIRCUITTYPE, COORDINATORHASH, CURRENT_STATE_COMMITMENT,
-    CURRENT_TALLY_COMMITMENT, FEEGRANTOPERATOR, FEEGRANTS, GRANTLIST, GROTH16_PROCESS_VKEYS,
-    GROTH16_TALLY_VKEYS, LEAF_IDX_0, MACIPARAMETERS, MACI_OPERATOR, MAX_LEAVES_COUNT,
-    MAX_VOTE_OPTIONS, MAX_WHITELIST_NUM, MSG_CHAIN_LENGTH, MSG_HASHES, NODES, NUMSIGNUPS,
-    ORACLE_WHITELIST_CONFIG, PERIOD, PLONK_PROCESS_VKEYS, PLONK_TALLY_VKEYS, PROCESSED_MSG_COUNT,
-    PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO, STATEIDXINC, TOTAL_RESULT,
-    VOICECREDITBALANCE, VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS,
+    Admin, FeeGrantOperator, GrantConfig, Groth16ProofStr, MessageData, OracleWhitelistConfig,
+    Period, PeriodStatus, PlonkProofStr, PubKey, QuinaryTreeRoot, RoundInfo, StateLeaf,
+    VotingPowerConfig, VotingPowerMode, VotingTime, WhitelistConfig, ADMIN, CERTSYSTEM,
+    CIRCUITTYPE, COORDINATORHASH, CURRENT_STATE_COMMITMENT, CURRENT_TALLY_COMMITMENT,
+    FEEGRANTOPERATOR, FEEGRANTS, GRANTLIST, GROTH16_PROCESS_VKEYS, GROTH16_TALLY_VKEYS, LEAF_IDX_0,
+    MACIPARAMETERS, MAX_LEAVES_COUNT, MAX_VOTE_OPTIONS, MAX_WHITELIST_NUM, MSG_CHAIN_LENGTH,
+    MSG_HASHES, NODES, NUMSIGNUPS, ORACLE_WHITELIST_CONFIG, PERIOD, PLONK_PROCESS_VKEYS,
+    PLONK_TALLY_VKEYS, PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO,
+    STATEIDXINC, TOTAL_RESULT, VOICECREDITBALANCE, VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS,
 };
 use sha2::{Digest as ShaDigest, Sha256};
 
@@ -62,12 +61,8 @@ pub fn instantiate(
     let admin = Admin { admin: info.sender };
     ADMIN.save(deps.storage, &admin)?;
 
-    let parameters = MaciParameters {
-        state_tree_depth: Uint256::from_u128(6u128),
-        int_state_tree_depth: Uint256::from_u128(3u128),
-        vote_option_tree_depth: Uint256::from_u128(3u128),
-        message_batch_size: Uint256::from_u128(125u128),
-    };
+    // 根据max_voters和max_vote_options计算合适的电路参数
+    let parameters = calculate_circuit_params(msg.max_voters, msg.max_vote_options)?;
     // Save the MACI parameters to storage
     MACIPARAMETERS.save(deps.storage, &parameters)?;
 
@@ -104,20 +99,21 @@ pub fn instantiate(
     // Save the qtr_lib value to storage
     QTR_LIB.save(deps.storage, &qtr_lab)?;
 
-    let vkey = match_vkeys()?;
+    const CIRCUIT_TYPE_1P1V: u128 = 0; // one person one vote
+    const CIRCUIT_TYPE_QV: u128 = 1; // quadratic voting
 
-    const CIRCUIT_TYPE_1P1V: u128 = 0;  // one person one vote
-    const CIRCUIT_TYPE_QV: u128 = 1;    // quadratic voting
-
-    if msg.circuit_type == Uint256::from_u128(CIRCUIT_TYPE_1P1V) || 
-       msg.circuit_type == Uint256::from_u128(CIRCUIT_TYPE_QV) {
+    if msg.circuit_type == Uint256::from_u128(CIRCUIT_TYPE_1P1V)
+        || msg.circuit_type == Uint256::from_u128(CIRCUIT_TYPE_QV)
+    {
         CIRCUITTYPE.save(deps.storage, &msg.circuit_type)?;
     } else {
         return Err(ContractError::UnsupportedCircuitType {});
     }
 
+    // Oracle MACI 只支持 groth16
     if msg.certification_system == Uint256::from_u128(0u128) {
-        // groth16
+        // groth16 - 根据计算出的参数匹配相应的vkey
+        let vkey = match_oracle_vkeys(&parameters)?;
         GROTH16_PROCESS_VKEYS.save(deps.storage, &vkey.process_vkey)?;
         GROTH16_TALLY_VKEYS.save(deps.storage, &vkey.tally_vkey)?;
     } else {
@@ -190,8 +186,18 @@ pub fn instantiate(
     // }
 
     let max_vote_options = msg.vote_option_map.len() as u128;
-    if max_vote_options > 125 { // 6-3-3-125, 5^3 options max
-        return Err(ContractError::VoteOptionsExceedLimit { max_options: 125 });
+    // 根据电路参数计算最大投票选项数量
+    let circuit_max_vote_options = 5u128.pow(
+        parameters
+            .vote_option_tree_depth
+            .to_string()
+            .parse()
+            .unwrap(),
+    );
+    if max_vote_options > circuit_max_vote_options {
+        return Err(ContractError::VoteOptionsExceedLimit {
+            max_options: circuit_max_vote_options as u8,
+        });
     }
     VOTEOPTIONMAP.save(deps.storage, &msg.vote_option_map)?;
     // Save the maximum vote options
@@ -276,9 +282,6 @@ pub fn execute(
         ExecuteMsg::SetRoundInfo { round_info } => {
             execute_set_round_info(deps, env, info, round_info)
         }
-        // ExecuteMsg::SetWhitelists { whitelists } => {
-        //     execute_set_whitelists(deps, env, info, whitelists)
-        // }
         ExecuteMsg::SetVoteOptionsMap { vote_option_map } => {
             execute_set_vote_options_map(deps, env, info, vote_option_map)
         }
@@ -468,8 +471,19 @@ pub fn execute_set_vote_options_map(
         Err(ContractError::Unauthorized {})
     } else {
         let max_vote_options = vote_option_map.len() as u128;
-        if max_vote_options > 125 { // 6-3-3-125, 5^3 options max
-            return Err(ContractError::VoteOptionsExceedLimit { max_options: 125 });
+        // 根据当前电路参数计算最大投票选项数量
+        let parameters = MACIPARAMETERS.load(deps.storage)?;
+        let circuit_max_vote_options = 5u128.pow(
+            parameters
+                .vote_option_tree_depth
+                .to_string()
+                .parse()
+                .unwrap(),
+        );
+        if max_vote_options > circuit_max_vote_options {
+            return Err(ContractError::VoteOptionsExceedLimit {
+                max_options: circuit_max_vote_options as u8,
+            });
         }
         VOTEOPTIONMAP.save(deps.storage, &vote_option_map)?;
         // Save the maximum vote options
@@ -550,8 +564,13 @@ pub fn execute_sign_up(
     }
 
     let mut num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
-    if num_sign_ups + Uint256::from_u128(1u128) > Uint256::from_u128(15625u128) { // 6-3-3-125, 5^6 voters max
-        return Err(ContractError::MaxVotersReached { max_voters: 15625 });
+    // 根据电路参数计算最大voters数量
+    let parameters = MACIPARAMETERS.load(deps.storage)?;
+    let circuit_max_voters = 5u128.pow(parameters.state_tree_depth.to_string().parse().unwrap());
+    if num_sign_ups + Uint256::from_u128(1u128) > Uint256::from_u128(circuit_max_voters) {
+        return Err(ContractError::MaxVotersReached {
+            max_voters: circuit_max_voters,
+        });
     }
 
     let max_leaves_count = MAX_LEAVES_COUNT.load(deps.storage)?;

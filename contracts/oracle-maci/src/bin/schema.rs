@@ -1,6 +1,6 @@
 use cosmwasm_schema::write_api;
 
-use maci::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use cw_oracle_maci::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
 fn main() {
     write_api! {
