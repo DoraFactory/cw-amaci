@@ -63,6 +63,20 @@ pub struct MaciVotingTime {
     pub end_time: Option<cosmwasm_std::Timestamp>,
 }
 
+// Oracle MACI 相关类型
+#[cw_serde]
+pub enum VotingPowerMode {
+    Slope, // amount/slope
+    Threshold,
+}
+
+#[cw_serde]
+pub struct VotingPowerArgs {
+    pub mode: VotingPowerMode,
+    pub slope: Uint256,
+    pub threshold: Uint256,
+}
+
 #[cw_serde]
 pub struct InstantiateMsg {
     pub admin: Addr,
@@ -136,11 +150,44 @@ pub enum ExecuteMsg {
         label: String,                // 合约标签
     },
 
+    // Create Oracle MACI round
+    CreateOracleMaciRound {
+        oracle_maci_code_id: u64,
+        coordinator: PubKey,
+        max_voters: u128,
+        vote_option_map: Vec<String>,
+        round_info: RoundInfo,
+        voting_time: Option<MaciVotingTime>,
+        circuit_type: Uint256,
+        certification_system: Uint256,
+        whitelist_backend_pubkey: String,
+        whitelist_ecosystem: String,
+        whitelist_snapshot_height: Uint256,
+        whitelist_voting_power_args: VotingPowerArgs,
+    },
+
     // Execute other contracts
     ExecuteContract {
         contract_addr: String,
         msg: Binary,
         funds: Vec<Coin>,
+    },
+
+    // Oracle MACI management
+    SetOracleMaciRoundInfo {
+        contract_addr: String,
+        round_info: RoundInfo,
+    },
+    SetOracleMaciVoteOptionMap {
+        contract_addr: String,
+        vote_option_map: Vec<String>,
+    },
+
+    // Oracle MACI feegrant management
+    GrantOracleMaciFeegrant {
+        contract_addr: String,
+        grantee: Addr,
+        base_amount: Uint128,
     },
 }
 

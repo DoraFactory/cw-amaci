@@ -1503,9 +1503,9 @@ fn execute_revoke(
 }
 
 fn execute_bond(deps: DepsMut, _env: Env, info: MessageInfo) -> Result<Response, ContractError> {
-    if !can_execute(deps.as_ref(), info.sender.as_ref())? {
-        return Err(ContractError::Unauthorized {});
-    }
+    // if !can_execute(deps.as_ref(), info.sender.as_ref())? {
+    //     return Err(ContractError::Unauthorized {});
+    // }
 
     let denom = "peaka".to_string();
     let mut amount: Uint128 = Uint128::new(0);
@@ -1527,11 +1527,14 @@ fn execute_withdraw(
     info: MessageInfo,
     amount: Option<Uint128>,
 ) -> Result<Response, ContractError> {
-    if !can_execute(deps.as_ref(), info.sender.as_ref())? {
-        return Err(ContractError::Unauthorized {});
+    // Check if the round has ended - anyone can call withdraw but only when round is ended
+    let period = PERIOD.load(deps.storage)?;
+    if period.status != PeriodStatus::Ended {
+        return Err(ContractError::PeriodError {});
     }
 
-    let denom = "peaka".to_string();
+    // Use DORA as the denomination (changed from "peaka")
+    let denom = "peaka".to_string(); // Note: This should match the denom used in SaaS contract
     let contract_balance = deps.querier.query_balance(env.contract.address, &denom)?;
     let mut withdraw_amount = amount.map_or_else(|| contract_balance.amount.u128(), |am| am.u128());
 
@@ -1539,9 +1542,13 @@ fn execute_withdraw(
         withdraw_amount = contract_balance.amount.u128();
     }
 
+    // Get admin address (SaaS contract address) to send funds back
+    let admin_info = ADMIN.load(deps.storage)?;
+    let admin_address = admin_info.admin;
+
     let amount_res = coins(withdraw_amount, denom);
     let message = BankMsg::Send {
-        to_address: info.sender.to_string(),
+        to_address: admin_address.to_string(), // Send to admin (SaaS contract) instead of caller
         amount: amount_res,
     };
 

@@ -1226,3 +1226,593 @@ fn test_query_maci_contracts() {
     assert!(specific_contract.is_some());
     assert_eq!(specific_contract.unwrap().round_title, "First MACI Round");
 }
+
+#[test]
+fn test_create_oracle_maci_round() {
+    let (mut app, saas_contract_addr) = proper_instantiate_for_maci();
+
+    // Add an operator
+    let add_operator_msg = ExecuteMsg::AddOperator {
+        operator: operator1(),
+    };
+
+    app.execute_contract(admin(), saas_contract_addr.clone(), &add_operator_msg, &[])
+        .unwrap();
+
+    // Deposit sufficient funds (need more for oracle MACI: 50 DORA deployment + 250 DORA token = 300 DORA)
+    let deposit_msg = ExecuteMsg::Deposit {};
+    let deposit_amount = 400000000000000000000u128; // 400 DORA
+
+    app.execute_contract(
+        admin(),
+        saas_contract_addr.clone(),
+        &deposit_msg,
+        &coins(deposit_amount, DORA_DEMON),
+    )
+    .unwrap();
+
+    // Mock Oracle MACI code
+    let oracle_maci_contract = ContractWrapper::new(
+        |_deps,
+         _env,
+         _info,
+         _msg: Empty|
+         -> Result<cosmwasm_std::Response, cosmwasm_std::StdError> {
+            Ok(cosmwasm_std::Response::default())
+        },
+        |_deps,
+         _env,
+         _info,
+         _msg: Empty|
+         -> Result<cosmwasm_std::Response, cosmwasm_std::StdError> {
+            Ok(cosmwasm_std::Response::default())
+        },
+        |_deps, _env, _msg: Empty| -> Result<cosmwasm_std::Binary, cosmwasm_std::StdError> {
+            Ok(cosmwasm_std::Binary::default())
+        },
+    );
+    let oracle_maci_code_id = app.store_code(Box::new(oracle_maci_contract));
+
+    // Create Oracle MACI round
+    let create_oracle_maci_msg = ExecuteMsg::CreateOracleMaciRound {
+        oracle_maci_code_id,
+        coordinator: PubKey {
+            x: Uint256::from_u128(123u128),
+            y: Uint256::from_u128(456u128),
+        },
+        max_voters: 25,
+        vote_option_map: vec![
+            "Option 1".to_string(),
+            "Option 2".to_string(),
+            "Option 3".to_string(),
+        ],
+        round_info: RoundInfo {
+            title: "Oracle MACI Test Round".to_string(),
+            description: "Test Oracle MACI description".to_string(),
+            link: "https://oracle-maci.com".to_string(),
+        },
+        voting_time: Some(MaciVotingTime {
+            start_time: Some(cosmwasm_std::Timestamp::from_seconds(1625097600)),
+            end_time: Some(cosmwasm_std::Timestamp::from_seconds(1625184000)),
+        }),
+        circuit_type: Uint256::from_u128(0u128), // 1p1v
+        certification_system: Uint256::from_u128(0u128), // groth16
+        whitelist_backend_pubkey: "test_backend_pubkey".to_string(),
+        whitelist_ecosystem: "test_ecosystem".to_string(),
+        whitelist_snapshot_height: Uint256::from_u128(1000u128),
+        whitelist_voting_power_args: crate::msg::VotingPowerArgs {
+            mode: crate::msg::VotingPowerMode::Slope,
+            slope: Uint256::from_u128(100u128),
+            threshold: Uint256::from_u128(50u128),
+        },
+    };
+
+    let res = app.execute_contract(
+        operator1(),
+        saas_contract_addr.clone(),
+        &create_oracle_maci_msg,
+        &[],
+    );
+
+    // The execution should succeed
+    assert!(res.is_ok());
+
+    // Query MACI contracts to verify creation
+    let maci_contracts: Vec<MaciContractInfo> = app
+        .wrap()
+        .query_wasm_smart(
+            saas_contract_addr.clone(),
+            &QueryMsg::MaciContracts {
+                start_after: None,
+                limit: None,
+            },
+        )
+        .unwrap();
+
+    assert_eq!(maci_contracts.len(), 1);
+    assert_eq!(maci_contracts[0].round_title, "Oracle MACI Test Round");
+    assert_eq!(maci_contracts[0].creator_operator, operator1());
+
+    // Check that balance was reduced by total cost (deployment fee + token amount)
+    let balance: Uint128 = app
+        .wrap()
+        .query_wasm_smart(saas_contract_addr, &QueryMsg::Balance {})
+        .unwrap();
+
+    let deployment_fee = 50000000000000000000u128; // 50 DORA
+    let token_amount = 25u128 * 10000000000000000000u128; // 25 voters * 10 DORA = 250 DORA
+    let total_cost = deployment_fee + token_amount; // 300 DORA
+    assert_eq!(balance, Uint128::from(deposit_amount - total_cost));
+}
+
+#[test]
+fn test_create_oracle_maci_round_unauthorized() {
+    let (mut app, saas_contract_addr) = proper_instantiate_for_maci();
+
+    // Try to create Oracle MACI round without being an operator
+    let create_oracle_maci_msg = ExecuteMsg::CreateOracleMaciRound {
+        oracle_maci_code_id: 1u64,
+        coordinator: PubKey {
+            x: Uint256::from_u128(123u128),
+            y: Uint256::from_u128(456u128),
+        },
+        max_voters: 25,
+        vote_option_map: vec![
+            "Option 1".to_string(),
+            "Option 2".to_string(),
+            "Option 3".to_string(),
+        ],
+        round_info: RoundInfo {
+            title: "Oracle MACI Test Round".to_string(),
+            description: "Test Oracle MACI description".to_string(),
+            link: "https://oracle-maci.com".to_string(),
+        },
+        voting_time: Some(MaciVotingTime {
+            start_time: Some(cosmwasm_std::Timestamp::from_seconds(1625097600)),
+            end_time: Some(cosmwasm_std::Timestamp::from_seconds(1625184000)),
+        }),
+        circuit_type: Uint256::from_u128(0u128), // 1p1v
+        certification_system: Uint256::from_u128(0u128), // groth16
+        whitelist_backend_pubkey: "test_backend_pubkey".to_string(),
+        whitelist_ecosystem: "test_ecosystem".to_string(),
+        whitelist_snapshot_height: Uint256::from_u128(1000u128),
+        whitelist_voting_power_args: crate::msg::VotingPowerArgs {
+            mode: crate::msg::VotingPowerMode::Slope,
+            slope: Uint256::from_u128(100u128),
+            threshold: Uint256::from_u128(50u128),
+        },
+    };
+
+    let res = app.execute_contract(user1(), saas_contract_addr, &create_oracle_maci_msg, &[]);
+
+    assert!(res.is_err());
+    assert_eq!(
+        res.unwrap_err().downcast::<ContractError>().unwrap(),
+        ContractError::Unauthorized {}
+    );
+}
+
+#[test]
+fn test_create_oracle_maci_round_insufficient_funds() {
+    let (mut app, saas_contract_addr) = proper_instantiate_for_maci();
+
+    // Add an operator
+    let add_operator_msg = ExecuteMsg::AddOperator {
+        operator: operator1(),
+    };
+
+    app.execute_contract(admin(), saas_contract_addr.clone(), &add_operator_msg, &[])
+        .unwrap();
+
+    // Don't deposit enough funds (total cost is 300 DORA: 50 DORA deployment + 250 DORA token)
+    let deposit_msg = ExecuteMsg::Deposit {};
+    let insufficient_amount = 10000000000000000000u128; // 10 DORA (insufficient)
+
+    app.execute_contract(
+        admin(),
+        saas_contract_addr.clone(),
+        &deposit_msg,
+        &coins(insufficient_amount, DORA_DEMON),
+    )
+    .unwrap();
+
+    // Try to create Oracle MACI round with insufficient funds
+    let create_oracle_maci_msg = ExecuteMsg::CreateOracleMaciRound {
+        oracle_maci_code_id: 1u64,
+        coordinator: PubKey {
+            x: Uint256::from_u128(123u128),
+            y: Uint256::from_u128(456u128),
+        },
+        max_voters: 25,
+        vote_option_map: vec![
+            "Option 1".to_string(),
+            "Option 2".to_string(),
+            "Option 3".to_string(),
+        ],
+        round_info: RoundInfo {
+            title: "Oracle MACI Test Round".to_string(),
+            description: "Test Oracle MACI description".to_string(),
+            link: "https://oracle-maci.com".to_string(),
+        },
+        voting_time: Some(MaciVotingTime {
+            start_time: Some(cosmwasm_std::Timestamp::from_seconds(1625097600)),
+            end_time: Some(cosmwasm_std::Timestamp::from_seconds(1625184000)),
+        }),
+        circuit_type: Uint256::from_u128(0u128), // 1p1v
+        certification_system: Uint256::from_u128(0u128), // groth16
+        whitelist_backend_pubkey: "test_backend_pubkey".to_string(),
+        whitelist_ecosystem: "test_ecosystem".to_string(),
+        whitelist_snapshot_height: Uint256::from_u128(1000u128),
+        whitelist_voting_power_args: crate::msg::VotingPowerArgs {
+            mode: crate::msg::VotingPowerMode::Slope,
+            slope: Uint256::from_u128(100u128),
+            threshold: Uint256::from_u128(50u128),
+        },
+    };
+
+    let res = app.execute_contract(
+        operator1(),
+        saas_contract_addr,
+        &create_oracle_maci_msg,
+        &[],
+    );
+
+    assert!(res.is_err());
+    assert!(matches!(
+        res.unwrap_err().downcast::<ContractError>().unwrap(),
+        ContractError::InsufficientFundsForRound { .. }
+    ));
+}
+
+// Note: Oracle MACI Withdraw Functionality
+// ========================================
+//
+// Oracle MACI contracts created through SaaS have a special withdraw feature:
+//
+// 1. **Permission**: Anyone can call the withdraw function (no authorization required)
+// 2. **Timing**: Withdraw can only be called when the round status is "Ended"
+//    (after tally completion)
+// 3. **Destination**: All funds are automatically returned to the admin address
+//    (which is the SaaS contract address)
+// 4. **Purpose**: This allows automatic fund recovery after Oracle MACI rounds complete
+//
+// The withdraw process ensures that:
+// - Unused tokens are returned to the SaaS contract pool
+// - Any remaining balance can be redistributed for future rounds
+// - The SaaS system maintains financial control over Oracle MACI instances
+//
+// Integration with SaaS:
+// - SaaS creates Oracle MACI with itself as admin
+// - SaaS provides initial funding (max_voters * 10 DORA + 50 DORA deployment fee)
+// - After round completion, anyone can trigger withdraw to return funds to SaaS
+// - SaaS balance is automatically updated when funds are returned
+
+#[test]
+fn test_set_oracle_maci_round_info() {
+    let (mut app, saas_contract_addr) = proper_instantiate_for_maci();
+
+    // Add an operator
+    let add_operator_msg = ExecuteMsg::AddOperator {
+        operator: operator1(),
+    };
+
+    app.execute_contract(admin(), saas_contract_addr.clone(), &add_operator_msg, &[])
+        .unwrap();
+
+    // Mock Oracle MACI contract address
+    let mock_oracle_maci_addr = "dora1oracle_maci_contract_address";
+
+    // Test successful round info update
+    let new_round_info = RoundInfo {
+        title: "Updated Oracle MACI Round".to_string(),
+        description: "Updated description for Oracle MACI".to_string(),
+        link: "https://updated-oracle-maci.com".to_string(),
+    };
+
+    let set_round_info_msg = ExecuteMsg::SetOracleMaciRoundInfo {
+        contract_addr: mock_oracle_maci_addr.to_string(),
+        round_info: new_round_info.clone(),
+    };
+
+    // This should succeed (operator can manage Oracle MACI)
+    let res = app.execute_contract(
+        operator1(),
+        saas_contract_addr.clone(),
+        &set_round_info_msg,
+        &[],
+    );
+
+    // The execution will fail because the mock contract doesn't exist,
+    // but it should pass the authorization check
+    assert!(res.is_err());
+    // The error should be about contract execution, not authorization
+    assert!(!res.unwrap_err().to_string().contains("Unauthorized"));
+
+    // Test unauthorized access
+    let set_round_info_msg_unauth = ExecuteMsg::SetOracleMaciRoundInfo {
+        contract_addr: mock_oracle_maci_addr.to_string(),
+        round_info: new_round_info,
+    };
+
+    let res = app.execute_contract(
+        user1(), // Not an operator
+        saas_contract_addr.clone(),
+        &set_round_info_msg_unauth,
+        &[],
+    );
+
+    assert!(res.is_err());
+    assert_eq!(
+        res.unwrap_err().downcast::<ContractError>().unwrap(),
+        ContractError::Unauthorized {}
+    );
+
+    // Check consumption record was created for the operator addition
+    let consumption_records = app
+        .wrap()
+        .query_wasm_smart::<Vec<crate::state::ConsumptionRecord>>(
+            saas_contract_addr.clone(),
+            &QueryMsg::ConsumptionRecords {
+                start_after: None,
+                limit: None,
+            },
+        )
+        .unwrap();
+
+    // Should have at least one record from the operator addition
+    // Note: The set_oracle_maci_round_info execution failed due to invalid contract address,
+    // but the consumption record should still be created before the contract call
+    assert!(!consumption_records.is_empty());
+
+    // The first record should be from adding the operator
+    let first_record = &consumption_records[0];
+    assert_eq!(first_record.action, "add_operator");
+    assert_eq!(first_record.operator, admin()); // Admin adds the operator
+}
+
+#[test]
+fn test_set_oracle_maci_vote_option_map() {
+    let (mut app, saas_contract_addr) = proper_instantiate_for_maci();
+
+    // Add an operator
+    let add_operator_msg = ExecuteMsg::AddOperator {
+        operator: operator1(),
+    };
+
+    app.execute_contract(admin(), saas_contract_addr.clone(), &add_operator_msg, &[])
+        .unwrap();
+
+    // Mock Oracle MACI contract address
+    let mock_oracle_maci_addr = "dora1oracle_maci_contract_address";
+
+    // Test successful vote option map update
+    let new_vote_option_map = vec![
+        "Alice".to_string(),
+        "Bob".to_string(),
+        "Charlie".to_string(),
+        "David".to_string(),
+        "Eve".to_string(),
+    ];
+
+    let set_vote_option_map_msg = ExecuteMsg::SetOracleMaciVoteOptionMap {
+        contract_addr: mock_oracle_maci_addr.to_string(),
+        vote_option_map: new_vote_option_map.clone(),
+    };
+
+    // This should succeed (operator can manage Oracle MACI)
+    let res = app.execute_contract(
+        operator1(),
+        saas_contract_addr.clone(),
+        &set_vote_option_map_msg,
+        &[],
+    );
+
+    // The execution will fail because the mock contract doesn't exist,
+    // but it should pass the authorization check
+    assert!(res.is_err());
+    // The error should be about contract execution, not authorization
+    assert!(!res.unwrap_err().to_string().contains("Unauthorized"));
+
+    // Test unauthorized access
+    let set_vote_option_map_msg_unauth = ExecuteMsg::SetOracleMaciVoteOptionMap {
+        contract_addr: mock_oracle_maci_addr.to_string(),
+        vote_option_map: new_vote_option_map,
+    };
+
+    let res = app.execute_contract(
+        user1(), // Not an operator
+        saas_contract_addr.clone(),
+        &set_vote_option_map_msg_unauth,
+        &[],
+    );
+
+    assert!(res.is_err());
+    assert_eq!(
+        res.unwrap_err().downcast::<ContractError>().unwrap(),
+        ContractError::Unauthorized {}
+    );
+
+    // Check consumption record was created for the operator addition
+    let consumption_records = app
+        .wrap()
+        .query_wasm_smart::<Vec<crate::state::ConsumptionRecord>>(
+            saas_contract_addr.clone(),
+            &QueryMsg::ConsumptionRecords {
+                start_after: None,
+                limit: None,
+            },
+        )
+        .unwrap();
+
+    // Should have at least one record from the operator addition
+    // Note: The set_oracle_maci_vote_option_map execution failed due to invalid contract address,
+    // but the consumption record should still be created before the contract call
+    assert!(!consumption_records.is_empty());
+
+    // The first record should be from adding the operator
+    let first_record = &consumption_records[0];
+    assert_eq!(first_record.action, "add_operator");
+    assert_eq!(first_record.operator, admin()); // Admin adds the operator
+}
+
+#[test]
+fn test_oracle_maci_management_integration() {
+    let (mut app, saas_contract_addr) = proper_instantiate_for_maci();
+
+    // Add an operator
+    let add_operator_msg = ExecuteMsg::AddOperator {
+        operator: operator1(),
+    };
+
+    app.execute_contract(admin(), saas_contract_addr.clone(), &add_operator_msg, &[])
+        .unwrap();
+
+    // Mock Oracle MACI contract address
+    let mock_oracle_maci_addr = "dora1oracle_maci_contract_address";
+
+    // Test updating round info
+    let round_info = RoundInfo {
+        title: "Integration Test Round".to_string(),
+        description: "Testing Oracle MACI management integration".to_string(),
+        link: "https://integration-test.com".to_string(),
+    };
+
+    let set_round_info_msg = ExecuteMsg::SetOracleMaciRoundInfo {
+        contract_addr: mock_oracle_maci_addr.to_string(),
+        round_info,
+    };
+
+    // This will fail at contract execution but should pass authorization
+    let res = app.execute_contract(
+        operator1(),
+        saas_contract_addr.clone(),
+        &set_round_info_msg,
+        &[],
+    );
+    assert!(res.is_err());
+    assert!(!res.unwrap_err().to_string().contains("Unauthorized"));
+
+    // Test updating vote option map
+    let vote_option_map = vec![
+        "Proposal A".to_string(),
+        "Proposal B".to_string(),
+        "Proposal C".to_string(),
+    ];
+
+    let set_vote_option_map_msg = ExecuteMsg::SetOracleMaciVoteOptionMap {
+        contract_addr: mock_oracle_maci_addr.to_string(),
+        vote_option_map,
+    };
+
+    // This will fail at contract execution but should pass authorization
+    let res = app.execute_contract(
+        operator1(),
+        saas_contract_addr.clone(),
+        &set_vote_option_map_msg,
+        &[],
+    );
+    assert!(res.is_err());
+    assert!(!res.unwrap_err().to_string().contains("Unauthorized"));
+
+    // Verify operator addition was recorded
+    let consumption_records = app
+        .wrap()
+        .query_wasm_smart::<Vec<crate::state::ConsumptionRecord>>(
+            saas_contract_addr,
+            &QueryMsg::ConsumptionRecords {
+                start_after: None,
+                limit: None,
+            },
+        )
+        .unwrap();
+
+    // Should have at least one record from the operator addition
+    // Note: The Oracle MACI management operations failed due to invalid contract address,
+    // but they should still pass authorization checks
+    assert!(!consumption_records.is_empty());
+
+    // The first record should be from adding the operator
+    let operator_record = &consumption_records[0];
+    assert_eq!(operator_record.action, "add_operator");
+    assert_eq!(operator_record.operator, admin()); // Admin adds the operator
+}
+
+#[test]
+fn test_grant_oracle_maci_feegrant() {
+    let (mut app, saas_contract_addr) = proper_instantiate_for_maci();
+
+    // Add an operator
+    let add_operator_msg = ExecuteMsg::AddOperator {
+        operator: operator1(),
+    };
+
+    app.execute_contract(admin(), saas_contract_addr.clone(), &add_operator_msg, &[])
+        .unwrap();
+
+    // Mock Oracle MACI contract address
+    let mock_oracle_maci_addr = "dora1oracle_maci_contract_address";
+
+    // Test successful feegrant
+    let grantee = user1();
+    let base_amount = Uint128::from(1000000u128);
+
+    let grant_feegrant_msg = ExecuteMsg::GrantOracleMaciFeegrant {
+        contract_addr: mock_oracle_maci_addr.to_string(),
+        grantee: grantee.clone(),
+        base_amount,
+    };
+
+    // This should succeed (operator can manage Oracle MACI feegrants)
+    let res = app.execute_contract(
+        operator1(),
+        saas_contract_addr.clone(),
+        &grant_feegrant_msg,
+        &[],
+    );
+
+    // The execution will fail because the mock contract doesn't exist,
+    // but it should pass the authorization check
+    assert!(res.is_err());
+    // The error should be about contract execution, not authorization
+    assert!(!res.unwrap_err().to_string().contains("Unauthorized"));
+
+    // Test unauthorized access
+    let grant_feegrant_msg_unauth = ExecuteMsg::GrantOracleMaciFeegrant {
+        contract_addr: mock_oracle_maci_addr.to_string(),
+        grantee,
+        base_amount,
+    };
+
+    let res = app.execute_contract(
+        user1(), // Not an operator
+        saas_contract_addr.clone(),
+        &grant_feegrant_msg_unauth,
+        &[],
+    );
+
+    assert!(res.is_err());
+    assert_eq!(
+        res.unwrap_err().downcast::<ContractError>().unwrap(),
+        ContractError::Unauthorized {}
+    );
+
+    // Check consumption record was created for the operator addition
+    let consumption_records = app
+        .wrap()
+        .query_wasm_smart::<Vec<crate::state::ConsumptionRecord>>(
+            saas_contract_addr,
+            &QueryMsg::ConsumptionRecords {
+                start_after: None,
+                limit: None,
+            },
+        )
+        .unwrap();
+
+    // Should have at least one record from the operator addition
+    assert!(!consumption_records.is_empty());
+
+    // The first record should be from adding the operator
+    let first_record = &consumption_records[0];
+    assert_eq!(first_record.action, "add_operator");
+    assert_eq!(first_record.operator, admin()); // Admin adds the operator
+}
