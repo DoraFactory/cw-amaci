@@ -5,39 +5,6 @@
     {
       "type": "object",
       "required": [
-        "set_params"
-      ],
-      "properties": {
-        "set_params": {
-          "type": "object",
-          "required": [
-            "int_state_tree_depth",
-            "message_batch_size",
-            "state_tree_depth",
-            "vote_option_tree_depth"
-          ],
-          "properties": {
-            "int_state_tree_depth": {
-              "$ref": "#/definitions/Uint256"
-            },
-            "message_batch_size": {
-              "$ref": "#/definitions/Uint256"
-            },
-            "state_tree_depth": {
-              "$ref": "#/definitions/Uint256"
-            },
-            "vote_option_tree_depth": {
-              "$ref": "#/definitions/Uint256"
-            }
-          },
-          "additionalProperties": false
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
         "set_round_info"
       ],
       "properties": {

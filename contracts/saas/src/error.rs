@@ -34,6 +34,12 @@ pub enum ContractError {
     #[error("No registry contract set")]
     NoRegistryContract {},
 
+    #[error("Invalid Oracle MACI parameters: {reason}")]
+    InvalidOracleMaciParameters { reason: String },
+
+    #[error("Message serialization failed: {msg}")]
+    SerializationError { msg: String },
+
     #[error("No funds sent")]
     NoFunds {},
 

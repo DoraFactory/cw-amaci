@@ -2,19 +2,15 @@
 mod tests;
 
 use anyhow::Result as AnyResult;
-use cosmwasm_std::{Addr, Coin, StdResult, Timestamp, Uint128, Uint256};
-use cw_amaci::state::{RoundInfo, VotingTime};
+use cosmwasm_std::{Addr, Coin, StdResult, Timestamp, Uint128};
+use cw_amaci::state::RoundInfo;
 use cw_multi_test::{App, AppResponse, ContractWrapper, Executor};
 
 use crate::{
-    contract::{execute, instantiate, migrate, query},
+    contract::{execute, instantiate, migrate, query, reply},
     msg::*,
-    state::{Config, ConsumptionRecord, FeeGrantRecord, OperatorInfo},
+    state::{Config, FeeGrantRecord, OperatorInfo},
 };
-
-// Import registry multitest for integration testing
-use cw_amaci::multitest::MaciCodeId;
-use cw_amaci_registry::multitest::{AmaciRegistryCodeId, AmaciRegistryContract};
 
 pub const DORA_DEMON: &str = "peaka";
 
@@ -23,7 +19,9 @@ pub struct SaasCodeId(u64);
 
 impl SaasCodeId {
     pub fn store_code(app: &mut App) -> Self {
-        let contract = ContractWrapper::new(execute, instantiate, query).with_migrate(migrate);
+        let contract = ContractWrapper::new(execute, instantiate, query)
+            .with_migrate(migrate)
+            .with_reply(reply);
         let code_id = app.store_code(Box::new(contract));
         Self(code_id)
     }
@@ -47,11 +45,11 @@ impl From<SaasCodeId> for u64 {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct SaasContract(Addr);
 
 impl SaasContract {
-    pub fn addr(&self) -> Addr {
+    fn addr(&self) -> Addr {
         self.0.clone()
     }
 
@@ -70,15 +68,9 @@ impl SaasContract {
             registry_contract,
             denom,
         };
-        app.instantiate_contract(
-            code_id.0,
-            sender.clone(),
-            &init_msg,
-            &[],
-            label,
-            Some(sender.to_string()),
-        )
-        .map(Self::from)
+
+        app.instantiate_contract(code_id.0, sender, &init_msg, &[], label, None)
+            .map(Self)
     }
 
     #[track_caller]
@@ -184,39 +176,6 @@ impl SaasContract {
         )
     }
 
-    #[track_caller]
-    pub fn create_amaci_round(
-        &self,
-        app: &mut App,
-        sender: Addr,
-        max_voter: Uint256,
-        max_option: Uint256,
-        voice_credit_amount: Uint256,
-        round_info: RoundInfo,
-        voting_time: VotingTime,
-        whitelist: Option<cw_amaci::msg::WhitelistBase>,
-        pre_deactivate_root: Uint256,
-        circuit_type: Uint256,
-        certification_system: Uint256,
-    ) -> AnyResult<AppResponse> {
-        app.execute_contract(
-            sender,
-            self.addr(),
-            &ExecuteMsg::CreateAmaciRound {
-                max_voter,
-                max_option,
-                voice_credit_amount,
-                round_info,
-                voting_time,
-                whitelist,
-                pre_deactivate_root,
-                circuit_type,
-                certification_system,
-            },
-            &[],
-        )
-    }
-
     // Query methods
     pub fn query_config(&self, app: &App) -> StdResult<Config> {
         app.wrap()
@@ -238,18 +197,6 @@ impl SaasContract {
             .query_wasm_smart(self.addr(), &QueryMsg::Balance {})
     }
 
-    pub fn query_consumption_records(
-        &self,
-        app: &App,
-        start_after: Option<u64>,
-        limit: Option<u32>,
-    ) -> StdResult<Vec<ConsumptionRecord>> {
-        app.wrap().query_wasm_smart(
-            self.addr(),
-            &QueryMsg::ConsumptionRecords { start_after, limit },
-        )
-    }
-
     pub fn query_feegrant_records(
         &self,
         app: &App,
@@ -262,21 +209,14 @@ impl SaasContract {
         )
     }
 
-    pub fn query_operator_consumption_records(
+    pub fn query_maci_contracts(
         &self,
         app: &App,
-        operator: Addr,
         start_after: Option<u64>,
         limit: Option<u32>,
-    ) -> StdResult<Vec<ConsumptionRecord>> {
-        app.wrap().query_wasm_smart(
-            self.addr(),
-            &QueryMsg::OperatorConsumptionRecords {
-                operator,
-                start_after,
-                limit,
-            },
-        )
+    ) -> StdResult<Vec<crate::state::MaciContractInfo>> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::MaciContracts { start_after, limit })
     }
 
     pub fn balance_of(&self, app: &App, address: String, denom: String) -> StdResult<Coin> {
@@ -336,16 +276,21 @@ pub fn test_round_info() -> RoundInfo {
     }
 }
 
-// Helper function to create test voting time
-pub fn test_voting_time() -> VotingTime {
-    VotingTime {
+// Helper function to create test voting time (for legacy AMACI tests)
+pub fn test_voting_time() -> cw_amaci::state::VotingTime {
+    cw_amaci::state::VotingTime {
         start_time: Timestamp::from_seconds(1640995200), // 2022-01-01
         end_time: Timestamp::from_seconds(1641081600),   // 2022-01-02
     }
 }
 
-// Helper function to setup a real registry contract for integration testing
-pub fn setup_registry_contract(app: &mut App) -> AmaciRegistryContract {
+// Helper function to setup a real registry contract for integration testing (legacy)
+pub fn setup_registry_contract(
+    app: &mut App,
+) -> cw_amaci_registry::multitest::AmaciRegistryContract {
+    use cw_amaci::multitest::MaciCodeId;
+    use cw_amaci_registry::multitest::AmaciRegistryCodeId;
+
     let registry_code_id = AmaciRegistryCodeId::store_code(app);
     let amaci_code_id = MaciCodeId::store_default_code(app);
 

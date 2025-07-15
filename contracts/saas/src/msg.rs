@@ -1,80 +1,13 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Binary, Coin, Uint128, Uint256};
-use cw_amaci::msg::WhitelistBase;
-use cw_amaci::state::{RoundInfo, VotingTime};
+use cw_amaci::state::RoundInfo;
 
-use crate::state::{Config, ConsumptionRecord, FeeGrantRecord, OperatorInfo};
-
-// 从 maci 合约导入需要的类型
-#[cw_serde]
-pub struct MaciParameters {
-    pub state_tree_depth: Uint256,
-    pub int_state_tree_depth: Uint256,
-    pub message_batch_size: Uint256,
-    pub vote_option_tree_depth: Uint256,
-}
+use crate::state::{Config, FeeGrantRecord, OperatorInfo};
 
 #[cw_serde]
 pub struct PubKey {
     pub x: Uint256,
     pub y: Uint256,
-}
-
-#[cw_serde]
-pub struct QuinaryTreeRoot {
-    pub zeros: [Uint256; 9],
-}
-
-#[cw_serde]
-pub struct Groth16VKeyType {
-    pub vk_alpha1: String,
-    pub vk_beta_2: String,
-    pub vk_gamma_2: String,
-    pub vk_delta_2: String,
-    pub vk_ic0: String,
-    pub vk_ic1: String,
-}
-
-#[cw_serde]
-pub struct PlonkVKeyType {
-    pub n: usize,
-    pub num_inputs: usize,
-    pub selector_commitments: Vec<String>,
-    pub next_step_selector_commitments: Vec<String>,
-    pub permutation_commitments: Vec<String>,
-    pub non_residues: Vec<String>,
-    pub g2_elements: Vec<String>,
-}
-
-#[cw_serde]
-pub struct WhitelistConfig {
-    pub addr: String,
-    pub balance: Uint256,
-}
-
-#[cw_serde]
-pub struct Whitelist {
-    pub users: Vec<WhitelistConfig>,
-}
-
-#[cw_serde]
-pub struct MaciVotingTime {
-    pub start_time: Option<cosmwasm_std::Timestamp>,
-    pub end_time: Option<cosmwasm_std::Timestamp>,
-}
-
-// Oracle MACI 相关类型
-#[cw_serde]
-pub enum VotingPowerMode {
-    Slope, // amount/slope
-    Threshold,
-}
-
-#[cw_serde]
-pub struct VotingPowerArgs {
-    pub mode: VotingPowerMode,
-    pub slope: Uint256,
-    pub threshold: Uint256,
 }
 
 #[cw_serde]
@@ -117,39 +50,6 @@ pub enum ExecuteMsg {
         amount: Uint128,
     },
 
-    // Create AMACI round
-    CreateAmaciRound {
-        max_voter: Uint256,
-        max_option: Uint256,
-        voice_credit_amount: Uint256,
-        round_info: RoundInfo,
-        voting_time: VotingTime,
-        whitelist: Option<WhitelistBase>,
-        pre_deactivate_root: Uint256,
-        circuit_type: Uint256,
-        certification_system: Uint256,
-    },
-
-    // Create MACI round (direct contract instantiation)
-    CreateMaciRound {
-        maci_code_id: u64,
-        parameters: MaciParameters,
-        coordinator: PubKey,
-        qtr_lib: QuinaryTreeRoot,
-        groth16_process_vkey: Option<Groth16VKeyType>,
-        groth16_tally_vkey: Option<Groth16VKeyType>,
-        plonk_process_vkey: Option<PlonkVKeyType>,
-        plonk_tally_vkey: Option<PlonkVKeyType>,
-        max_vote_options: Uint256,
-        round_info: RoundInfo,
-        voting_time: Option<MaciVotingTime>,
-        whitelist: Option<Whitelist>,
-        circuit_type: Uint256,
-        certification_system: Uint256,
-        admin_override: Option<Addr>, // 可选的管理员地址覆盖
-        label: String,                // 合约标签
-    },
-
     // Create Oracle MACI round
     CreateOracleMaciRound {
         oracle_maci_code_id: u64,
@@ -157,13 +57,15 @@ pub enum ExecuteMsg {
         max_voters: u128,
         vote_option_map: Vec<String>,
         round_info: RoundInfo,
-        voting_time: Option<MaciVotingTime>,
+        start_time: cosmwasm_std::Timestamp,
+        end_time: cosmwasm_std::Timestamp,
         circuit_type: Uint256,
         certification_system: Uint256,
         whitelist_backend_pubkey: String,
-        whitelist_ecosystem: String,
-        whitelist_snapshot_height: Uint256,
-        whitelist_voting_power_args: VotingPowerArgs,
+        // 以下参数在合约内部写死:
+        // whitelist_ecosystem: "doravota"
+        // whitelist_snapshot_height: 0
+        // whitelist_voting_power_args: slope 模式 (1人1票)
     },
 
     // Execute other contracts
@@ -206,22 +108,9 @@ pub enum QueryMsg {
     #[returns(Uint128)]
     Balance {},
 
-    #[returns(Vec<ConsumptionRecord>)]
-    ConsumptionRecords {
-        start_after: Option<u64>,
-        limit: Option<u32>,
-    },
-
     #[returns(Vec<FeeGrantRecord>)]
     FeeGrantRecords {
         start_after: Option<Addr>,
-        limit: Option<u32>,
-    },
-
-    #[returns(Vec<ConsumptionRecord>)]
-    OperatorConsumptionRecords {
-        operator: Addr,
-        start_after: Option<u64>,
         limit: Option<u32>,
     },
 
@@ -244,3 +133,8 @@ pub enum QueryMsg {
 
 #[cw_serde]
 pub struct MigrateMsg {}
+
+#[cw_serde]
+pub struct InstantiationData {
+    pub addr: Addr,
+}

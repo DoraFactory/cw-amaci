@@ -23,15 +23,6 @@ pub struct OperatorInfo {
 }
 
 #[cw_serde]
-pub struct ConsumptionRecord {
-    pub operator: Addr,
-    pub action: String,
-    pub amount: Uint128,
-    pub timestamp: Timestamp,
-    pub description: String,
-}
-
-#[cw_serde]
 pub struct FeeGrantRecord {
     pub grantee: Addr,
     pub amount: Uint128,
@@ -54,8 +45,6 @@ pub struct MaciContractInfo {
 pub const CONFIG: Item<Config> = Item::new("config");
 pub const OPERATORS: Map<&Addr, OperatorInfo> = Map::new("operators");
 pub const TOTAL_BALANCE: Item<Uint128> = Item::new("total_balance");
-pub const CONSUMPTION_COUNTER: Item<u64> = Item::new("consumption_counter");
-pub const CONSUMPTION_RECORDS: Map<u64, ConsumptionRecord> = Map::new("consumption_records");
 pub const FEEGRANT_RECORDS: Map<&Addr, FeeGrantRecord> = Map::new("feegrant_records");
 
 // 新增: MACI 合约跟踪存储

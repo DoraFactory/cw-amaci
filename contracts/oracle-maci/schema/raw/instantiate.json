@@ -7,10 +7,9 @@
     "circuit_type",
     "coordinator",
     "feegrant_operator",
-    "max_vote_options",
-    "parameters",
-    "qtr_lib",
+    "max_voters",
     "round_info",
+    "vote_option_map",
     "whitelist_backend_pubkey",
     "whitelist_ecosystem",
     "whitelist_snapshot_height",
@@ -29,57 +28,19 @@
     "feegrant_operator": {
       "$ref": "#/definitions/Addr"
     },
-    "groth16_process_vkey": {
-      "anyOf": [
-        {
-          "$ref": "#/definitions/Groth16VKeyType"
-        },
-        {
-          "type": "null"
-        }
-      ]
-    },
-    "groth16_tally_vkey": {
-      "anyOf": [
-        {
-          "$ref": "#/definitions/Groth16VKeyType"
-        },
-        {
-          "type": "null"
-        }
-      ]
-    },
-    "max_vote_options": {
-      "$ref": "#/definitions/Uint256"
-    },
-    "parameters": {
-      "$ref": "#/definitions/MaciParameters"
-    },
-    "plonk_process_vkey": {
-      "anyOf": [
-        {
-          "$ref": "#/definitions/PlonkVKeyType"
-        },
-        {
-          "type": "null"
-        }
-      ]
-    },
-    "plonk_tally_vkey": {
-      "anyOf": [
-        {
-          "$ref": "#/definitions/PlonkVKeyType"
-        },
-        {
-          "type": "null"
-        }
-      ]
-    },
-    "qtr_lib": {
-      "$ref": "#/definitions/QuinaryTreeRoot"
+    "max_voters": {
+      "type": "integer",
+      "format": "uint128",
+      "minimum": 0.0
     },
     "round_info": {
       "$ref": "#/definitions/RoundInfo"
+    },
+    "vote_option_map": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     },
     "voting_time": {
       "anyOf": [
@@ -110,117 +71,6 @@
       "description": "A human readable address.\n\nIn Cosmos, this is typically bech32 encoded. But for multi-chain smart contracts no assumptions should be made other than being UTF-8 encoded and of reasonable length.\n\nThis type represents a validated address. It can be created in the following ways 1. Use `Addr::unchecked(input)` 2. Use `let checked: Addr = deps.api.addr_validate(input)?` 3. Use `let checked: Addr = deps.api.addr_humanize(canonical_addr)?` 4. Deserialize from JSON. This must only be done from JSON that was validated before such as a contract's state. `Addr` must not be used in messages sent by the user because this would result in unvalidated instances.\n\nThis type is immutable. If you really need to mutate it (Really? Are you sure?), create a mutable copy using `let mut mutable = Addr::to_string()` and operate on that `String` instance.",
       "type": "string"
     },
-    "Groth16VKeyType": {
-      "type": "object",
-      "required": [
-        "vk_alpha1",
-        "vk_beta_2",
-        "vk_delta_2",
-        "vk_gamma_2",
-        "vk_ic0",
-        "vk_ic1"
-      ],
-      "properties": {
-        "vk_alpha1": {
-          "type": "string"
-        },
-        "vk_beta_2": {
-          "type": "string"
-        },
-        "vk_delta_2": {
-          "type": "string"
-        },
-        "vk_gamma_2": {
-          "type": "string"
-        },
-        "vk_ic0": {
-          "type": "string"
-        },
-        "vk_ic1": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": false
-    },
-    "MaciParameters": {
-      "type": "object",
-      "required": [
-        "int_state_tree_depth",
-        "message_batch_size",
-        "state_tree_depth",
-        "vote_option_tree_depth"
-      ],
-      "properties": {
-        "int_state_tree_depth": {
-          "$ref": "#/definitions/Uint256"
-        },
-        "message_batch_size": {
-          "$ref": "#/definitions/Uint256"
-        },
-        "state_tree_depth": {
-          "$ref": "#/definitions/Uint256"
-        },
-        "vote_option_tree_depth": {
-          "$ref": "#/definitions/Uint256"
-        }
-      },
-      "additionalProperties": false
-    },
-    "PlonkVKeyType": {
-      "type": "object",
-      "required": [
-        "g2_elements",
-        "n",
-        "next_step_selector_commitments",
-        "non_residues",
-        "num_inputs",
-        "permutation_commitments",
-        "selector_commitments"
-      ],
-      "properties": {
-        "g2_elements": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "n": {
-          "type": "integer",
-          "format": "uint",
-          "minimum": 0.0
-        },
-        "next_step_selector_commitments": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "non_residues": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "num_inputs": {
-          "type": "integer",
-          "format": "uint",
-          "minimum": 0.0
-        },
-        "permutation_commitments": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "selector_commitments": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      },
-      "additionalProperties": false
-    },
     "PubKey": {
       "type": "object",
       "required": [
@@ -233,23 +83,6 @@
         },
         "y": {
           "$ref": "#/definitions/Uint256"
-        }
-      },
-      "additionalProperties": false
-    },
-    "QuinaryTreeRoot": {
-      "type": "object",
-      "required": [
-        "zeros"
-      ],
-      "properties": {
-        "zeros": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/Uint256"
-          },
-          "maxItems": 9,
-          "minItems": 9
         }
       },
       "additionalProperties": false

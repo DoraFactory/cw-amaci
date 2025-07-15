@@ -5,13 +5,14 @@ use anyhow::Result as AnyResult;
 
 use crate::msg::Groth16VKeyType;
 use crate::state::{
-    MaciParameters, MessageData, Period, PubKey, QuinaryTreeRoot, RoundInfo, VotingPowerMode,
-    VotingTime,
+    GrantConfig, MaciParameters, MessageData, OracleWhitelistConfig, Period, PubKey,
+    QuinaryTreeRoot, RoundInfo, VotingPowerMode, VotingTime, WhitelistConfig,
 };
 use crate::utils::uint256_from_hex_string;
 use crate::{
-    contract::{execute, instantiate, query},
+    contract::{execute, instantiate, query, reply},
     msg::*,
+    state::*,
 };
 use cosmwasm_std::testing::{MockApi, MockStorage};
 use cosmwasm_std::{Addr, Coin, Empty, StdResult, Timestamp, Uint128, Uint256};
@@ -66,7 +67,7 @@ pub struct MaciCodeId(u64);
 
 impl MaciCodeId {
     pub fn store_code(app: &mut App) -> Self {
-        let contract = ContractWrapper::new(execute, instantiate, query);
+        let contract = ContractWrapper::new(execute, instantiate, query).with_reply(reply);
         let code_id = app.store_code(Box::new(contract));
         Self(code_id)
     }
@@ -816,6 +817,55 @@ impl MaciContract {
                 certificate,
             },
         )
+    }
+
+    #[track_caller]
+    pub fn grant(
+        &self,
+        app: &mut App,
+        sender: Addr,
+        base_amount: Uint128,
+        grantee: Addr,
+    ) -> AnyResult<AppResponse> {
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::Grant {
+                base_amount,
+                grantee,
+            },
+            &[],
+        )
+    }
+
+    #[track_caller]
+    pub fn revoke(&self, app: &mut App, sender: Addr, grantee: Addr) -> AnyResult<AppResponse> {
+        app.execute_contract(sender, self.addr(), &ExecuteMsg::Revoke { grantee }, &[])
+    }
+
+    pub fn query_white_info(&self, app: &App, sender: String) -> StdResult<WhitelistConfig> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::WhiteInfo { sender })
+    }
+
+    pub fn query_grant_info(&self, app: &App, grantee: String) -> StdResult<GrantConfig> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::GrantInfo { grantee })
+    }
+
+    pub fn query_oracle_whitelist_config(&self, app: &App) -> StdResult<OracleWhitelistConfig> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::QueryOracleWhitelistConfig {})
+    }
+
+    pub fn query_circuit_type(&self, app: &App) -> StdResult<Uint256> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::QueryCircuitType {})
+    }
+
+    pub fn query_cert_system(&self, app: &App) -> StdResult<Uint256> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::QueryCertSystem {})
     }
 }
 

@@ -35,7 +35,7 @@ use prost_types::Timestamp as SdkTimestamp;
 
 use cosmwasm_std::{
     attr, coins, to_json_binary, Addr, BankMsg, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
-    Response, StdResult, Uint128, Uint256,
+    Reply, Response, StdError, StdResult, Uint128, Uint256,
 };
 
 use crate::utils::{hash2, hash5, hash_256_uint256_list, uint256_from_hex_string};
@@ -1916,3 +1916,9 @@ pub fn query_user_balance_of(
 
 #[cfg(test)]
 mod tests {}
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn reply(_deps: DepsMut, _env: Env, _msg: Reply) -> Result<Response, ContractError> {
+    // Oracle MACI合约本身不需要处理任何reply，但需要这个函数来支持multitest
+    Ok(Response::default())
+}

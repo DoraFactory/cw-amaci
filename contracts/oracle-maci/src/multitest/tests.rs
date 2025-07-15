@@ -4,11 +4,12 @@ mod test {
     use crate::msg::{Groth16ProofType, PlonkProofType};
     use crate::multitest::{
         create_app, match_user_certificate, owner, uint256_from_decimal_string, user1,
-        user1_certificate, user2, user2_certificate_before, user3, user3_certificate_before,
-        whitelist_slope, MaciCodeId,
+        user1_certificate, user2, user2_certificate, user2_certificate_before, user3,
+        user3_certificate_before, whitelist_ecosystem, whitelist_slope, whitelist_snapshot_height,
+        whitelist_voting_power_mode, MaciCodeId,
     };
     use crate::state::{MessageData, Period, PeriodStatus, PubKey, RoundInfo};
-    use cosmwasm_std::{Addr, Uint256};
+    use cosmwasm_std::{Addr, Uint128, Uint256};
     use cw_multi_test::next_block;
     use serde::{Deserialize, Serialize};
     use serde_json;
@@ -2122,4 +2123,623 @@ mod test {
     //         err.downcast().unwrap()
     //     );
     // }
+
+    /// 测试完整的白名单验证和signup流程
+    /// Test the complete whitelist verification and signup process
+    // #[test]
+    fn test_whitelist_verification_and_signup() {
+        println!("=== 测试完整白名单验证和signup流程 ===");
+
+        let mut app = create_app();
+        let code_id = MaciCodeId::store_code(&mut app);
+
+        let contract = code_id
+            .instantiate_with_no_voting_time(&mut app, owner(), "Test Oracle MACI")
+            .unwrap();
+
+        // 设置投票选项
+        contract.set_vote_option_map(&mut app, owner()).unwrap();
+
+        // 开始投票期
+        contract.start_voting(&mut app, owner()).unwrap();
+
+        // === 测试 1: 有效的白名单验证 ===
+        println!("=== 测试 1: 有效的白名单验证 ===");
+
+        let user1_cert = user1_certificate();
+        let user2_cert = user2_certificate();
+
+        // 检查用户在signup前是否在白名单中
+        let user1_is_whitelisted = contract
+            .query_is_whitelist(
+                &app,
+                user1().to_string(),
+                user1_cert.amount,
+                user1_cert.certificate.clone(),
+            )
+            .unwrap();
+        assert!(user1_is_whitelisted, "User1 应该在白名单中");
+
+        let user2_is_whitelisted = contract
+            .query_is_whitelist(
+                &app,
+                user2().to_string(),
+                user2_cert.amount,
+                user2_cert.certificate.clone(),
+            )
+            .unwrap();
+        assert!(user2_is_whitelisted, "User2 应该在白名单中");
+
+        // 检查投票权重计算
+        let user1_voting_power = contract
+            .query_white_balance_of(
+                &app,
+                user1().to_string(),
+                user1_cert.amount,
+                user1_cert.certificate.clone(),
+            )
+            .unwrap();
+
+        let user2_voting_power = contract
+            .query_white_balance_of(
+                &app,
+                user2().to_string(),
+                user2_cert.amount,
+                user2_cert.certificate.clone(),
+            )
+            .unwrap();
+
+        // 投票权重应该基于slope计算 (amount / slope)
+        // slope = 1000000，所以 voting power = amount / 1000000
+        let expected_user1_power = user1_cert.amount / Uint256::from_u128(1000000u128);
+        let expected_user2_power = user2_cert.amount / Uint256::from_u128(1000000u128);
+
+        assert_eq!(user1_voting_power, expected_user1_power);
+        assert_eq!(user2_voting_power, expected_user2_power);
+
+        println!("User1 投票权重: {}", user1_voting_power);
+        println!("User2 投票权重: {}", user2_voting_power);
+
+        // === 测试 2: 使用有效证书成功signup ===
+        println!("=== 测试 2: 成功signup ===");
+
+        let user1_pubkey = PubKey {
+            x: uint256_from_decimal_string(
+                "19261766483637676433683538988480264153327639346524015066031846317736952605901",
+            ),
+            y: uint256_from_decimal_string(
+                "9164894066680069675024486726421066026779773976086564343830244889636388008741",
+            ),
+        };
+
+        let user2_pubkey = PubKey {
+            x: uint256_from_decimal_string(
+                "4370899934829278727175080815418983709686064166653529598098826673536142139681",
+            ),
+            y: uint256_from_decimal_string(
+                "9164894066680069675024486726421066026779773976086564343830244889636388008742",
+            ),
+        };
+
+        // User1 signup
+        let signup1_result = contract
+            .sign_up(
+                &mut app,
+                user1(),
+                user1_pubkey,
+                user1_cert.amount,
+                user1_cert.certificate,
+            )
+            .unwrap();
+
+        println!("User1 signup 成功");
+
+        // User2 signup
+        let signup2_result = contract
+            .sign_up(
+                &mut app,
+                user2(),
+                user2_pubkey,
+                user2_cert.amount,
+                user2_cert.certificate,
+            )
+            .unwrap();
+
+        println!("User2 signup 成功");
+
+        // 验证signup数量
+        let num_signups = contract.num_sign_up(&app).unwrap();
+        assert_eq!(num_signups, Uint256::from_u128(2u128));
+
+        // === 测试 3: 检查signup后的用户信息 ===
+        println!("=== 测试 3: 检查signup后的用户信息 ===");
+
+        // 查询用户白名单信息
+        let user1_white_info = contract
+            .query_white_info(&app, user1().to_string())
+            .unwrap();
+        assert!(user1_white_info.is_register);
+        assert_eq!(user1_white_info.balance, expected_user1_power);
+        assert!(!user1_white_info.fee_grant); // 还没有设置fee grant
+
+        let user2_white_info = contract
+            .query_white_info(&app, user2().to_string())
+            .unwrap();
+        assert!(user2_white_info.is_register);
+        assert_eq!(user2_white_info.balance, expected_user2_power);
+        assert!(!user2_white_info.fee_grant);
+
+        println!("User1 白名单信息: {:?}", user1_white_info);
+        println!("User2 白名单信息: {:?}", user2_white_info);
+
+        // === 测试 4: 测试fee grant功能 ===
+        println!("=== 测试 4: 测试fee grant功能 ===");
+
+        let fee_grant_amount = Uint128::from(1000000000000000000u128); // 1 DORA
+
+        // 向user1授予fee grant（只有feegrant operator可以做这个）
+        let grant_result = contract
+            .grant(&mut app, owner(), fee_grant_amount, user1())
+            .unwrap();
+
+        println!("Fee grant 成功");
+
+        // 检查grant信息
+        let user1_grant_info = contract
+            .query_grant_info(&app, user1().to_string())
+            .unwrap();
+        assert!(user1_grant_info.fee_grant);
+        assert_eq!(user1_grant_info.fee_amount, fee_grant_amount);
+
+        // 检查总fee grants
+        let total_fee_grants = contract.query_total_feegrant(&app).unwrap();
+        assert_eq!(total_fee_grants, fee_grant_amount);
+
+        println!("User1 grant 信息: {:?}", user1_grant_info);
+        println!("总 fee grants: {}", total_fee_grants);
+
+        println!("=== 白名单验证和signup测试成功完成！===");
+    }
+
+    /// 测试无效证书场景
+    /// Test invalid certificate scenarios
+    // #[test]
+    fn test_invalid_certificate_scenarios() {
+        println!("=== 测试无效证书场景 ===");
+
+        let mut app = create_app();
+        let code_id = MaciCodeId::store_code(&mut app);
+
+        let contract = code_id
+            .instantiate_with_no_voting_time(&mut app, owner(), "Test Oracle MACI")
+            .unwrap();
+
+        contract.set_vote_option_map(&mut app, owner()).unwrap();
+        contract.start_voting(&mut app, owner()).unwrap();
+
+        // === 测试 1: 无效签名 ===
+        println!("=== 测试 1: 无效签名 ===");
+
+        let invalid_certificate = "InvalidSignature123";
+        let user1_cert = user1_certificate();
+
+        let is_whitelisted = contract
+            .query_is_whitelist(
+                &app,
+                user1().to_string(),
+                user1_cert.amount,
+                invalid_certificate.to_string(),
+            )
+            .unwrap();
+        assert!(!is_whitelisted, "无效证书不应该通过白名单验证");
+
+        let voting_power = contract
+            .query_white_balance_of(
+                &app,
+                user1().to_string(),
+                user1_cert.amount,
+                invalid_certificate.to_string(),
+            )
+            .unwrap();
+        assert_eq!(voting_power, Uint256::zero(), "无效证书应该有零投票权重");
+
+        // === 测试 2: 证书中的错误地址 ===
+        println!("=== 测试 2: 证书中的错误地址 ===");
+
+        let user2_cert = user2_certificate();
+
+        // 尝试为user1的地址使用user2的证书
+        let is_whitelisted_wrong_addr = contract
+            .query_is_whitelist(
+                &app,
+                user1().to_string(), // 错误的地址
+                user2_cert.amount,
+                user2_cert.certificate.clone(),
+            )
+            .unwrap();
+        assert!(!is_whitelisted_wrong_addr, "错误地址不应该通过白名单验证");
+
+        // === 测试 3: 零金额证书 ===
+        println!("=== 测试 3: 零金额证书 ===");
+
+        let zero_amount_cert = user3_certificate_before();
+
+        let zero_voting_power = contract
+            .query_white_balance_of(
+                &app,
+                "2".to_string(),
+                zero_amount_cert.amount,
+                zero_amount_cert.certificate.clone(),
+            )
+            .unwrap();
+        assert_eq!(zero_voting_power, Uint256::zero(), "零金额应该有零投票权重");
+
+        // === 测试 4: 使用无效证书signup应该失败 ===
+        println!("=== 测试 4: 使用无效证书signup ===");
+
+        let test_pubkey = PubKey {
+            x: Uint256::from_u128(123),
+            y: Uint256::from_u128(456),
+        };
+
+        let signup_result = contract.sign_up(
+            &mut app,
+            user1(),
+            test_pubkey.clone(),
+            user1_cert.amount,
+            invalid_certificate.to_string(),
+        );
+
+        assert!(signup_result.is_err());
+        assert_eq!(
+            signup_result
+                .unwrap_err()
+                .downcast::<ContractError>()
+                .unwrap(),
+            ContractError::InvalidSignature {}
+        );
+
+        // === 测试 5: 使用零金额signup应该失败 ===
+        println!("=== 测试 5: 使用零金额signup ===");
+
+        let zero_signup_result = contract.sign_up(
+            &mut app,
+            Addr::unchecked("2"),
+            test_pubkey,
+            zero_amount_cert.amount,
+            zero_amount_cert.certificate,
+        );
+
+        assert!(zero_signup_result.is_err());
+        assert_eq!(
+            zero_signup_result
+                .unwrap_err()
+                .downcast::<ContractError>()
+                .unwrap(),
+            ContractError::AmountIsZero {}
+        );
+
+        println!("=== 无效证书场景测试成功完成！===");
+    }
+
+    /// 测试重复signup防护
+    /// Test duplicate signup prevention
+    // #[test]
+    fn test_duplicate_signup_prevention() {
+        println!("=== 测试重复signup防护 ===");
+
+        let mut app = create_app();
+        let code_id = MaciCodeId::store_code(&mut app);
+
+        let contract = code_id
+            .instantiate_with_no_voting_time(&mut app, owner(), "Test Oracle MACI")
+            .unwrap();
+
+        contract.set_vote_option_map(&mut app, owner()).unwrap();
+        contract.start_voting(&mut app, owner()).unwrap();
+
+        let user1_cert = user1_certificate();
+        let test_pubkey = PubKey {
+            x: uint256_from_decimal_string(
+                "19261766483637676433683538988480264153327639346524015066031846317736952605901",
+            ),
+            y: uint256_from_decimal_string(
+                "9164894066680069675024486726421066026779773976086564343830244889636388008741",
+            ),
+        };
+
+        // 第一次signup应该成功
+        contract
+            .sign_up(
+                &mut app,
+                user1(),
+                test_pubkey.clone(),
+                user1_cert.amount,
+                user1_cert.certificate.clone(),
+            )
+            .unwrap();
+
+        let num_signups_after_first = contract.num_sign_up(&app).unwrap();
+        assert_eq!(num_signups_after_first, Uint256::from_u128(1u128));
+
+        // 同一用户的第二次signup应该失败
+        let duplicate_signup_result = contract.sign_up(
+            &mut app,
+            user1(),
+            test_pubkey,
+            user1_cert.amount,
+            user1_cert.certificate,
+        );
+
+        assert!(duplicate_signup_result.is_err());
+        assert_eq!(
+            duplicate_signup_result
+                .unwrap_err()
+                .downcast::<ContractError>()
+                .unwrap(),
+            ContractError::AlreadySignedUp {}
+        );
+
+        // Signup数量应该保持不变
+        let num_signups_after_duplicate = contract.num_sign_up(&app).unwrap();
+        assert_eq!(num_signups_after_duplicate, Uint256::from_u128(1u128));
+
+        println!("=== 重复signup防护测试成功完成！===");
+    }
+
+    /// 测试不同模式下的投票权重计算
+    /// Test voting power calculation with different modes
+    // #[test]
+    fn test_voting_power_calculation_detailed() {
+        println!("=== 测试投票权重计算 ===");
+
+        let mut app = create_app();
+        let code_id = MaciCodeId::store_code(&mut app);
+
+        let contract = code_id
+            .instantiate_with_no_voting_time(&mut app, owner(), "Test Oracle MACI")
+            .unwrap();
+
+        // 测试不同金额在slope模式下的计算
+        let test_amounts = vec![
+            Uint256::from_u128(2000000u128),   // 2M -> 2 投票权重
+            Uint256::from_u128(5000000u128),   // 5M -> 5 投票权重
+            Uint256::from_u128(10000000u128),  // 10M -> 10 投票权重
+            Uint256::from_u128(100000000u128), // 100M -> 100 投票权重
+        ];
+
+        let user1_cert = user1_certificate();
+
+        for (i, amount) in test_amounts.iter().enumerate() {
+            let voting_power = contract
+                .query_white_balance_of(
+                    &app,
+                    user1().to_string(),
+                    *amount,
+                    user1_cert.certificate.clone(),
+                )
+                .unwrap();
+
+            let expected_power = *amount / Uint256::from_u128(1000000u128); // slope = 1000000
+            assert_eq!(voting_power, expected_power);
+
+            println!("金额: {} -> 投票权重: {}", amount, voting_power);
+        }
+
+        println!("=== 投票权重计算测试成功完成！===");
+    }
+
+    /// 测试白名单配置查询
+    /// Test whitelist configuration queries
+    // #[test]
+    fn test_whitelist_configuration_queries() {
+        println!("=== 测试白名单配置查询 ===");
+
+        let mut app = create_app();
+        let code_id = MaciCodeId::store_code(&mut app);
+
+        let contract = code_id
+            .instantiate_with_no_voting_time(&mut app, owner(), "Test Oracle MACI")
+            .unwrap();
+
+        // 查询oracle白名单配置
+        let oracle_config = contract.query_oracle_whitelist_config(&app).unwrap();
+
+        assert_eq!(oracle_config.ecosystem, whitelist_ecosystem());
+        assert_eq!(oracle_config.snapshot_height, whitelist_snapshot_height());
+        assert_eq!(
+            oracle_config.voting_power_mode,
+            whitelist_voting_power_mode()
+        );
+        assert_eq!(oracle_config.slope, Uint256::from_u128(1000000u128));
+        assert_eq!(oracle_config.threshold, Uint256::from_u128(1000000u128));
+
+        println!("Oracle 白名单配置: {:?}", oracle_config);
+
+        // 查询电路类型和认证系统
+        let circuit_type = contract.query_circuit_type(&app).unwrap();
+        let cert_system = contract.query_cert_system(&app).unwrap();
+
+        assert_eq!(circuit_type, Uint256::zero()); // 1p1v
+        assert_eq!(cert_system, Uint256::zero()); // Groth16
+
+        println!("电路类型: {}", circuit_type);
+        println!("认证系统: {}", cert_system);
+
+        // 查询投票选项映射
+        let vote_options = contract.vote_option_map(&app).unwrap();
+        assert!(!vote_options.is_empty());
+
+        println!("投票选项: {:?}", vote_options);
+
+        // 查询最大投票选项数
+        let max_vote_options = contract.max_vote_options(&app).unwrap();
+        assert!(max_vote_options > Uint256::zero());
+
+        println!("最大投票选项数: {}", max_vote_options);
+
+        println!("=== 白名单配置查询测试成功完成！===");
+    }
+
+    /// 模拟完整用户流程的综合测试
+    /// Comprehensive test simulating the complete user journey
+    // #[test]
+    fn test_complete_user_journey() {
+        println!("=== 测试完整用户流程 ===");
+
+        let mut app = create_app();
+        let code_id = MaciCodeId::store_code(&mut app);
+
+        let contract = code_id
+            .instantiate_with_no_voting_time(&mut app, owner(), "Test Oracle MACI")
+            .unwrap();
+
+        // === 步骤 1: Admin 设置 ===
+        println!("步骤 1: Admin 设置round");
+
+        contract.set_vote_option_map(&mut app, owner()).unwrap();
+        contract.start_voting(&mut app, owner()).unwrap();
+
+        let vote_options = contract.vote_option_map(&app).unwrap();
+        println!("投票选项设置: {:?}", vote_options);
+
+        // === 步骤 2: 用户通过前端请求signup ===
+        println!("步骤 2: 用户通过前端请求signup");
+
+        // 在真实场景中：
+        // 1. 用户向后台API提交邮箱+地址
+        // 2. 后台检查用户是否在白名单数据库中
+        // 3. 如果通过，后台用用户的投票权重签名证书
+        // 4. 前端收到证书并调用合约
+
+        let user1_cert = user1_certificate();
+        let user2_cert = user2_certificate();
+
+        // 模拟后台白名单检查
+        let user1_approved = contract
+            .query_is_whitelist(
+                &app,
+                user1().to_string(),
+                user1_cert.amount,
+                user1_cert.certificate.clone(),
+            )
+            .unwrap();
+
+        let user2_approved = contract
+            .query_is_whitelist(
+                &app,
+                user2().to_string(),
+                user2_cert.amount,
+                user2_cert.certificate.clone(),
+            )
+            .unwrap();
+
+        assert!(user1_approved, "User1 应该被批准");
+        assert!(user2_approved, "User2 应该被批准");
+
+        println!("后台验证完成 - 两个用户都被批准");
+
+        // === 步骤 3: 用户signup到round ===
+        println!("步骤 3: 用户signup到round");
+
+        let user1_pubkey = PubKey {
+            x: uint256_from_decimal_string(
+                "19261766483637676433683538988480264153327639346524015066031846317736952605901",
+            ),
+            y: uint256_from_decimal_string(
+                "9164894066680069675024486726421066026779773976086564343830244889636388008741",
+            ),
+        };
+
+        let user2_pubkey = PubKey {
+            x: uint256_from_decimal_string(
+                "4370899934829278727175080815418983709686064166653529598098826673536142139681",
+            ),
+            y: uint256_from_decimal_string(
+                "9164894066680069675024486726421066026779773976086564343830244889636388008742",
+            ),
+        };
+
+        // 用户signups
+        contract
+            .sign_up(
+                &mut app,
+                user1(),
+                user1_pubkey,
+                user1_cert.amount,
+                user1_cert.certificate,
+            )
+            .unwrap();
+
+        contract
+            .sign_up(
+                &mut app,
+                user2(),
+                user2_pubkey,
+                user2_cert.amount,
+                user2_cert.certificate,
+            )
+            .unwrap();
+
+        let total_signups = contract.num_sign_up(&app).unwrap();
+        assert_eq!(total_signups, Uint256::from_u128(2u128));
+
+        println!("两个用户都成功signup。总signup数: {}", total_signups);
+
+        // === 步骤 4: Operator 设置fee grants ===
+        println!("步骤 4: Operator 为批准的用户设置fee grants");
+
+        let fee_amount = Uint128::from(1000000000000000000u128); // 1 DORA
+
+        // 为两个用户授予费用
+        contract
+            .grant(&mut app, owner(), fee_amount, user1())
+            .unwrap();
+
+        contract
+            .grant(&mut app, owner(), fee_amount, user2())
+            .unwrap();
+
+        // 验证fee grants
+        let user1_grant = contract
+            .query_grant_info(&app, user1().to_string())
+            .unwrap();
+        let user2_grant = contract
+            .query_grant_info(&app, user2().to_string())
+            .unwrap();
+
+        assert!(user1_grant.fee_grant);
+        assert!(user2_grant.fee_grant);
+        assert_eq!(user1_grant.fee_amount, fee_amount);
+        assert_eq!(user2_grant.fee_amount, fee_amount);
+
+        let total_grants = contract.query_total_feegrant(&app).unwrap();
+        assert_eq!(total_grants, fee_amount * Uint128::from(2u128));
+
+        println!("Fee grants 设置成功。总grants: {}", total_grants);
+
+        // === 步骤 5: 验证最终状态 ===
+        println!("步骤 5: 验证最终状态");
+
+        // 检查用户状态
+        let user1_info = contract
+            .query_white_info(&app, user1().to_string())
+            .unwrap();
+        let user2_info = contract
+            .query_white_info(&app, user2().to_string())
+            .unwrap();
+
+        assert!(user1_info.is_register);
+        assert!(user1_info.fee_grant);
+        assert!(user2_info.is_register);
+        assert!(user2_info.fee_grant);
+
+        println!("User1 最终状态: {:?}", user1_info);
+        println!("User2 最终状态: {:?}", user2_info);
+
+        // 此时，用户可以使用授予的费用进行投票
+        // 投票功能将在其他地方单独测试
+
+        println!("=== 完整用户流程测试成功完成！===");
+    }
 }
