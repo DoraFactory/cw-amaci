@@ -14,8 +14,8 @@ pub const ROUNDINFO: Item<RoundInfo> = Item::new("round_info");
 
 #[cw_serde]
 pub struct VotingTime {
-    pub start_time: Option<Timestamp>,
-    pub end_time: Option<Timestamp>,
+    pub start_time: Timestamp,
+    pub end_time: Timestamp,
 }
 
 pub const VOTINGTIME: Item<VotingTime> = Item::new("voting_time");

@@ -5,8 +5,8 @@ use anyhow::Result as AnyResult;
 
 use crate::msg::Groth16VKeyType;
 use crate::state::{
-    GrantConfig, MaciParameters, MessageData, OracleWhitelistConfig, Period, PubKey,
-    QuinaryTreeRoot, RoundInfo, VotingPowerMode, VotingTime, WhitelistConfig,
+    GrantConfig, MessageData, OracleWhitelistConfig, Period, PubKey, QuinaryTreeRoot, RoundInfo,
+    VotingPowerMode, VotingTime, WhitelistConfig,
 };
 use crate::utils::uint256_from_hex_string;
 use crate::{
@@ -87,8 +87,20 @@ impl MaciCodeId {
             description: "".to_string(),
             link: "".to_string(),
         };
+        let voting_time = VotingTime {
+            start_time: Timestamp::from_nanos(1571797424879000000),
+            end_time: Timestamp::from_nanos(1571797429879300000),
+        };
         let circuit_type = Uint256::from_u128(0u128);
-        MaciContract::instantiate(app, self, sender, round_info, None, circuit_type, label)
+        MaciContract::instantiate(
+            app,
+            self,
+            sender,
+            round_info,
+            voting_time,
+            circuit_type,
+            label,
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -104,10 +116,10 @@ impl MaciCodeId {
             link: String::from("https://baidu.com"),
         };
 
-        let voting_time = Some(VotingTime {
-            start_time: Some(Timestamp::from_nanos(1571797424879000000)),
-            end_time: Some(Timestamp::from_nanos(1571797429879300000)),
-        });
+        let voting_time = VotingTime {
+            start_time: Timestamp::from_nanos(1571797424879000000),
+            end_time: Timestamp::from_nanos(1571797429879300000),
+        };
         let circuit_type = Uint256::from_u128(0u128);
         MaciContract::instantiate(
             app,
@@ -133,10 +145,10 @@ impl MaciCodeId {
             link: String::from("https://baidu.com"),
         };
 
-        let voting_time = Some(VotingTime {
-            start_time: Some(Timestamp::from_nanos(1571797424879000000)),
-            end_time: Some(Timestamp::from_nanos(1571797429879300000)),
-        });
+        let voting_time = VotingTime {
+            start_time: Timestamp::from_nanos(1571797424879000000),
+            end_time: Timestamp::from_nanos(1571797429879300000),
+        };
         let circuit_type = Uint256::from_u128(0u128);
         MaciContract::instantiate_plonk(
             app,
@@ -162,10 +174,10 @@ impl MaciCodeId {
             link: String::from("https://baidu.com"),
         };
 
-        let voting_time = Some(VotingTime {
-            start_time: Some(Timestamp::from_nanos(1571797429879300000)),
-            end_time: Some(Timestamp::from_nanos(1571797424879000000)),
-        });
+        let voting_time = VotingTime {
+            start_time: Timestamp::from_nanos(1571797429879300000),
+            end_time: Timestamp::from_nanos(1571797424879000000),
+        };
         let circuit_type = Uint256::from_u128(0u128);
         MaciContract::instantiate(
             app,
@@ -191,10 +203,10 @@ impl MaciCodeId {
             link: String::from("https://baidu.com"),
         };
 
-        let voting_time = Some(VotingTime {
-            start_time: Some(Timestamp::from_nanos(1571797424879000000)),
-            end_time: None,
-        });
+        let voting_time = VotingTime {
+            start_time: Timestamp::from_nanos(1571797424879000000),
+            end_time: Timestamp::from_nanos(1571797429879300000),
+        };
 
         let circuit_type = Uint256::from_u128(0u128);
         MaciContract::instantiate(
@@ -221,10 +233,10 @@ impl MaciCodeId {
             link: String::from("https://baidu.com"),
         };
 
-        let voting_time = Some(VotingTime {
-            start_time: None,
-            end_time: Some(Timestamp::from_nanos(1571797429879300000)),
-        });
+        let voting_time = VotingTime {
+            start_time: Timestamp::from_nanos(1571797424879000000),
+            end_time: Timestamp::from_nanos(1571797429879300000),
+        };
 
         let circuit_type = Uint256::from_u128(0u128);
         MaciContract::instantiate(
@@ -250,10 +262,10 @@ impl MaciCodeId {
             description: String::from("Hack In Brelin"),
             link: String::from("https://baidu.com"),
         };
-        let voting_time = Some(VotingTime {
-            start_time: Some(Timestamp::from_nanos(1571797424879000000)),
-            end_time: Some(Timestamp::from_nanos(1571797429879300000)),
-        });
+        let voting_time = VotingTime {
+            start_time: Timestamp::from_nanos(1571797424879000000),
+            end_time: Timestamp::from_nanos(1571797429879300000),
+        };
 
         let circuit_type = Uint256::from_u128(0u128);
         MaciContract::instantiate(
@@ -279,10 +291,10 @@ impl MaciCodeId {
             description: String::from("Hack In Brelin"),
             link: String::from("https://baidu.com"),
         };
-        let voting_time = Some(VotingTime {
-            start_time: Some(Timestamp::from_nanos(1571797424879000000)),
-            end_time: Some(Timestamp::from_nanos(1571797429879300000)),
-        });
+        let voting_time = VotingTime {
+            start_time: Timestamp::from_nanos(1571797424879000000),
+            end_time: Timestamp::from_nanos(1571797429879300000),
+        };
         let circuit_type = Uint256::from_u128(1u128);
         MaciContract::instantiate(
             app,
@@ -307,10 +319,10 @@ impl MaciCodeId {
             description: String::from("Hack In Brelin"),
             link: String::from("https://baidu.com"),
         };
-        let voting_time = Some(VotingTime {
-            start_time: Some(Timestamp::from_nanos(1571797424879000000)),
-            end_time: Some(Timestamp::from_nanos(1571797429879300000)),
-        });
+        let voting_time = VotingTime {
+            start_time: Timestamp::from_nanos(1571797424879000000),
+            end_time: Timestamp::from_nanos(1571797429879300000),
+        };
         let circuit_type = Uint256::from_u128(2u128);
         MaciContract::instantiate(
             app,
@@ -346,7 +358,7 @@ impl MaciContract {
         code_id: MaciCodeId,
         sender: Addr,
         round_info: RoundInfo,
-        voting_time: Option<VotingTime>,
+        voting_time: VotingTime,
         circuit_type: Uint256,
         label: &str,
     ) -> AnyResult<Self> {
@@ -359,7 +371,6 @@ impl MaciContract {
                     "4363822302427519764561660537570341277214758164895027920046745209970137856681",
                 ),
             },
-            certification_system: Uint256::from_u128(0u128),
             max_voters: 25, // Use 2-1-1-5 scale, supports up to 25 voters
             vote_option_map: vec![
                 "1".to_string(),
@@ -371,6 +382,7 @@ impl MaciContract {
             round_info,
             voting_time,
             circuit_type,
+            certification_system: Uint256::from_u128(0u128),
             whitelist_backend_pubkey: whitelist_pubkey(),
             whitelist_ecosystem: whitelist_ecosystem(),
             whitelist_snapshot_height: whitelist_snapshot_height(),
@@ -400,16 +412,10 @@ impl MaciContract {
         code_id: MaciCodeId,
         sender: Addr,
         round_info: RoundInfo,
-        voting_time: Option<VotingTime>,
+        voting_time: VotingTime,
         circuit_type: Uint256,
         label: &str,
     ) -> AnyResult<Self> {
-        let parameters = MaciParameters {
-            state_tree_depth: Uint256::from_u128(2u128),
-            int_state_tree_depth: Uint256::from_u128(1u128),
-            message_batch_size: Uint256::from_u128(5u128),
-            vote_option_tree_depth: Uint256::from_u128(1u128),
-        };
         let init_msg = InstantiateMsg {
             coordinator: PubKey {
                 x: uint256_from_decimal_string(
@@ -419,7 +425,6 @@ impl MaciContract {
                     "4363822302427519764561660537570341277214758164895027920046745209970137856681",
                 ),
             },
-            certification_system: Uint256::from_u128(1u128), // plonk system
             max_voters: 25, // Use 2-1-1-5 scale, supports up to 25 voters
             vote_option_map: vec![
                 "1".to_string(),
@@ -431,6 +436,7 @@ impl MaciContract {
             round_info,
             voting_time,
             circuit_type,
+            certification_system: Uint256::from_u128(1u128), // plonk system
             whitelist_backend_pubkey: whitelist_pubkey(),
             whitelist_ecosystem: whitelist_ecosystem(),
             whitelist_snapshot_height: whitelist_snapshot_height(),
@@ -577,23 +583,6 @@ impl MaciContract {
             sender,
             self.addr(),
             &ExecuteMsg::SetVoteOptionsMap { vote_option_map },
-            &[],
-        )
-    }
-
-    #[track_caller]
-    pub fn start_voting(&self, app: &mut App, sender: Addr) -> AnyResult<AppResponse> {
-        app.execute_contract(sender, self.addr(), &ExecuteMsg::StartVotingPeriod {}, &[])
-    }
-
-    #[track_caller]
-    pub fn stop_voting(&self, app: &mut App, sender: Addr) -> AnyResult<AppResponse> {
-        app.execute_contract(
-            sender,
-            self.addr(),
-            &ExecuteMsg::StopVotingPeriod {
-                // max_vote_options: Uint256::from_u128(5u128),
-            },
             &[],
         )
     }

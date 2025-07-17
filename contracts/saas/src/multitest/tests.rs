@@ -333,7 +333,14 @@ fn test_create_oracle_maci_round_success() {
     let result = app.execute_contract(operator1(), contract.addr(), &create_msg, &[]);
 
     // Oracle MACI creation should succeed
-    assert!(result.is_ok(), "Oracle MACI round creation should succeed");
+    if let Err(e) = &result {
+        println!("Error creating Oracle MACI round: {:?}", e);
+    }
+    assert!(
+        result.is_ok(),
+        "Oracle MACI round creation should succeed: {:?}",
+        result.err()
+    );
 
     let response = result.unwrap();
 
@@ -578,9 +585,13 @@ fn test_oracle_maci_round_management() {
     };
 
     let create_result = app.execute_contract(operator1(), contract.addr(), &create_msg, &[]);
+    if let Err(e) = &create_result {
+        println!("Error creating Oracle MACI round: {:?}", e);
+    }
     assert!(
         create_result.is_ok(),
-        "Oracle MACI round creation should succeed"
+        "Oracle MACI round creation should succeed: {:?}",
+        create_result.err()
     );
 
     // Get the created contract address from events
@@ -610,9 +621,13 @@ fn test_oracle_maci_round_management() {
     }
 
     let create_result_again = app.execute_contract(operator1(), contract.addr(), &create_msg, &[]);
+    if let Err(e) = &create_result_again {
+        println!("Error creating Oracle MACI round again: {:?}", e);
+    }
     assert!(
         create_result_again.is_ok(),
-        "Oracle MACI round creation should succeed"
+        "Oracle MACI round creation should succeed: {:?}",
+        create_result_again.err()
     );
 
     // Get the created contract address from events

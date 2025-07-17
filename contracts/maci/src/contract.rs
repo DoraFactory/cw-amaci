@@ -765,7 +765,7 @@ pub fn execute_stop_voting_period(
 pub fn execute_start_process_period(
     deps: DepsMut,
     env: Env,
-    info: MessageInfo,
+    _info: MessageInfo,
 ) -> Result<Response, ContractError> {
     let period = PERIOD.load(deps.storage)?;
     let voting_time = VOTINGTIME.may_load(deps.storage)?;
@@ -1007,7 +1007,7 @@ pub fn execute_process_message(
 pub fn execute_stop_processing_period(
     deps: DepsMut,
     _env: Env,
-    info: MessageInfo,
+    _info: MessageInfo,
 ) -> Result<Response, ContractError> {
     let period = PERIOD.load(deps.storage)?;
     // Check if the period status is Processing

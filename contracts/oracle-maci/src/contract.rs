@@ -1,7 +1,9 @@
 use crate::circuit_params::{calculate_circuit_params, match_oracle_vkeys};
 use crate::error::ContractError;
 use crate::groth16_parser::{parse_groth16_proof, parse_groth16_vkey};
-use crate::msg::{ExecuteMsg, Groth16ProofType, InstantiateMsg, PlonkProofType, QueryMsg};
+use crate::msg::{
+    ExecuteMsg, Groth16ProofType, InstantiateMsg, InstantiationData, PlonkProofType, QueryMsg,
+};
 use crate::plonk_parser::{parse_plonk_proof, parse_plonk_vkey};
 use crate::state::{
     Admin, FeeGrantOperator, GrantConfig, Groth16ProofStr, MessageData, OracleWhitelistConfig,
@@ -35,7 +37,7 @@ use prost_types::Timestamp as SdkTimestamp;
 
 use cosmwasm_std::{
     attr, coins, to_json_binary, Addr, BankMsg, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
-    Reply, Response, StdError, StdResult, Uint128, Uint256,
+    Reply, Response, StdResult, Uint128, Uint256,
 };
 
 use crate::utils::{hash2, hash5, hash_256_uint256_list, uint256_from_hex_string};
@@ -100,8 +102,25 @@ pub fn instantiate(
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
+    // Clone necessary data for InstantiationData at the beginning
+    let caller = info.sender.clone();
+    let coordinator = msg.coordinator.clone();
+    let max_voters = msg.max_voters;
+    let vote_option_map = msg.vote_option_map.clone();
+    let round_info = msg.round_info.clone();
+    let voting_time = msg.voting_time.clone();
+    let circuit_type = msg.circuit_type;
+    let certification_system = msg.certification_system;
+    let whitelist_backend_pubkey = msg.whitelist_backend_pubkey.clone();
+    let whitelist_ecosystem = msg.whitelist_ecosystem.clone();
+    let whitelist_snapshot_height = msg.whitelist_snapshot_height;
+    let whitelist_voting_power_args = msg.whitelist_voting_power_args.clone();
+    let feegrant_operator = msg.feegrant_operator.clone();
+
     // Create an admin with the sender address
-    let admin = Admin { admin: info.sender };
+    let admin = Admin {
+        admin: info.sender.clone(),
+    };
     ADMIN.save(deps.storage, &admin)?;
 
     // Calculate appropriate circuit parameters based on max_voters and max_vote_options
@@ -248,28 +267,20 @@ pub fn instantiate(
 
     FEEGRANTS.save(deps.storage, &Uint128::from(0u128))?;
 
-    match msg.voting_time {
-        Some(content) => {
-            if let (Some(start_time), Some(end_time)) = (content.start_time, content.end_time) {
-                if start_time >= end_time {
-                    return Err(ContractError::WrongTimeSet {});
-                }
-
-                VOTINGTIME.save(deps.storage, &content)?;
-            } else {
-                VOTINGTIME.save(deps.storage, &content)?;
-            }
-        }
-        None => {}
+    // Validate voting time
+    if msg.voting_time.start_time >= msg.voting_time.end_time {
+        return Err(ContractError::WrongTimeSet {});
     }
+
+    VOTINGTIME.save(deps.storage, &msg.voting_time)?;
     let whitelist_backend_pubkey_binary = Binary::from_base64(&msg.whitelist_backend_pubkey)
         .map_err(|_| ContractError::InvalidBase64 {})?;
 
     let oracle_whitelist_config = OracleWhitelistConfig {
         backend_pubkey: whitelist_backend_pubkey_binary,
-        ecosystem: msg.whitelist_ecosystem,
+        ecosystem: msg.whitelist_ecosystem.clone(),
         snapshot_height: msg.whitelist_snapshot_height,
-        voting_power_mode: msg.whitelist_voting_power_args.mode,
+        voting_power_mode: msg.whitelist_voting_power_args.mode.clone(),
         slope: msg.whitelist_voting_power_args.slope,
         threshold: msg.whitelist_voting_power_args.threshold,
     };
@@ -277,7 +288,7 @@ pub fn instantiate(
     FEEGRANTOPERATOR.save(
         deps.storage,
         &FeeGrantOperator {
-            operator: msg.feegrant_operator,
+            operator: msg.feegrant_operator.clone(),
         },
     )?;
 
@@ -288,6 +299,32 @@ pub fn instantiate(
 
     // Save the initial period to storage
     PERIOD.save(deps.storage, &period)?;
+
+    // Create InstantiationData for SaaS contract to use in reply
+    let instantiation_data = InstantiationData {
+        caller,
+        parameters: parameters.clone(),
+        coordinator,
+        max_voters,
+        vote_option_map,
+        round_info,
+        voting_time,
+        circuit_type: if circuit_type == Uint256::from_u128(0u128) {
+            "0".to_string() // 1p1v
+        } else {
+            "1".to_string() // qv
+        },
+        certification_system: if certification_system == Uint256::from_u128(0u128) {
+            "groth16".to_string()
+        } else {
+            "plonk".to_string()
+        },
+        whitelist_backend_pubkey,
+        whitelist_ecosystem,
+        whitelist_snapshot_height,
+        whitelist_voting_power_args,
+        feegrant_operator,
+    };
 
     Ok(Response::default()
         .add_attribute("action", "instantiate")
@@ -303,7 +340,8 @@ pub fn instantiate(
         .add_attribute(
             "message_batch_size",
             parameters.message_batch_size.to_string(),
-        ))
+        )
+        .set_data(to_json_binary(&instantiation_data)?))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -320,13 +358,11 @@ pub fn execute(
         ExecuteMsg::SetVoteOptionsMap { vote_option_map } => {
             execute_set_vote_options_map(deps, env, info, vote_option_map)
         }
-        ExecuteMsg::StartVotingPeriod {} => execute_start_voting_period(deps, env, info),
         ExecuteMsg::SignUp {
             pubkey,
             amount,
             certificate,
         } => execute_sign_up(deps, env, info, pubkey, amount, certificate),
-        ExecuteMsg::StopVotingPeriod {} => execute_stop_voting_period(deps, env, info),
         ExecuteMsg::PublishMessage {
             message,
             enc_pub_key,
@@ -370,82 +406,6 @@ pub fn execute(
     }
 }
 
-pub fn execute_start_voting_period(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-) -> Result<Response, ContractError> {
-    let period = PERIOD.load(deps.storage)?;
-
-    if VOTINGTIME.exists(deps.storage) {
-        let voting_time = VOTINGTIME.load(deps.storage)?;
-
-        if let Some(_) = voting_time.start_time {
-            // if start_time exist，admin can't start round with this command.
-            return Err(ContractError::AlreadySetVotingTime {
-                time_name: String::from("start_time"),
-            });
-        } else {
-            // if start_time isn't exist，admin need start round with this command. (in Pending period can execute)
-            if period.status != PeriodStatus::Pending {
-                return Err(ContractError::PeriodError {});
-            }
-        }
-
-        if let Some(end_time) = voting_time.end_time {
-            if env.block.time >= end_time {
-                // If the end time is set,
-                // I need to determine if the current time is before the end time,
-                // if it is greater than the end time, it means it is no longer a voting session.
-                return Err(ContractError::PeriodError {});
-            }
-        } else {
-            if period.status != PeriodStatus::Pending {
-                // If I don't set an end time, I need to determine the current period.
-                return Err(ContractError::PeriodError {});
-            }
-        }
-    } else {
-        // Check if the period status is Voting
-        if period.status != PeriodStatus::Pending {
-            return Err(ContractError::PeriodError {});
-        }
-    }
-    // Check if the sender is authorized to execute the function
-    if !can_execute(deps.as_ref(), info.sender.as_ref())? {
-        Err(ContractError::Unauthorized {})
-    } else {
-        // Update the period status to Processing
-        let period = Period {
-            status: PeriodStatus::Voting,
-        };
-        PERIOD.save(deps.storage, &period)?;
-        let start_time = env.block.time;
-        // let voting_time = VOTINGTIME.may_load(deps.storage)?;
-        match VOTINGTIME.may_load(deps.storage)? {
-            Some(time) => {
-                let votingtime = VotingTime {
-                    start_time: Some(start_time),
-                    end_time: time.end_time,
-                };
-                VOTINGTIME.save(deps.storage, &votingtime)?;
-            }
-            None => {
-                let votingtime = VotingTime {
-                    start_time: Some(start_time),
-                    end_time: None,
-                };
-                VOTINGTIME.save(deps.storage, &votingtime)?;
-            }
-        }
-
-        // Return a success response
-        Ok(Response::new()
-            .add_attribute("action", "start_voting_period")
-            .add_attribute("start_time", start_time.nanos().to_string()))
-    }
-}
-
 pub fn execute_set_round_info(
     deps: DepsMut,
     _env: Env,
@@ -485,22 +445,21 @@ pub fn execute_set_vote_options_map(
 ) -> Result<Response, ContractError> {
     let period = PERIOD.load(deps.storage)?;
 
-    if VOTINGTIME.exists(deps.storage) {
-        let voting_time = VOTINGTIME.load(deps.storage)?;
-
-        if let Some(start_time) = voting_time.start_time {
-            if env.block.time >= start_time {
-                return Err(ContractError::PeriodError {});
-            }
-        } else {
-            return Err(ContractError::PeriodError {});
-        }
-    } else {
-        // Check if the period status is Pending
-        if period.status != PeriodStatus::Pending {
-            return Err(ContractError::PeriodError {});
-        }
+    if period.status != PeriodStatus::Pending {
+        return Err(ContractError::PeriodError {});
     }
+
+    let voting_time: VotingTime = VOTINGTIME.load(deps.storage)?;
+
+    if env.block.time >= voting_time.start_time {
+        return Err(ContractError::PeriodError {});
+    }
+    // } else {
+    //     // Check if the period status is Pending
+    //     if period.status != PeriodStatus::Pending {
+    //         return Err(ContractError::PeriodError {});
+    //     }
+    // }
 
     if !can_execute(deps.as_ref(), info.sender.as_ref())? {
         Err(ContractError::Unauthorized {})
@@ -535,13 +494,8 @@ pub fn execute_sign_up(
     amount: Uint256,
     certificate: String,
 ) -> Result<Response, ContractError> {
-    let period = PERIOD.load(deps.storage)?;
-    if VOTINGTIME.exists(deps.storage) {
-        let voting_time = VOTINGTIME.load(deps.storage)?;
-        check_voting_time(env, Some(voting_time), period.status)?;
-    } else {
-        check_voting_time(env, None, period.status)?;
-    }
+    let voting_time = VOTINGTIME.load(deps.storage)?;
+    check_voting_time(env.clone(), voting_time)?;
 
     if amount == Uint256::from_u128(0u128) {
         return Err(ContractError::AmountIsZero {});
@@ -552,6 +506,7 @@ pub fn execute_sign_up(
     let whitelist_ecosystem = oracle_whitelist_config.ecosystem;
     let whitelist_backend_pubkey = oracle_whitelist_config.backend_pubkey;
     let payload = serde_json::json!({
+        // "contract_address": env.contract.address.to_string(),
         "address": info.sender.to_string(),
         "amount": amount.to_string(),
         "height": whitelist_snapshot_height.to_string(),
@@ -663,14 +618,8 @@ pub fn execute_publish_message(
     message: MessageData,
     enc_pub_key: PubKey,
 ) -> Result<Response, ContractError> {
-    let period = PERIOD.load(deps.storage)?;
-    // Check if the period status is Voting
-    if VOTINGTIME.exists(deps.storage) {
-        let voting_time = VOTINGTIME.load(deps.storage)?;
-        check_voting_time(env, Some(voting_time), period.status)?;
-    } else {
-        check_voting_time(env, None, period.status)?;
-    }
+    let voting_time = VOTINGTIME.load(deps.storage)?;
+    check_voting_time(env, voting_time)?;
 
     // Load the scalar field value (optimization: use cached values)
     let snark_scalar_field = get_snark_scalar_field();
@@ -721,93 +670,29 @@ pub fn execute_publish_message(
     }
 }
 
-pub fn execute_stop_voting_period(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    // max_vote_options: Uint256,
-) -> Result<Response, ContractError> {
-    let period = PERIOD.load(deps.storage)?;
-
-    if VOTINGTIME.exists(deps.storage) {
-        let voting_time = VOTINGTIME.load(deps.storage)?;
-
-        // if let Some(start_time) = voting_time.start_time {
-        if let Some(_) = voting_time.end_time {
-            return Err(ContractError::AlreadySetVotingTime {
-                time_name: String::from("end_time"),
-            });
-        }
-
-        if let Some(start_time) = voting_time.start_time {
-            if env.block.time <= start_time {
-                return Err(ContractError::PeriodError {});
-            }
-        }
-    } else {
-        // Check if the period status is Voting
-        if period.status != PeriodStatus::Voting {
-            return Err(ContractError::PeriodError {});
-        }
-    }
-    // Check if the sender is authorized to execute the function
-    if !can_execute(deps.as_ref(), info.sender.as_ref())? {
-        Err(ContractError::Unauthorized {})
-    } else {
-        let end_time = env.block.time;
-        match VOTINGTIME.may_load(deps.storage)? {
-            Some(time) => {
-                let votingtime = VotingTime {
-                    start_time: time.start_time,
-                    end_time: Some(end_time),
-                };
-                VOTINGTIME.save(deps.storage, &votingtime)?;
-            }
-            None => {}
-        }
-
-        // let leaf_idx_0 = LEAF_IDX_0.load(deps.storage)?;
-        // let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
-
-        // let _ = state_update_at(
-        //     &mut deps,
-        //     leaf_idx_0 + num_sign_ups - Uint256::from_u128(1u128),
-        //     true,
-        // );
-
-        // Return a success response
-        Ok(Response::new()
-            .add_attribute("action", "stop_voting_period")
-            .add_attribute("end_time", end_time.nanos().to_string()))
-    }
-}
-
 pub fn execute_start_process_period(
     mut deps: DepsMut,
     env: Env,
     _info: MessageInfo,
 ) -> Result<Response, ContractError> {
     let period = PERIOD.load(deps.storage)?;
-    let voting_time = VOTINGTIME.may_load(deps.storage)?;
 
-    if let Some(voting_time) = voting_time {
-        if let Some(end_time) = voting_time.end_time {
-            if env.block.time <= end_time {
-                return Err(ContractError::PeriodError {});
-            } else {
-                if period.status == PeriodStatus::Ended
-                    || period.status == PeriodStatus::Processing
-                    || period.status == PeriodStatus::Tallying
-                {
-                    return Err(ContractError::PeriodError {});
-                }
-            }
-        } else {
-            return Err(ContractError::PeriodError {});
-        }
-    } else {
+    if period.status == PeriodStatus::Ended
+        || period.status == PeriodStatus::Processing
+        || period.status == PeriodStatus::Tallying
+    {
         return Err(ContractError::PeriodError {});
     }
+
+    let voting_time: VotingTime = VOTINGTIME.load(deps.storage)?;
+
+    // if let Some(voting_time) = voting_time {
+    if env.block.time <= voting_time.end_time {
+        return Err(ContractError::PeriodError {});
+    }
+    // } else {
+    //     return Err(ContractError::PeriodError {});
+    // }
 
     let leaf_idx_0 = LEAF_IDX_0.load(deps.storage)?;
     let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
@@ -1360,13 +1245,8 @@ fn execute_grant(
         return Err(ContractError::Unauthorized {});
     }
 
-    let period = PERIOD.load(deps.storage)?;
-    if VOTINGTIME.exists(deps.storage) {
-        let voting_time = VOTINGTIME.load(deps.storage)?;
-        check_voting_time(env.clone(), Some(voting_time), period.status)?;
-    } else {
-        check_voting_time(env.clone(), None, period.status)?;
-    }
+    let voting_time = VOTINGTIME.load(deps.storage)?;
+    check_voting_time(env.clone(), voting_time)?;
 
     // if FEEGRANTS.exists(deps.storage) {
     //     return Err(ContractError::FeeGrantAlreadyExists {});
@@ -1389,18 +1269,20 @@ fn execute_grant(
 
     // let base_amount = max_amount / Uint128::from(whitelist.users.len() as u128);
 
-    let mut expiration_time: Option<SdkTimestamp> = None;
+    // let mut expiration_time: Option<SdkTimestamp> = None;
 
-    let voting_time = VOTINGTIME.may_load(deps.storage)?;
+    let voting_time: VotingTime = VOTINGTIME.load(deps.storage)?;
 
-    if let Some(voting_time) = voting_time {
-        if let Some(end_time) = voting_time.end_time {
-            expiration_time = Some(SdkTimestamp {
-                seconds: end_time.seconds() as i64,
-                nanos: 0,
-            })
-        }
-    }
+    // if let Some(voting_time) = voting_time {
+    //     expiration_time = Some(SdkTimestamp {
+    //         seconds: voting_time.end_time.seconds() as i64,
+    //         nanos: 0,
+    //     })
+    // }
+    let expiration_time = Some(SdkTimestamp {
+        seconds: voting_time.end_time.seconds() as i64,
+        nanos: 0,
+    });
 
     let allowance = BasicAllowance {
         spend_limit: vec![SdkCoin {
@@ -1502,7 +1384,7 @@ fn execute_revoke(
     ]))
 }
 
-fn execute_bond(deps: DepsMut, _env: Env, info: MessageInfo) -> Result<Response, ContractError> {
+fn execute_bond(_deps: DepsMut, _env: Env, info: MessageInfo) -> Result<Response, ContractError> {
     // if !can_execute(deps.as_ref(), info.sender.as_ref())? {
     //     return Err(ContractError::Unauthorized {});
     // }
@@ -1524,7 +1406,7 @@ fn execute_bond(deps: DepsMut, _env: Env, info: MessageInfo) -> Result<Response,
 fn execute_withdraw(
     deps: DepsMut,
     env: Env,
-    info: MessageInfo,
+    _info: MessageInfo,
     amount: Option<Uint128>,
 ) -> Result<Response, ContractError> {
     // Check if the round has ended - anyone can call withdraw but only when round is ended
@@ -1731,31 +1613,12 @@ fn calculate_voting_power(amount: Uint256, config: &VotingPowerConfig) -> Uint25
     }
 }
 
-fn check_voting_time(
-    env: Env,
-    voting_time: Option<VotingTime>,
-    period_status: PeriodStatus,
-) -> Result<(), ContractError> {
-    match voting_time {
-        Some(vt) => {
-            if let Some(start_time) = vt.start_time {
-                if env.block.time <= start_time {
-                    return Err(ContractError::PeriodError {});
-                }
-                if let Some(end_time) = vt.end_time {
-                    if env.block.time >= end_time {
-                        return Err(ContractError::PeriodError {});
-                    }
-                }
-            } else {
-                return Err(ContractError::PeriodError {});
-            }
-        }
-        None => {
-            if period_status != PeriodStatus::Voting {
-                return Err(ContractError::PeriodError {});
-            }
-        }
+fn check_voting_time(env: Env, voting_time: VotingTime) -> Result<(), ContractError> {
+    if env.block.time < voting_time.start_time {
+        return Err(ContractError::PeriodError {});
+    }
+    if env.block.time >= voting_time.end_time {
+        return Err(ContractError::PeriodError {});
     }
 
     Ok(())

@@ -1,6 +1,6 @@
 use crate::state::{
-    GrantConfig, MessageData, OracleWhitelistConfig, PeriodStatus, PubKey, RoundInfo,
-    VotingPowerMode, VotingTime, WhitelistConfig,
+    GrantConfig, MaciParameters, MessageData, OracleWhitelistConfig, PeriodStatus, PubKey,
+    RoundInfo, VotingPowerMode, VotingTime, WhitelistConfig,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128, Uint256};
@@ -25,7 +25,6 @@ pub struct VotingPowerArgs {
 
 #[cw_serde]
 pub struct InstantiateMsg {
-    // pub parameters: MaciParameters,
     pub coordinator: PubKey,
     // pub qtr_lib: QuinaryTreeRoot,
     pub max_voters: u128, // Maximum number of voters, used for calculating circuit scale
@@ -33,7 +32,7 @@ pub struct InstantiateMsg {
     pub vote_option_map: Vec<String>,
 
     pub round_info: RoundInfo,
-    pub voting_time: Option<VotingTime>,
+    pub voting_time: VotingTime,
     pub circuit_type: Uint256,         // <0: 1p1v | 1: pv>
     pub certification_system: Uint256, // <0: groth16 | 1: plonk>
 
@@ -102,14 +101,12 @@ pub enum ExecuteMsg {
     SetVoteOptionsMap {
         vote_option_map: Vec<String>,
     },
-    StartVotingPeriod {},
     SignUp {
         pubkey: PubKey, // user's pubkey
         amount: Uint256,
         certificate: String,
     },
     StartProcessPeriod {},
-    StopVotingPeriod {},
     PublishMessage {
         message: MessageData,
         enc_pub_key: PubKey,
@@ -226,4 +223,22 @@ pub enum QueryMsg {
 
     #[returns(OracleWhitelistConfig)]
     QueryOracleWhitelistConfig {},
+}
+
+#[cw_serde]
+pub struct InstantiationData {
+    pub caller: Addr,
+    pub parameters: MaciParameters,
+    pub coordinator: PubKey,
+    pub max_voters: u128,
+    pub vote_option_map: Vec<String>,
+    pub round_info: RoundInfo,
+    pub voting_time: VotingTime,
+    pub circuit_type: String,
+    pub certification_system: String,
+    pub whitelist_backend_pubkey: String,
+    pub whitelist_ecosystem: String,
+    pub whitelist_snapshot_height: Uint256,
+    pub whitelist_voting_power_args: VotingPowerArgs,
+    pub feegrant_operator: Addr,
 }

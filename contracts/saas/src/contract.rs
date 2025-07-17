@@ -1,9 +1,9 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    attr, coins, to_json_binary, Addr, BankMsg, Binary, Coin, Deps, DepsMut, Env, MessageInfo,
-    Order, Reply, Response, StdError, StdResult, SubMsg, SubMsgResponse, Timestamp, Uint128,
-    Uint256, WasmMsg,
+    attr, coins, from_json, to_json_binary, Addr, BankMsg, Binary, Coin, Deps, DepsMut, Env,
+    MessageInfo, Order, Reply, Response, StdError, StdResult, SubMsg, SubMsgResponse, Timestamp,
+    Uint128, Uint256, WasmMsg,
 };
 use cw2::set_contract_version;
 use cw_storage_plus::Bound;
@@ -11,7 +11,10 @@ use cw_utils::{may_pay, parse_instantiate_response_data};
 
 // External contract types with aliases to avoid path conflicts
 use cw_amaci::state::RoundInfo;
-use cw_oracle_maci::msg::{InstantiateMsg as OracleMaciInstantiateMsg, VotingPowerArgs};
+use cw_oracle_maci::msg::{
+    InstantiateMsg as OracleMaciInstantiateMsg, InstantiationData as OracleMaciInstantiationData,
+    VotingPowerArgs,
+};
 use cw_oracle_maci::state::{
     PubKey as OracleMaciPubKey, RoundInfo as OracleMaciRoundInfo, VotingPowerMode,
     VotingTime as OracleMaciVotingTime,
@@ -197,7 +200,7 @@ pub fn execute_add_operator(
 
 pub fn execute_remove_operator(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
     operator: Addr,
 ) -> Result<Response, ContractError> {
@@ -222,7 +225,7 @@ pub fn execute_remove_operator(
 
 pub fn execute_deposit(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
@@ -247,7 +250,7 @@ pub fn execute_deposit(
 
 pub fn execute_withdraw(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
     amount: Uint128,
     recipient: Option<Addr>,
@@ -402,8 +405,6 @@ pub fn execute_create_oracle_maci_round(
     certification_system: Uint256,
     whitelist_backend_pubkey: String,
 ) -> Result<Response, ContractError> {
-    let config = CONFIG.load(deps.storage)?;
-
     // Only operators can create Oracle MACI rounds
     if !OPERATORS.has(deps.storage, &info.sender) {
         return Err(ContractError::Unauthorized {});
@@ -432,10 +433,10 @@ pub fn execute_create_oracle_maci_round(
     TOTAL_BALANCE.save(deps.storage, &new_balance)?;
 
     // Create Oracle MACI VotingTime using provided start_time and end_time
-    let oracle_voting_time = Some(OracleMaciVotingTime {
-        start_time: Some(start_time),
-        end_time: Some(end_time),
-    });
+    let oracle_voting_time = OracleMaciVotingTime {
+        start_time: start_time,
+        end_time: end_time,
+    };
 
     // Create Oracle MACI InstantiateMsg using proper Oracle MACI types (like registry does with AMACI)
     let oracle_maci_instantiate_msg = OracleMaciInstantiateMsg {
@@ -514,7 +515,7 @@ pub fn execute_create_oracle_maci_round(
 
 pub fn execute_execute_contract(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
     contract_addr: String,
     msg: Binary,
@@ -566,7 +567,7 @@ pub fn execute_execute_contract(
 
 pub fn execute_set_oracle_maci_round_info(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
     contract_addr: String,
     round_info: RoundInfo,
@@ -607,7 +608,7 @@ pub fn execute_set_oracle_maci_round_info(
 
 pub fn execute_set_oracle_maci_vote_option_map(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
     contract_addr: String,
     vote_option_map: Vec<String>,
@@ -644,7 +645,7 @@ pub fn execute_set_oracle_maci_vote_option_map(
 
 pub fn execute_grant_oracle_maci_feegrant(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
     contract_addr: String,
     grantee: Addr,
@@ -809,19 +810,27 @@ fn reply_created_oracle_maci_round(
 ) -> Result<Response, ContractError> {
     // 解析SubMsg响应
     let response = result.map_err(StdError::generic_err)?;
+
+    // 使用和registry相同的方式解析响应数据
     let data = response
         .data
         .ok_or(ContractError::Std(StdError::generic_err(
-            "No data in response",
+            "Data missing from response",
         )))?;
+    let parsed_response = match parse_instantiate_response_data(&data) {
+        Ok(data) => data,
+        Err(err) => {
+            return Err(ContractError::Std(StdError::generic_err(format!(
+                "Failed to parse instantiate response: {}",
+                err
+            ))))
+        }
+    };
 
-    // 使用CosmWasm标准函数解析实例化响应数据以获取合约地址
-    let instantiate_response = parse_instantiate_response_data(&data)
-        .map_err(|err| ContractError::Std(StdError::generic_err(err.to_string())))?;
+    let contract_address = Addr::unchecked(parsed_response.contract_address.clone());
 
-    let contract_address = deps
-        .api
-        .addr_validate(&instantiate_response.contract_address)?;
+    let oracle_maci_return_data: OracleMaciInstantiationData =
+        from_json(&parsed_response.data.unwrap())?;
 
     // 获取当前的MACI合约计数器
     let maci_counter = MACI_CONTRACT_COUNTER.load(deps.storage)?;
@@ -831,23 +840,115 @@ fn reply_created_oracle_maci_round(
     maci_contract_info.contract_address = contract_address.clone();
     MACI_CONTRACTS.save(deps.storage, maci_counter, &maci_contract_info)?;
 
-    // 准备返回数据
-    let data = InstantiationData {
+    // 准备返回数据 - 现在包含完整的oracle maci实例化数据
+    let saas_instantiation_data = InstantiationData {
         addr: contract_address.clone(),
     };
 
+    let mut response_attrs = vec![
+        attr("action", "created_oracle_maci_round"),
+        attr("round_addr", &contract_address.to_string()),
+        attr("caller", &oracle_maci_return_data.caller.to_string()),
+        attr("admin", &oracle_maci_return_data.caller.to_string()),
+        attr("operator", &oracle_maci_return_data.caller.to_string()),
+        attr("maci_counter", maci_counter.to_string()),
+    ];
+
+    // 如果成功解析了Oracle MACI的实例化数据，添加更多详细信息
+    // if let Some(ref oracle_maci_data) = oracle_maci_instantiation_data {
+    response_attrs.extend(vec![
+        attr(
+            "voting_start",
+            &oracle_maci_return_data
+                .voting_time
+                .start_time
+                .nanos()
+                .to_string(),
+        ),
+        attr(
+            "voting_end",
+            &oracle_maci_return_data
+                .voting_time
+                .end_time
+                .nanos()
+                .to_string(),
+        ),
+        attr(
+            "round_title",
+            &oracle_maci_return_data.round_info.title.to_string(),
+        ),
+        attr("max_voters", oracle_maci_return_data.max_voters.to_string()),
+        attr(
+            "vote_option_map",
+            format!("{:?}", oracle_maci_return_data.vote_option_map),
+        ),
+        attr("circuit_type", &oracle_maci_return_data.circuit_type),
+        attr(
+            "certification_system",
+            &oracle_maci_return_data.certification_system,
+        ),
+        attr(
+            "coordinator_pubkey_x",
+            oracle_maci_return_data.coordinator.x.to_string(),
+        ),
+        attr(
+            "coordinator_pubkey_y",
+            oracle_maci_return_data.coordinator.y.to_string(),
+        ),
+        attr(
+            "state_tree_depth",
+            oracle_maci_return_data
+                .parameters
+                .state_tree_depth
+                .to_string(),
+        ),
+        attr(
+            "int_state_tree_depth",
+            &oracle_maci_return_data
+                .parameters
+                .int_state_tree_depth
+                .to_string(),
+        ),
+        attr(
+            "vote_option_tree_depth",
+            oracle_maci_return_data
+                .parameters
+                .vote_option_tree_depth
+                .to_string(),
+        ),
+        attr(
+            "message_batch_size",
+            &oracle_maci_return_data
+                .parameters
+                .message_batch_size
+                .to_string(),
+        ),
+    ]);
+
+    if oracle_maci_return_data.round_info.description != "" {
+        response_attrs.push(attr(
+            "round_description",
+            &oracle_maci_return_data.round_info.description,
+        ));
+    }
+
+    if oracle_maci_return_data.round_info.link != "" {
+        response_attrs.push(attr("round_link", &oracle_maci_return_data.round_info.link));
+    }
+
     Ok(Response::new()
-        .add_attributes(vec![
-            attr("action", "created_oracle_maci_round"),
-            attr("contract_address", contract_address.to_string()),
-            attr("maci_counter", maci_counter.to_string()),
-        ])
-        .set_data(to_json_binary(&data)?))
+        .add_attributes(response_attrs)
+        .set_data(to_json_binary(&saas_instantiation_data)?))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn migrate(_deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
-    Ok(Response::default())
+pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
+    cw2::ensure_from_older_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+
+    Ok(Response::new().add_attributes(vec![
+        attr("action", "migrate"),
+        attr("version", CONTRACT_VERSION),
+    ]))
 }
 
 // Utility functions
