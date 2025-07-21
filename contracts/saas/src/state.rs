@@ -52,3 +52,5 @@ pub const MACI_CONTRACT_COUNTER: Item<u64> = Item::new("maci_contract_counter");
 pub const MACI_CONTRACTS: Map<u64, MaciContractInfo> = Map::new("maci_contracts");
 pub const MACI_CONTRACTS_BY_OPERATOR: Map<(&Addr, u64), bool> =
     Map::new("maci_contracts_by_operator");
+
+pub const ORACLE_MACI_CODE_ID: Item<u64> = Item::new("oracle_maci_code_id");

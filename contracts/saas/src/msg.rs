@@ -15,6 +15,7 @@ pub struct InstantiateMsg {
     pub admin: Addr,
     pub registry_contract: Option<Addr>,
     pub denom: String,
+    pub oracle_maci_code_id: u64,
 }
 
 #[cw_serde]
@@ -50,9 +51,12 @@ pub enum ExecuteMsg {
         amount: Uint128,
     },
 
+    UpdateOracleMaciCodeId {
+        code_id: u64,
+    },
+
     // Create Oracle MACI round
     CreateOracleMaciRound {
-        oracle_maci_code_id: u64,
         coordinator: PubKey,
         max_voters: u128,
         vote_option_map: Vec<String>,
@@ -122,6 +126,9 @@ pub enum QueryMsg {
 
     #[returns(Option<crate::state::MaciContractInfo>)]
     MaciContract { contract_id: u64 },
+
+    #[returns(u64)]
+    OracleMaciCodeId {},
 }
 
 #[cw_serde]

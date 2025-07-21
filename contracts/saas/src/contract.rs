@@ -25,7 +25,7 @@ use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, InstantiationData, MigrateMsg, PubKey, QueryMsg};
 use crate::state::{
     Config, FeeGrantRecord, MaciContractInfo, OperatorInfo, CONFIG, FEEGRANT_RECORDS,
-    MACI_CONTRACTS, MACI_CONTRACT_COUNTER, OPERATORS, TOTAL_BALANCE,
+    MACI_CONTRACTS, MACI_CONTRACT_COUNTER, OPERATORS, ORACLE_MACI_CODE_ID, TOTAL_BALANCE,
 };
 
 // Version info for migration
@@ -53,6 +53,7 @@ pub fn instantiate(
     CONFIG.save(deps.storage, &config)?;
     TOTAL_BALANCE.save(deps.storage, &Uint128::zero())?;
     MACI_CONTRACT_COUNTER.save(deps.storage, &0u64)?;
+    ORACLE_MACI_CODE_ID.save(deps.storage, &msg.oracle_maci_code_id)?;
 
     Ok(Response::new()
         .add_attribute("action", "instantiate")
@@ -87,8 +88,10 @@ pub fn execute(
         ExecuteMsg::BatchFeeGrantToOperators { amount } => {
             execute_batch_feegrant_to_operators(deps, env, info, amount)
         }
+        ExecuteMsg::UpdateOracleMaciCodeId { code_id } => {
+            execute_update_oracle_maci_code_id(deps, env, info, code_id)
+        }
         ExecuteMsg::CreateOracleMaciRound {
-            oracle_maci_code_id,
             coordinator,
             max_voters,
             vote_option_map,
@@ -102,7 +105,6 @@ pub fn execute(
             deps,
             env,
             info,
-            oracle_maci_code_id,
             coordinator,
             max_voters,
             vote_option_map,
@@ -237,6 +239,22 @@ pub fn execute_deposit(
         .add_attribute("sender", info.sender.to_string())
         .add_attribute("amount", amount.to_string())
         .add_attribute("total_balance", total_balance.to_string()))
+}
+
+pub fn execute_update_oracle_maci_code_id(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    code_id: u64,
+) -> Result<Response, ContractError> {
+    if !is_operator(deps.as_ref(), info.sender.as_ref())? {
+        Err(ContractError::Unauthorized {})
+    } else {
+        ORACLE_MACI_CODE_ID.save(deps.storage, &code_id)?;
+        Ok(Response::new()
+            .add_attribute("action", "update_oracle_maci_code_id")
+            .add_attribute("code_id", &code_id.to_string()))
+    }
 }
 
 pub fn execute_withdraw(
@@ -385,7 +403,6 @@ pub fn execute_create_oracle_maci_round(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    oracle_maci_code_id: u64,
     coordinator: PubKey,
     max_voters: u128,
     vote_option_map: Vec<String>,
@@ -463,6 +480,8 @@ pub fn execute_create_oracle_maci_round(
             msg: format!("Failed to serialize Oracle MACI InstantiateMsg: {}", e),
         }
     })?;
+
+    let oracle_maci_code_id = ORACLE_MACI_CODE_ID.load(deps.storage)?;
 
     // Prepare the instantiate message with SaaS contract as admin and token funds
     let instantiate_msg = WasmMsg::Instantiate {
@@ -700,6 +719,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::MaciContract { contract_id } => {
             to_json_binary(&query_maci_contract(deps, contract_id)?)
         }
+        QueryMsg::OracleMaciCodeId {} => to_json_binary(&ORACLE_MACI_CODE_ID.load(deps.storage)?),
     }
 }
 
@@ -826,6 +846,7 @@ fn reply_created_oracle_maci_round(
     // 获取当前的MACI合约计数器
     let maci_counter = MACI_CONTRACT_COUNTER.load(deps.storage)?;
 
+    let oracle_maci_code_id = ORACLE_MACI_CODE_ID.load(deps.storage)?;
     // 更新MACI合约记录中的合约地址（从临时地址更新为真实地址）
     let mut maci_contract_info = MACI_CONTRACTS.load(deps.storage, maci_counter)?;
     maci_contract_info.contract_address = contract_address.clone();
@@ -839,6 +860,7 @@ fn reply_created_oracle_maci_round(
     let mut response_attrs = vec![
         attr("action", "created_oracle_maci_round"),
         attr("round_addr", &contract_address.to_string()),
+        attr("code_id", &oracle_maci_code_id.to_string()),
         attr("caller", &oracle_maci_return_data.caller.to_string()),
         attr("admin", &oracle_maci_return_data.caller.to_string()),
         attr("operator", &oracle_maci_return_data.caller.to_string()),
@@ -936,6 +958,8 @@ fn reply_created_oracle_maci_round(
 pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
     cw2::ensure_from_older_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
+    ORACLE_MACI_CODE_ID.save(deps.storage, &152u64)?;
+
     Ok(Response::new().add_attributes(vec![
         attr("action", "migrate"),
         attr("version", CONTRACT_VERSION),
@@ -943,6 +967,19 @@ pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, C
 }
 
 // Utility functions
+fn is_operator(deps: Deps, sender: &str) -> StdResult<bool> {
+    let config = CONFIG.load(deps.storage)?;
+
+    // Admin is always considered an operator
+    if config.is_admin(&Addr::unchecked(sender)) {
+        return Ok(true);
+    }
+
+    // Check if sender is an operator
+    let sender_addr = Addr::unchecked(sender);
+    Ok(OPERATORS.has(deps.storage, &sender_addr))
+}
+
 pub fn validate_dora_address(address: &str) -> Result<(), ContractError> {
     match bech32::decode(address) {
         Ok((prefix, _data, _variant)) => {

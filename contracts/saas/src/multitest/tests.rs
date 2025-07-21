@@ -15,6 +15,7 @@ use cw_oracle_maci::state::RoundInfo as OracleMaciRoundInfo;
 fn test_instantiate_saas_contract() {
     let mut app = App::default();
 
+    let oracle_maci_code_id = app.store_code(oracle_maci_contract());
     let code_id = SaasCodeId::store_code(&mut app);
     let contract = code_id
         .instantiate(
@@ -23,6 +24,7 @@ fn test_instantiate_saas_contract() {
             admin(),
             Some(mock_registry_contract()),
             DORA_DEMON.to_string(),
+            oracle_maci_code_id,
             "SaaS Contract",
         )
         .unwrap();
@@ -40,12 +42,17 @@ fn test_instantiate_saas_contract() {
     // Verify no operators initially
     let operators = contract.query_operators(&app).unwrap();
     assert!(operators.is_empty());
+
+    // Verify oracle maci code id is set correctly
+    let stored_code_id = contract.query_oracle_maci_code_id(&app).unwrap();
+    assert_eq!(stored_code_id, oracle_maci_code_id);
 }
 
 #[test]
 fn test_update_config() {
     let mut app = App::default();
 
+    let oracle_maci_code_id = app.store_code(oracle_maci_contract());
     let code_id = SaasCodeId::store_code(&mut app);
     let contract = code_id
         .instantiate(
@@ -54,6 +61,7 @@ fn test_update_config() {
             admin(),
             Some(mock_registry_contract()),
             DORA_DEMON.to_string(),
+            oracle_maci_code_id,
             "SaaS Contract",
         )
         .unwrap();
@@ -80,6 +88,7 @@ fn test_update_config() {
 fn test_operator_management() {
     let mut app = App::default();
 
+    let oracle_maci_code_id = app.store_code(oracle_maci_contract());
     let code_id = SaasCodeId::store_code(&mut app);
     let contract = code_id
         .instantiate(
@@ -88,6 +97,7 @@ fn test_operator_management() {
             admin(),
             Some(mock_registry_contract()),
             DORA_DEMON.to_string(),
+            oracle_maci_code_id,
             "SaaS Contract",
         )
         .unwrap();
@@ -154,6 +164,7 @@ fn test_deposit_and_withdraw() {
             .unwrap();
     });
 
+    let oracle_maci_code_id = app.store_code(oracle_maci_contract());
     let code_id = SaasCodeId::store_code(&mut app);
     let contract = code_id
         .instantiate(
@@ -162,6 +173,7 @@ fn test_deposit_and_withdraw() {
             admin(),
             Some(mock_registry_contract()),
             DORA_DEMON.to_string(),
+            oracle_maci_code_id,
             "SaaS Contract",
         )
         .unwrap();
@@ -212,6 +224,7 @@ fn test_deposit_and_withdraw() {
 fn test_batch_feegrant() {
     let mut app = App::default();
 
+    let oracle_maci_code_id = app.store_code(oracle_maci_contract());
     let code_id = SaasCodeId::store_code(&mut app);
     let contract = code_id
         .instantiate(
@@ -220,6 +233,7 @@ fn test_batch_feegrant() {
             admin(),
             Some(mock_registry_contract()),
             DORA_DEMON.to_string(),
+            oracle_maci_code_id,
             "SaaS Contract",
         )
         .unwrap();
@@ -293,6 +307,7 @@ fn test_create_oracle_maci_round_success() {
             admin(),
             None,
             DORA_DEMON.to_string(),
+            oracle_maci_code_id,
             "SaaS Contract",
         )
         .unwrap();
@@ -311,7 +326,6 @@ fn test_create_oracle_maci_round_success() {
     // Create Oracle MACI round
     let max_voters = 5u128;
     let create_msg = ExecuteMsg::CreateOracleMaciRound {
-        oracle_maci_code_id,
         coordinator: PubKey {
             x: Uint256::from(1u32),
             y: Uint256::from(2u32),
@@ -419,12 +433,12 @@ fn test_create_oracle_maci_round_unauthorized() {
             admin(),
             None,
             DORA_DEMON.to_string(),
+            oracle_maci_code_id,
             "SaaS Contract",
         )
         .unwrap();
 
     let create_msg = ExecuteMsg::CreateOracleMaciRound {
-        oracle_maci_code_id,
         coordinator: PubKey {
             x: uint256_from_decimal_string(
                 "3557592161792765812904087712812111121909518311142005886657252371904276697771",
@@ -481,6 +495,7 @@ fn test_create_oracle_maci_round_insufficient_funds() {
             admin(),
             None,
             DORA_DEMON.to_string(),
+            oracle_maci_code_id,
             "SaaS Contract",
         )
         .unwrap();
@@ -494,7 +509,6 @@ fn test_create_oracle_maci_round_insufficient_funds() {
         .unwrap();
 
     let create_msg = ExecuteMsg::CreateOracleMaciRound {
-        oracle_maci_code_id,
         coordinator: PubKey {
             x: Uint256::from(1u32),
             y: Uint256::from(2u32),
@@ -547,6 +561,7 @@ fn test_oracle_maci_round_management() {
             admin(),
             None,
             DORA_DEMON.to_string(),
+            oracle_maci_code_id,
             "SaaS Contract",
         )
         .unwrap();
@@ -561,7 +576,6 @@ fn test_oracle_maci_round_management() {
 
     // Create Oracle MACI round first
     let create_msg = ExecuteMsg::CreateOracleMaciRound {
-        oracle_maci_code_id,
         coordinator: PubKey {
             x: uint256_from_decimal_string(
                 "3557592161792765812904087712812111121909518311142005886657252371904276697771",

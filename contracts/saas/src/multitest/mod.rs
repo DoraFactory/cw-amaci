@@ -33,9 +33,19 @@ impl SaasCodeId {
         admin: Addr,
         registry_contract: Option<Addr>,
         denom: String,
+        oracle_maci_code_id: u64,
         label: &str,
     ) -> AnyResult<SaasContract> {
-        SaasContract::instantiate(app, self, sender, admin, registry_contract, denom, label)
+        SaasContract::instantiate(
+            app,
+            self,
+            sender,
+            admin,
+            registry_contract,
+            denom,
+            oracle_maci_code_id,
+            label,
+        )
     }
 }
 
@@ -61,12 +71,14 @@ impl SaasContract {
         admin: Addr,
         registry_contract: Option<Addr>,
         denom: String,
+        oracle_maci_code_id: u64,
         label: &str,
     ) -> AnyResult<Self> {
         let init_msg = InstantiateMsg {
             admin,
             registry_contract,
             denom,
+            oracle_maci_code_id,
         };
 
         app.instantiate_contract(code_id.0, sender, &init_msg, &[], label, None)
@@ -176,6 +188,54 @@ impl SaasContract {
         )
     }
 
+    #[track_caller]
+    pub fn update_oracle_maci_code_id(
+        &self,
+        app: &mut App,
+        sender: Addr,
+        code_id: u64,
+    ) -> AnyResult<AppResponse> {
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::UpdateOracleMaciCodeId { code_id },
+            &[],
+        )
+    }
+
+    #[track_caller]
+    pub fn create_oracle_maci_round(
+        &self,
+        app: &mut App,
+        sender: Addr,
+        coordinator: PubKey,
+        max_voters: u128,
+        vote_option_map: Vec<String>,
+        round_info: RoundInfo,
+        start_time: Timestamp,
+        end_time: Timestamp,
+        circuit_type: cosmwasm_std::Uint256,
+        certification_system: cosmwasm_std::Uint256,
+        whitelist_backend_pubkey: String,
+    ) -> AnyResult<AppResponse> {
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::CreateOracleMaciRound {
+                coordinator,
+                max_voters,
+                vote_option_map,
+                round_info,
+                start_time,
+                end_time,
+                circuit_type,
+                certification_system,
+                whitelist_backend_pubkey,
+            },
+            &[],
+        )
+    }
+
     // Query methods
     pub fn query_config(&self, app: &App) -> StdResult<Config> {
         app.wrap()
@@ -217,6 +277,11 @@ impl SaasContract {
     ) -> StdResult<Vec<crate::state::MaciContractInfo>> {
         app.wrap()
             .query_wasm_smart(self.addr(), &QueryMsg::MaciContracts { start_after, limit })
+    }
+
+    pub fn query_oracle_maci_code_id(&self, app: &App) -> StdResult<u64> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::OracleMaciCodeId {})
     }
 
     pub fn balance_of(&self, app: &App, address: String, denom: String) -> StdResult<Coin> {
@@ -282,19 +347,4 @@ pub fn test_voting_time() -> cw_amaci::state::VotingTime {
         start_time: Timestamp::from_seconds(1640995200), // 2022-01-01
         end_time: Timestamp::from_seconds(1641081600),   // 2022-01-02
     }
-}
-
-// Helper function to setup a real registry contract for integration testing (legacy)
-pub fn setup_registry_contract(
-    app: &mut App,
-) -> cw_amaci_registry::multitest::AmaciRegistryContract {
-    use cw_amaci::multitest::MaciCodeId;
-    use cw_amaci_registry::multitest::AmaciRegistryCodeId;
-
-    let registry_code_id = AmaciRegistryCodeId::store_code(app);
-    let amaci_code_id = MaciCodeId::store_default_code(app);
-
-    registry_code_id
-        .instantiate(app, creator(), amaci_code_id.id(), "Test Registry")
-        .unwrap()
 }

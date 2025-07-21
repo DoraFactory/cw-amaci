@@ -4,7 +4,8 @@
   "type": "object",
   "required": [
     "admin",
-    "denom"
+    "denom",
+    "oracle_maci_code_id"
   ],
   "properties": {
     "admin": {
@@ -12,6 +13,11 @@
     },
     "denom": {
       "type": "string"
+    },
+    "oracle_maci_code_id": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
     },
     "registry_contract": {
       "anyOf": [
