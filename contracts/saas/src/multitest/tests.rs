@@ -666,7 +666,7 @@ fn test_oracle_maci_round_management() {
         link: "https://updated-test.com".to_string(),
     };
 
-    let set_round_info_msg = ExecuteMsg::SetOracleMaciRoundInfo {
+    let set_round_info_msg = ExecuteMsg::SetRoundInfo {
         contract_addr: oracle_maci_addr.clone(),
         round_info: updated_round_info,
     };
@@ -702,7 +702,7 @@ fn test_oracle_maci_round_management() {
         "Strongly Oppose".to_string(),
     ];
 
-    let set_vote_options_msg = ExecuteMsg::SetOracleMaciVoteOptionMap {
+    let set_vote_options_msg = ExecuteMsg::SetVoteOptionsMap {
         contract_addr: oracle_maci_addr.clone(),
         vote_option_map: updated_vote_options,
     };
@@ -720,7 +720,7 @@ fn test_oracle_maci_round_management() {
     // Test fee grant management
     let fee_grant_amount = Uint128::from(1000000000000000000u128); // 1 DORA
 
-    let grant_msg = ExecuteMsg::GrantOracleMaciFeegrant {
+    let grant_msg = ExecuteMsg::GrantToVoter {
         contract_addr: oracle_maci_addr,
         grantee: user1(),
         base_amount: fee_grant_amount,

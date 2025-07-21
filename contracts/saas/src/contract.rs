@@ -113,28 +113,19 @@ pub fn execute(
             certification_system,
             whitelist_backend_pubkey,
         ),
-        ExecuteMsg::ExecuteContract {
-            contract_addr,
-            msg,
-            funds,
-        } => execute_execute_contract(deps, env, info, contract_addr, msg, funds),
-        ExecuteMsg::SetOracleMaciRoundInfo {
+        ExecuteMsg::SetRoundInfo {
             contract_addr,
             round_info,
-        } => execute_set_oracle_maci_round_info(deps, env, info, contract_addr, round_info),
-        ExecuteMsg::SetOracleMaciVoteOptionMap {
+        } => execute_set_round_info(deps, env, info, contract_addr, round_info),
+        ExecuteMsg::SetVoteOptionsMap {
             contract_addr,
             vote_option_map,
-        } => {
-            execute_set_oracle_maci_vote_option_map(deps, env, info, contract_addr, vote_option_map)
-        }
-        ExecuteMsg::GrantOracleMaciFeegrant {
+        } => execute_set_vote_options_map(deps, env, info, contract_addr, vote_option_map),
+        ExecuteMsg::GrantToVoter {
             contract_addr,
             grantee,
             base_amount,
-        } => {
-            execute_grant_oracle_maci_feegrant(deps, env, info, contract_addr, grantee, base_amount)
-        }
+        } => execute_grant_to_voter(deps, env, info, contract_addr, grantee, base_amount),
     }
 }
 
@@ -565,7 +556,7 @@ pub fn execute_execute_contract(
         .add_attribute("funds_amount", total_amount.to_string()))
 }
 
-pub fn execute_set_oracle_maci_round_info(
+pub fn execute_set_round_info(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
@@ -600,13 +591,13 @@ pub fn execute_set_oracle_maci_round_info(
 
     Ok(Response::new()
         .add_message(execute_msg)
-        .add_attribute("action", "set_oracle_maci_round_info")
+        .add_attribute("action", "saas_set_round_info")
         .add_attribute("operator", info.sender.to_string())
         .add_attribute("target_contract", contract_addr)
         .add_attribute("round_title", round_info.title))
 }
 
-pub fn execute_set_oracle_maci_vote_option_map(
+pub fn execute_set_vote_options_map(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
@@ -637,13 +628,13 @@ pub fn execute_set_oracle_maci_vote_option_map(
 
     Ok(Response::new()
         .add_message(execute_msg)
-        .add_attribute("action", "set_oracle_maci_vote_option_map")
+        .add_attribute("action", "saas_set_vote_option")
         .add_attribute("operator", info.sender.to_string())
         .add_attribute("target_contract", contract_addr)
-        .add_attribute("vote_options_count", vote_option_map.len().to_string()))
+        .add_attribute("vote_option_map", format!("{:?}", vote_option_map)))
 }
 
-pub fn execute_grant_oracle_maci_feegrant(
+pub fn execute_grant_to_voter(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
@@ -676,7 +667,7 @@ pub fn execute_grant_oracle_maci_feegrant(
 
     Ok(Response::new()
         .add_message(execute_msg)
-        .add_attribute("action", "grant_oracle_maci_feegrant")
+        .add_attribute("action", "grant_to_voter")
         .add_attribute("operator", info.sender.to_string())
         .add_attribute("target_contract", contract_addr)
         .add_attribute("grantee", grantee.to_string())

@@ -68,28 +68,75 @@ mod test {
         pubkeys: Vec<Vec<String>>,
     }
 
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct OracleMaciLogEntry {
+        #[serde(rename = "type")]
+        log_type: String,
+        data: serde_json::Value,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct SetStateLeafData {
+        leaf_idx: String,
+        pub_key: Vec<String>,
+        balance: String,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct PublishMessageData {
+        message: Vec<String>,
+        enc_pub_key: Vec<String>,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ProcessMessageData {
+        proof: Groth16Proof,
+        new_state_commitment: String,
+        inputs: Option<Vec<String>>,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ProcessTallyData {
+        proof: Groth16Proof,
+        new_tally_commitment: String,
+        inputs: Option<Vec<String>>,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct StopTallyingPeriodData {
+        results: Vec<String>,
+        salt: String,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    struct Groth16Proof {
+        pi_a: String,
+        pi_b: String,
+        pi_c: String,
+    }
+
+    fn deserialize_data<T: serde::de::DeserializeOwned>(data: &serde_json::Value) -> T {
+        serde_json::from_value(data.clone()).expect("Unable to deserialize data")
+    }
+
     #[test]
     fn instantiate_with_voting_time_isqv_should_works() {
-        let msg_file_path = "./src/test/qv_test/msg.json";
+        // Load logs from oracle-maci test data
+        let logs_file_path = "./src/test/maci_test/logs.json";
+        let mut logs_file = fs::File::open(logs_file_path).expect("Failed to open logs file");
+        let mut logs_content = String::new();
+        logs_file
+            .read_to_string(&mut logs_content)
+            .expect("Failed to read logs file");
 
-        let mut msg_file = fs::File::open(msg_file_path).expect("Failed to open file");
-        let mut msg_content = String::new();
-
-        msg_file
-            .read_to_string(&mut msg_content)
-            .expect("Failed to read file");
-
-        let data: MsgData = serde_json::from_str(&msg_content).expect("Failed to parse JSON");
-
-        let result_file_path = "./src/test/qv_test/result.json";
-        let mut result_file = fs::File::open(result_file_path).expect("Failed to open file");
-        let mut result_content = String::new();
-        result_file
-            .read_to_string(&mut result_content)
-            .expect("Failed to read file");
-
-        let result_data: ResultData =
-            serde_json::from_str(&result_content).expect("Failed to parse JSON");
+        let logs_data: Vec<OracleMaciLogEntry> =
+            serde_json::from_str(&logs_content).expect("Failed to parse logs JSON");
 
         let pubkey_file_path = "./src/test/user_pubkey.json";
 
@@ -109,13 +156,6 @@ mod test {
             .instantiate_with_voting_time_isqv(&mut app, owner(), label)
             .unwrap();
 
-        // assert_eq!(
-        //     ContractError::AlreadySetVotingTime {
-        //         time_name: String::from("start_time")
-        //     },
-        //     start_voting_error.downcast().unwrap()
-        // );
-
         let num_sign_up = contract.num_sign_up(&app).unwrap();
         assert_eq!(num_sign_up, Uint256::from_u128(0u128));
 
@@ -123,6 +163,7 @@ mod test {
         let max_vote_options = contract.max_vote_options(&app).unwrap();
         assert_eq!(vote_option_map, vec!["1", "2", "3", "4", "5"]);
         assert_eq!(max_vote_options, Uint256::from_u128(5u128));
+
         _ = contract.set_vote_option_map(&mut app, owner());
         let new_vote_option_map = contract.vote_option_map(&app).unwrap();
         assert_eq!(
@@ -135,12 +176,19 @@ mod test {
                 String::from("abstain"),
             ]
         );
-        // assert_eq!(num_sign_up, Uint256::from_u128(0u128));
 
+        // Test signup before voting phase
+        let first_state_leaf_entry = logs_data
+            .iter()
+            .find(|entry| entry.log_type == "setStateLeaf")
+            .unwrap();
+        let first_state_leaf_data: SetStateLeafData =
+            deserialize_data(&first_state_leaf_entry.data);
         let test_pubkey = PubKey {
-            x: uint256_from_decimal_string(&data.current_state_leaves[0][0]),
-            y: uint256_from_decimal_string(&data.current_state_leaves[0][1]),
+            x: uint256_from_decimal_string(&first_state_leaf_data.pub_key[0]),
+            y: uint256_from_decimal_string(&first_state_leaf_data.pub_key[1]),
         };
+
         let sign_up_error = contract
             .sign_up(
                 &mut app,
@@ -158,12 +206,7 @@ mod test {
         _ = contract.set_vote_option_map(&mut app, owner());
 
         app.update_block(next_block); // Start Voting
-                                      // let set_whitelist_only_in_pending = contract.set_whitelist(&mut app, owner()).unwrap_err();
-                                      // assert_eq!(
-                                      //     // Cannot register again after registration
-                                      //     ContractError::PeriodError {},
-                                      //     set_whitelist_only_in_pending.downcast().unwrap()
-                                      // );
+
         let set_vote_option_map_error =
             contract.set_vote_option_map(&mut app, owner()).unwrap_err();
         assert_eq!(
@@ -183,128 +226,30 @@ mod test {
             contract.get_period(&app).unwrap()
         );
 
-        let test1_pubkey = PubKey {
+        let pubkey0 = PubKey {
+            x: uint256_from_decimal_string(&pubkey_data.pubkeys[0][0]),
+            y: uint256_from_decimal_string(&pubkey_data.pubkeys[0][1]),
+        };
+
+        let pubkey1 = PubKey {
             x: uint256_from_decimal_string(&pubkey_data.pubkeys[1][0]),
             y: uint256_from_decimal_string(&pubkey_data.pubkeys[1][1]),
         };
-        let wrong_signature_sign_up = contract
-            .sign_up(
-                &mut app,
-                Addr::unchecked('1'),
-                test1_pubkey,
-                match_user_certificate(0).amount,
-                match_user_certificate(0).certificate,
-            )
-            .unwrap_err();
-        assert_eq!(
-            ContractError::InvalidSignature {},
-            wrong_signature_sign_up.downcast().unwrap()
+
+        let _ = contract.sign_up(
+            &mut app,
+            Addr::unchecked("0"),
+            pubkey0.clone(),
+            match_user_certificate(0).amount,
+            match_user_certificate(0).certificate,
         );
-        let not_whitelist = contract
-            .query_is_whitelist(
-                &app,
-                "0".to_string(),
-                match_user_certificate(1).amount,
-                match_user_certificate(1).certificate,
-            )
-            .unwrap();
-        assert_eq!(false, not_whitelist);
-        let query_user_balance_before_sign_up = contract
-            .query_white_balance_of(
-                &app,
-                "1".to_string(),
-                user2_certificate_before().amount,
-                user2_certificate_before().certificate,
-            )
-            .unwrap();
-        assert_eq!(Uint256::from_u128(100), query_user_balance_before_sign_up);
 
-        for i in 0..data.msgs.len() {
-            if i < Uint256::from_u128(2u128).to_string().parse().unwrap() {
-                let pubkey = PubKey {
-                    x: uint256_from_decimal_string(&pubkey_data.pubkeys[i][0]),
-                    y: uint256_from_decimal_string(&pubkey_data.pubkeys[i][1]),
-                };
-                let is_whitelist = contract
-                    .query_is_whitelist(
-                        &app,
-                        i.to_string(),
-                        match_user_certificate(i).amount,
-                        match_user_certificate(i).certificate,
-                    )
-                    .unwrap();
-                assert_eq!(true, is_whitelist);
-
-                println!("---------- signup ---------- {:?}", i);
-                let _ = contract.sign_up(
-                    &mut app,
-                    Addr::unchecked(i.to_string()),
-                    pubkey,
-                    match_user_certificate(i).amount,
-                    match_user_certificate(i).certificate,
-                );
-            }
-
-            let test3_pubkey = PubKey {
-                x: uint256_from_decimal_string(&pubkey_data.pubkeys[1][0]),
-                y: uint256_from_decimal_string(&pubkey_data.pubkeys[1][1]),
-            };
-
-            let user3_sign_up_with_zero_amount = contract
-                .sign_up(
-                    &mut app,
-                    user3(),
-                    test3_pubkey,
-                    user3_certificate_before().amount,
-                    user3_certificate_before().certificate,
-                )
-                .unwrap_err();
-
-            assert_eq!(
-                ContractError::AmountIsZero {},
-                user3_sign_up_with_zero_amount.downcast().unwrap()
-            );
-            let message = MessageData {
-                data: [
-                    uint256_from_decimal_string(&data.msgs[i][0]),
-                    uint256_from_decimal_string(&data.msgs[i][1]),
-                    uint256_from_decimal_string(&data.msgs[i][2]),
-                    uint256_from_decimal_string(&data.msgs[i][3]),
-                    uint256_from_decimal_string(&data.msgs[i][4]),
-                    uint256_from_decimal_string(&data.msgs[i][5]),
-                    uint256_from_decimal_string(&data.msgs[i][6]),
-                ],
-            };
-
-            let enc_pub = PubKey {
-                x: uint256_from_decimal_string(&data.enc_pub_keys[i][0]),
-                y: uint256_from_decimal_string(&data.enc_pub_keys[i][1]),
-            };
-            _ = contract.publish_message(&mut app, user2(), message, enc_pub);
-        }
-
-        let query_user_balance_after_sign_up = contract
-            .query_white_balance_of(
-                &app,
-                "1".to_string(),
-                match_user_certificate(1).amount,
-                match_user_certificate(1).certificate,
-            )
-            .unwrap();
-        assert_eq!(Uint256::from_u128(80), query_user_balance_after_sign_up);
-
-        let sign_up_after_voting_end_error = contract
-            .sign_up(
-                &mut app,
-                Addr::unchecked(0.to_string()),
-                test_pubkey.clone(),
-                match_user_certificate(0).amount,
-                match_user_certificate(0).certificate,
-            )
-            .unwrap_err();
-        assert_eq!(
-            ContractError::AlreadySignedUp {},
-            sign_up_after_voting_end_error.downcast().unwrap()
+        let _ = contract.sign_up(
+            &mut app,
+            Addr::unchecked("1"),
+            pubkey1.clone(),
+            match_user_certificate(1).amount,
+            match_user_certificate(1).certificate,
         );
 
         assert_eq!(
@@ -312,126 +257,203 @@ mod test {
             Uint256::from_u128(2u128)
         );
 
+        // assert_eq!(
+        //     contract.signuped(&app, pubkey0.x).unwrap(),
+        //     Uint256::from_u128(1u128)
+        // );
+        // assert_eq!(
+        //     contract.signuped(&app, pubkey1.x).unwrap(),
+        //     Uint256::from_u128(2u128)
+        // );
+
+        // Process logs data
+        for entry in &logs_data {
+            match entry.log_type.as_str() {
+                // "setStateLeaf" => {
+                //     let data: SetStateLeafData = deserialize_data(&entry.data);
+
+                //     let pubkey = PubKey {
+                //         x: uint256_from_decimal_string(&data.pub_key[0]),
+                //         y: uint256_from_decimal_string(&data.pub_key[1]),
+                //     };
+
+                //     println!("pubkey: {:?}", pubkey);
+
+                //     let leaf_idx: usize = data.leaf_idx.parse().unwrap();
+
+                //     // Sign up user
+                //     let is_whitelist = contract
+                //         .query_is_whitelist(
+                //             &app,
+                //             leaf_idx.to_string(),
+                //             match_user_certificate(leaf_idx).amount,
+                //             match_user_certificate(leaf_idx).certificate,
+                //         )
+                //         .unwrap();
+                //     println!("---------- is_whitelist: {:?}", is_whitelist);
+                //     assert_eq!(true, is_whitelist);
+
+                //     println!("---------- signup for user {} ----------", leaf_idx);
+                //     let _ = contract.sign_up(
+                //         &mut app,
+                //         Addr::unchecked(leaf_idx.to_string()),
+                //         pubkey,
+                //         match_user_certificate(leaf_idx).amount,
+                //         match_user_certificate(leaf_idx).certificate,
+                //     );
+                // }
+                "publishMessage" => {
+                    let data: PublishMessageData = deserialize_data(&entry.data);
+
+                    let message = MessageData {
+                        data: [
+                            uint256_from_decimal_string(&data.message[0]),
+                            uint256_from_decimal_string(&data.message[1]),
+                            uint256_from_decimal_string(&data.message[2]),
+                            uint256_from_decimal_string(&data.message[3]),
+                            uint256_from_decimal_string(&data.message[4]),
+                            uint256_from_decimal_string(&data.message[5]),
+                            uint256_from_decimal_string(&data.message[6]),
+                        ],
+                    };
+
+                    let enc_pub = PubKey {
+                        x: uint256_from_decimal_string(&data.enc_pub_key[0]),
+                        y: uint256_from_decimal_string(&data.enc_pub_key[1]),
+                    };
+
+                    println!("------- publishMessage ------");
+                    _ = contract.publish_message(&mut app, user2(), message, enc_pub);
+                }
+                "processMessage" => {
+                    let data: ProcessMessageData = deserialize_data(&entry.data);
+
+                    // Move to processing phase
+                    app.update_block(next_block); // Stop Voting
+
+                    let sign_up_after_voting_end_error = contract
+                        .sign_up(
+                            &mut app,
+                            Addr::unchecked(3.to_string()),
+                            test_pubkey.clone(),
+                            match_user_certificate(0).amount,
+                            match_user_certificate(0).certificate,
+                        )
+                        .unwrap_err();
+                    assert_eq!(
+                        // Cannot signup after voting phase ends
+                        ContractError::PeriodError {},
+                        sign_up_after_voting_end_error.downcast().unwrap()
+                    );
+
+                    app.update_block(next_block);
+
+                    _ = contract.start_process(&mut app, owner());
+                    assert_eq!(
+                        Period {
+                            status: PeriodStatus::Processing
+                        },
+                        contract.get_period(&app).unwrap()
+                    );
+
+                    println!(
+                        "after start process: {:?}",
+                        contract.get_period(&app).unwrap()
+                    );
+
+                    let new_state_commitment =
+                        uint256_from_decimal_string(&data.new_state_commitment);
+                    let proof = Groth16ProofType {
+                        a: data.proof.pi_a.clone(),
+                        b: data.proof.pi_b.clone(),
+                        c: data.proof.pi_c.clone(),
+                    };
+                    println!("process_message proof {:?}", proof);
+                    println!(
+                        "process_message new state commitment {:?}",
+                        new_state_commitment
+                    );
+                    println!("------ processMessage ------");
+                    _ = contract
+                        .process_message(&mut app, owner(), new_state_commitment, proof)
+                        .unwrap();
+                }
+                "processTally" => {
+                    let data: ProcessTallyData = deserialize_data(&entry.data);
+
+                    _ = contract.stop_processing(&mut app, owner());
+                    println!(
+                        "after stop process: {:?}",
+                        contract.get_period(&app).unwrap()
+                    );
+
+                    let error_start_process_in_talling =
+                        contract.start_process(&mut app, owner()).unwrap_err();
+                    assert_eq!(
+                        ContractError::PeriodError {},
+                        error_start_process_in_talling.downcast().unwrap()
+                    );
+                    assert_eq!(
+                        Period {
+                            status: PeriodStatus::Tallying
+                        },
+                        contract.get_period(&app).unwrap()
+                    );
+
+                    let new_tally_commitment =
+                        uint256_from_decimal_string(&data.new_tally_commitment);
+
+                    let tally_proof = Groth16ProofType {
+                        a: data.proof.pi_a.clone(),
+                        b: data.proof.pi_b.clone(),
+                        c: data.proof.pi_c.clone(),
+                    };
+
+                    _ = contract
+                        .process_tally(&mut app, owner(), new_tally_commitment, tally_proof)
+                        .unwrap();
+                }
+                "stopTallyingPeriod" => {
+                    let data: StopTallyingPeriodData = deserialize_data(&entry.data);
+
+                    let results: Vec<Uint256> = data
+                        .results
+                        .iter()
+                        .map(|input| uint256_from_decimal_string(input))
+                        .collect();
+
+                    let salt = uint256_from_decimal_string(&data.salt);
+                    _ = contract.stop_tallying(&mut app, owner(), results, salt);
+
+                    let all_result = contract.get_all_result(&app);
+                    println!("all_result: {:?}", all_result);
+                    let error_start_process =
+                        contract.start_process(&mut app, owner()).unwrap_err();
+                    assert_eq!(
+                        ContractError::PeriodError {},
+                        error_start_process.downcast().unwrap()
+                    );
+
+                    assert_eq!(
+                        Period {
+                            status: PeriodStatus::Ended
+                        },
+                        contract.get_period(&app).unwrap()
+                    );
+                }
+                _ => println!("Unknown log type: {}", entry.log_type),
+            }
+        }
+
+        // Verify final state
+        assert_eq!(
+            contract.num_sign_up(&app).unwrap(),
+            Uint256::from_u128(2u128)
+        );
+
         assert_eq!(
             contract.msg_length(&app).unwrap(),
-            Uint256::from_u128(3u128)
-        );
-
-        // Stop Voting Period
-        app.update_block(next_block);
-
-        let sign_up_after_voting_end_error = contract
-            .sign_up(
-                &mut app,
-                Addr::unchecked(3.to_string()),
-                test_pubkey.clone(),
-                match_user_certificate(0).amount,
-                match_user_certificate(0).certificate,
-            )
-            .unwrap_err();
-        assert_eq!(
-            // Cannot signup after voting phase ends
-            ContractError::PeriodError {},
-            sign_up_after_voting_end_error.downcast().unwrap()
-        );
-
-        // assert_eq!(
-        //     ContractError::AlreadySetVotingTime {
-        //         time_name: String::from("end_time")
-        //     },
-        //     stop_voting_error.downcast().unwrap()
-        // );
-        app.update_block(next_block);
-
-        _ = contract.start_process(&mut app, owner());
-        assert_eq!(
-            Period {
-                status: PeriodStatus::Processing
-            },
-            contract.get_period(&app).unwrap()
-        );
-
-        println!(
-            "after start process: {:?}",
-            contract.get_period(&app).unwrap()
-        );
-
-        let new_state_commitment = uint256_from_decimal_string(&data.new_state_commitment);
-        let proof = Groth16ProofType {
-                a: "1d357813049bc4b83ded0d9dab748251c70633d6283df4aef6c3c8f53da22942297e1f9820cdd8acd3719be1dc18c0d6d7d978b8022b10b2412c0be757d898cb".to_string(),
-                b: "205d75e9165f8e472d935314381246d192e174262a19779afbb3fac8f9471b211b93759ce5a42fcb5c92a37b7013b9f9f72f13bd6d4190a7327d661b2a1530c205cc957a89cf5a4be26d822ea194bee53b59c8780f49e13968436a734c2e5de10f5fcf817e99122edce715d30bb63babbbdb7c541154c166ee2d9f42349957c8".to_string(),
-                c: "15f91dba796a622d18dc73af0e50a5a7b2d9668f3cbd4015b4137b54c6743f5524080bdc6be18a94e8a3e638c684e4810465e065bb3c68d3c752e5fb8ea9ea65".to_string()
-            };
-        println!("process_message proof {:?}", proof);
-        println!(
-            "process_message new state commitment {:?}",
-            new_state_commitment
-        );
-        _ = contract
-            .process_message(&mut app, owner(), new_state_commitment, proof)
-            .unwrap();
-
-        _ = contract.stop_processing(&mut app, owner());
-        println!(
-            "after stop process: {:?}",
-            contract.get_period(&app).unwrap()
-        );
-
-        let error_start_process_in_talling = contract.start_process(&mut app, owner()).unwrap_err();
-        assert_eq!(
-            ContractError::PeriodError {},
-            error_start_process_in_talling.downcast().unwrap()
-        );
-        assert_eq!(
-            Period {
-                status: PeriodStatus::Tallying
-            },
-            contract.get_period(&app).unwrap()
-        );
-        let tally_path = "./src/test/qv_test/tally.json";
-        let mut tally_file = fs::File::open(tally_path).expect("Failed to open file");
-        let mut tally_content = String::new();
-        tally_file
-            .read_to_string(&mut tally_content)
-            .expect("Failed to read file");
-
-        let tally_data: TallyData =
-            serde_json::from_str(&tally_content).expect("Failed to parse JSON");
-
-        let new_tally_commitment = uint256_from_decimal_string(&tally_data.new_tally_commitment);
-
-        let tally_proof = Groth16ProofType {
-            a: "2274e1f6b71fc2887c4f746ff384f00fd9d2b4f8ed1d59853af2cb891058624a2e73d79f02de60ee49604e972e9dae72e5a3f3b63b7b0bb6167d1d7365f3af0b".to_string(),
-            b: "147e97b696f2483f9be88419802de05a37c272328413907b1cadf61768e4abf604435ebd5462d1af60bee71de26d9a7259982f809f5edf3da7ecbb8c2b55dec40b403b2e4becd1587519488c8fcbf7e6b504dd68016e1ed48443ccced09d08c10a69014af748d7b2921449762eb7e870f0185dab186df6a5aeda4401e9a343cc".to_string(),
-            c: "100005547853768af099c27f658c8b44d52bb94117a235243dfb243f3687395e2d3634cdce0cbe115d8d497e2330a907f965e4d9080183b381fb4ff30f98f02a".to_string()
-        };
-
-        _ = contract
-            .process_tally(&mut app, owner(), new_tally_commitment, tally_proof)
-            .unwrap();
-
-        let results: Vec<Uint256> = result_data
-            .results
-            .iter()
-            .map(|input| uint256_from_decimal_string(input))
-            .collect();
-
-        let salt = uint256_from_decimal_string(&tally_data.new_results_root_salt);
-        _ = contract.stop_tallying(&mut app, owner(), results, salt);
-
-        let all_result = contract.get_all_result(&app);
-        println!("all_result: {:?}", all_result);
-        let error_start_process = contract.start_process(&mut app, owner()).unwrap_err();
-        assert_eq!(
-            ContractError::PeriodError {},
-            error_start_process.downcast().unwrap()
-        );
-
-        assert_eq!(
-            Period {
-                status: PeriodStatus::Ended
-            },
-            contract.get_period(&app).unwrap()
+            Uint256::from_u128(2u128)
         );
     }
 

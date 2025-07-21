@@ -68,25 +68,18 @@ pub enum ExecuteMsg {
         // whitelist_voting_power_args: slope 模式 (1人1票)
     },
 
-    // Execute other contracts
-    ExecuteContract {
-        contract_addr: String,
-        msg: Binary,
-        funds: Vec<Coin>,
-    },
-
     // Oracle MACI management
-    SetOracleMaciRoundInfo {
+    SetRoundInfo {
         contract_addr: String,
         round_info: RoundInfo,
     },
-    SetOracleMaciVoteOptionMap {
+    SetVoteOptionsMap {
         contract_addr: String,
         vote_option_map: Vec<String>,
     },
 
     // Oracle MACI feegrant management
-    GrantOracleMaciFeegrant {
+    GrantToVoter {
         contract_addr: String,
         grantee: Addr,
         base_amount: Uint128,
