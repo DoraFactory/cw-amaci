@@ -1,13 +1,20 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    attr, coins, from_json, to_json_binary, Addr, BankMsg, Binary, Coin, Deps, DepsMut, Env,
-    MessageInfo, Order, Reply, Response, StdError, StdResult, SubMsg, SubMsgResponse, Timestamp,
-    Uint128, Uint256, WasmMsg,
+    attr, coins, from_json, to_json_binary, Addr, BankMsg, Binary, Coin, CosmosMsg, Deps, DepsMut,
+    Env, MessageInfo, Order, Reply, Response, StdError, StdResult, SubMsg, SubMsgResponse,
+    Timestamp, Uint128, Uint256, WasmMsg,
 };
 use cw2::set_contract_version;
 use cw_storage_plus::Bound;
 use cw_utils::{may_pay, parse_instantiate_response_data};
+
+use cosmos_sdk_proto::cosmos::base::v1beta1::Coin as SdkCoin;
+use cosmos_sdk_proto::cosmos::feegrant::v1beta1::{
+    AllowedMsgAllowance, BasicAllowance, MsgGrantAllowance, MsgRevokeAllowance,
+};
+use cosmos_sdk_proto::Any;
+use prost::Message;
 
 // External contract types with aliases to avoid path conflicts
 use cw_amaci::state::RoundInfo;
@@ -20,12 +27,13 @@ use cw_oracle_maci::state::{
     VotingTime as OracleMaciVotingTime,
 };
 
+use cosmos_sdk_proto::traits::TypeUrl;
 // Local contract types
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, InstantiationData, MigrateMsg, PubKey, QueryMsg};
 use crate::state::{
-    Config, FeeGrantRecord, MaciContractInfo, OperatorInfo, CONFIG, FEEGRANT_RECORDS,
-    MACI_CONTRACTS, MACI_CONTRACT_COUNTER, OPERATORS, ORACLE_MACI_CODE_ID, TOTAL_BALANCE,
+    Config, MaciContractInfo, OperatorInfo, CONFIG, MACI_CONTRACTS, MACI_CONTRACT_COUNTER,
+    OPERATORS, ORACLE_MACI_CODE_ID, TOTAL_BALANCE,
 };
 
 // Version info for migration
@@ -82,12 +90,7 @@ pub fn execute(
         ExecuteMsg::Withdraw { amount, recipient } => {
             execute_withdraw(deps, env, info, amount, recipient)
         }
-        ExecuteMsg::BatchFeegrant { recipients, amount } => {
-            execute_batch_feegrant(deps, env, info, recipients, amount)
-        }
-        ExecuteMsg::BatchFeeGrantToOperators { amount } => {
-            execute_batch_feegrant_to_operators(deps, env, info, amount)
-        }
+
         ExecuteMsg::UpdateOracleMaciCodeId { code_id } => {
             execute_update_oracle_maci_code_id(deps, env, info, code_id)
         }
@@ -178,22 +181,60 @@ pub fn execute_add_operator(
         return Err(ContractError::OperatorAlreadyExists {});
     }
 
-    let operator_info = OperatorInfo {
-        address: operator.clone(),
-        added_at: env.block.time,
-        active: true,
+    // Create new operator
+    let operator_info = OperatorInfo::new(operator.clone(), env.block.time);
+
+    // Large feegrant amount for operators - 10 billion tokens in smallest unit
+    let feegrant_amount = Uint128::from(10_000_000_000_000_000_000_000_000u128);
+
+    // Create basic allowance
+    let allowance = BasicAllowance {
+        spend_limit: vec![SdkCoin {
+            denom: config.denom.clone(),
+            amount: feegrant_amount.to_string(),
+        }],
+        expiration: None,
     };
 
+    // Create allowed message allowance (for execute contract calls)
+    let allowed_allowance = AllowedMsgAllowance {
+        allowance: Some(Any {
+            type_url: BasicAllowance::TYPE_URL.to_string(),
+            value: allowance.encode_to_vec(),
+        }),
+        allowed_messages: vec!["/cosmwasm.wasm.v1.MsgExecuteContract".to_string()],
+    };
+
+    // Create grant message
+    let grant_msg = MsgGrantAllowance {
+        granter: env.contract.address.to_string(),
+        grantee: operator.to_string(),
+        allowance: Some(Any {
+            type_url: AllowedMsgAllowance::TYPE_URL.to_string(),
+            value: allowed_allowance.encode_to_vec(),
+        }),
+    };
+
+    let grant_message = CosmosMsg::Stargate {
+        type_url: MsgGrantAllowance::TYPE_URL.to_string(),
+        value: grant_msg.encode_to_vec().into(),
+    };
+
+    // Save operator info
     OPERATORS.save(deps.storage, &operator, &operator_info)?;
 
     Ok(Response::new()
+        .add_message(grant_message)
         .add_attribute("action", "add_operator")
-        .add_attribute("operator", operator.to_string()))
+        .add_attribute("operator", operator.to_string())
+        .add_attribute("feegrant_action", "auto_grant")
+        .add_attribute("feegrant_amount", feegrant_amount.to_string())
+        .add_attribute("feegrant_denom", config.denom))
 }
 
 pub fn execute_remove_operator(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     operator: Addr,
 ) -> Result<Response, ContractError> {
@@ -209,11 +250,25 @@ pub fn execute_remove_operator(
         return Err(ContractError::OperatorNotFound {});
     }
 
+    // Create revoke message (operators always have feegrant)
+    let revoke_msg = MsgRevokeAllowance {
+        granter: env.contract.address.to_string(),
+        grantee: operator.to_string(),
+    };
+
+    let revoke_message = CosmosMsg::Stargate {
+        type_url: MsgRevokeAllowance::TYPE_URL.to_string(),
+        value: revoke_msg.encode_to_vec().into(),
+    };
+
+    // Remove operator from storage
     OPERATORS.remove(deps.storage, &operator);
 
     Ok(Response::new()
+        .add_message(revoke_message)
         .add_attribute("action", "remove_operator")
-        .add_attribute("operator", operator.to_string()))
+        .add_attribute("operator", operator.to_string())
+        .add_attribute("feegrant_action", "auto_revoke"))
 }
 
 pub fn execute_deposit(
@@ -303,102 +358,6 @@ pub fn execute_withdraw(
         .add_attribute("new_balance", new_balance.to_string()))
 }
 
-pub fn execute_batch_feegrant(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    recipients: Vec<Addr>,
-    amount: Uint128,
-) -> Result<Response, ContractError> {
-    let config = CONFIG.load(deps.storage)?;
-
-    // Only admin can grant fees
-    if !config.is_admin(&info.sender) {
-        return Err(ContractError::Unauthorized {});
-    }
-
-    if amount.is_zero() {
-        return Err(ContractError::InvalidFeegrantAmount {});
-    }
-
-    if recipients.is_empty() {
-        return Err(ContractError::EmptyAddressList {});
-    }
-
-    // For now, we'll record the feegrant intention
-    // In a real implementation, this would interact with the cosmos feegrant module
-    for recipient in &recipients {
-        let record = FeeGrantRecord {
-            grantee: recipient.clone(),
-            amount,
-            granted_at: env.block.time,
-            granted_by: info.sender.clone(),
-        };
-        FEEGRANT_RECORDS.save(deps.storage, recipient, &record)?;
-    }
-
-    Ok(Response::new()
-        .add_attribute("action", "batch_feegrant")
-        .add_attribute("recipients_count", recipients.len().to_string())
-        .add_attribute("amount_per_recipient", amount.to_string())
-        .add_attribute(
-            "total_amount",
-            amount
-                .checked_mul(Uint128::from(recipients.len() as u128))?
-                .to_string(),
-        ))
-}
-
-pub fn execute_batch_feegrant_to_operators(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    amount: Uint128,
-) -> Result<Response, ContractError> {
-    let config = CONFIG.load(deps.storage)?;
-
-    // Only admin can grant fees
-    if !config.is_admin(&info.sender) {
-        return Err(ContractError::Unauthorized {});
-    }
-
-    if amount.is_zero() {
-        return Err(ContractError::InvalidFeegrantAmount {});
-    }
-
-    // Get all active operators
-    let operators: Vec<Addr> = OPERATORS
-        .range(deps.storage, None, None, Order::Ascending)
-        .map(|item| item.map(|(addr, _)| addr))
-        .collect::<StdResult<Vec<_>>>()?;
-
-    if operators.is_empty() {
-        return Err(ContractError::EmptyAddressList {});
-    }
-
-    // Record feegrant for each operator
-    for operator in &operators {
-        let record = FeeGrantRecord {
-            grantee: operator.clone(),
-            amount,
-            granted_at: env.block.time,
-            granted_by: info.sender.clone(),
-        };
-        FEEGRANT_RECORDS.save(deps.storage, operator, &record)?;
-    }
-
-    Ok(Response::new()
-        .add_attribute("action", "batch_feegrant_to_operators")
-        .add_attribute("operators_count", operators.len().to_string())
-        .add_attribute("amount_per_operator", amount.to_string())
-        .add_attribute(
-            "total_amount",
-            amount
-                .checked_mul(Uint128::from(operators.len() as u128))?
-                .to_string(),
-        ))
-}
-
 pub fn execute_create_oracle_maci_round(
     deps: DepsMut,
     env: Env,
@@ -419,13 +378,13 @@ pub fn execute_create_oracle_maci_round(
     }
 
     // Calculate deployment fee - base fee of 50 DORA for contract deployment
-    let deployment_fee = Uint128::from(50000000000000000000u128); // 50 DORA
+    let base_fee = Uint128::from(50000000000000000000u128); // 50 DORA
 
     // Calculate required token amount for Oracle MACI (max_voters * 10 DORA)
     let token_amount = Uint128::from(max_voters as u128 * 10000000000000000000u128); // max_voters * 10 DORA
 
     // Total required amount = deployment fee + token amount
-    let total_required = deployment_fee + token_amount;
+    let total_required = base_fee + token_amount;
 
     // Check if SaaS has sufficient balance
     let total_balance = TOTAL_BALANCE.load(deps.storage)?;
@@ -488,7 +447,7 @@ pub fn execute_create_oracle_maci_round(
         admin: Some(env.contract.address.to_string()), // SaaS合约作为Oracle MACI的admin
         code_id: oracle_maci_code_id,
         msg: serialized_msg,
-        funds: coins(token_amount.u128(), "peaka"), // Send all fees, including admin_fee
+        funds: coins(total_required.u128(), "peaka"), // Send all fees, include user signup and vote fees
         label: format!("Oracle Maci Round - {}", round_info.title),
     };
 
@@ -515,8 +474,6 @@ pub fn execute_create_oracle_maci_round(
         .add_attribute("action", "create_oracle_maci_round")
         .add_attribute("operator", info.sender.to_string())
         .add_attribute("round_title", round_info.title)
-        .add_attribute("deployment_fee", deployment_fee.to_string())
-        .add_attribute("token_amount", token_amount.to_string())
         .add_attribute("total_cost", total_required.to_string())
         .add_attribute("new_balance", new_balance.to_string())
         .add_attribute("max_voters", max_voters.to_string())
@@ -700,9 +657,6 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::Operators {} => to_json_binary(&query_operators(deps)?),
         QueryMsg::IsOperator { address } => to_json_binary(&query_is_operator(deps, address)?),
         QueryMsg::Balance {} => to_json_binary(&TOTAL_BALANCE.load(deps.storage)?),
-        QueryMsg::FeeGrantRecords { start_after, limit } => {
-            to_json_binary(&query_feegrant_records(deps, start_after, limit)?)
-        }
         QueryMsg::MaciContracts { start_after, limit } => {
             to_json_binary(&query_maci_contracts(deps, start_after, limit)?)
         }
@@ -732,21 +686,6 @@ fn query_operators(deps: Deps) -> StdResult<Vec<OperatorInfo>> {
 
 fn query_is_operator(deps: Deps, address: Addr) -> StdResult<bool> {
     Ok(OPERATORS.has(deps.storage, &address))
-}
-
-fn query_feegrant_records(
-    deps: Deps,
-    start_after: Option<Addr>,
-    limit: Option<u32>,
-) -> StdResult<Vec<FeeGrantRecord>> {
-    let limit = limit.unwrap_or(30).min(100) as usize;
-    let start = start_after.as_ref().map(Bound::exclusive);
-
-    FEEGRANT_RECORDS
-        .range(deps.storage, start, None, Order::Ascending)
-        .take(limit)
-        .map(|item| item.map(|(_, record)| record))
-        .collect()
 }
 
 fn query_maci_contracts(

@@ -13,14 +13,10 @@
     "OperatorInfo": {
       "type": "object",
       "required": [
-        "active",
         "added_at",
         "address"
       ],
       "properties": {
-        "active": {
-          "type": "boolean"
-        },
         "added_at": {
           "$ref": "#/definitions/Timestamp"
         },

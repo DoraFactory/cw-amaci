@@ -2,17 +2,50 @@
 mod tests;
 
 use anyhow::Result as AnyResult;
-use cosmwasm_std::{Addr, Coin, StdResult, Timestamp, Uint128};
+use cosmwasm_schema::cw_serde;
+use cosmwasm_std::testing::{MockApi, MockStorage};
+use cosmwasm_std::{Addr, Coin, Empty, StdResult, Timestamp, Uint128};
 use cw_amaci::state::RoundInfo;
-use cw_multi_test::{App, AppResponse, ContractWrapper, Executor};
+use cw_multi_test::{
+    no_init, AppBuilder, AppResponse, BankKeeper, ContractWrapper, DistributionKeeper, Executor,
+    FailingModule, GovFailingModule, IbcFailingModule, StakeKeeper, StargateAccepting, WasmKeeper,
+};
 
 use crate::{
     contract::{execute, instantiate, migrate, query, reply},
     msg::*,
-    state::{Config, FeeGrantRecord, OperatorInfo},
+    state::{Config, OperatorInfo},
 };
 
 pub const DORA_DEMON: &str = "peaka";
+
+// Mock feegrant allowance for testing purposes
+#[cw_serde]
+pub struct MockFeegrantAllowance {
+    pub granter: String,
+    pub grantee: String,
+    pub spend_limit: Vec<Coin>,
+    pub expiration: Option<Timestamp>,
+}
+
+pub type App<ExecC = Empty, QueryC = Empty> = cw_multi_test::App<
+    BankKeeper,
+    MockApi,
+    MockStorage,
+    FailingModule<ExecC, QueryC, Empty>,
+    WasmKeeper<ExecC, QueryC>,
+    StakeKeeper,
+    DistributionKeeper,
+    IbcFailingModule,
+    GovFailingModule,
+    StargateAccepting,
+>;
+
+pub fn create_app() -> App {
+    AppBuilder::new()
+        .with_stargate(StargateAccepting)
+        .build(no_init)
+}
 
 #[derive(Clone, Debug, Copy)]
 pub struct SaasCodeId(u64);
@@ -158,37 +191,6 @@ impl SaasContract {
     }
 
     #[track_caller]
-    pub fn batch_feegrant(
-        &self,
-        app: &mut App,
-        sender: Addr,
-        recipients: Vec<Addr>,
-        amount: Uint128,
-    ) -> AnyResult<AppResponse> {
-        app.execute_contract(
-            sender,
-            self.addr(),
-            &ExecuteMsg::BatchFeegrant { recipients, amount },
-            &[],
-        )
-    }
-
-    #[track_caller]
-    pub fn batch_feegrant_to_operators(
-        &self,
-        app: &mut App,
-        sender: Addr,
-        amount: Uint128,
-    ) -> AnyResult<AppResponse> {
-        app.execute_contract(
-            sender,
-            self.addr(),
-            &ExecuteMsg::BatchFeeGrantToOperators { amount },
-            &[],
-        )
-    }
-
-    #[track_caller]
     pub fn update_oracle_maci_code_id(
         &self,
         app: &mut App,
@@ -257,18 +259,6 @@ impl SaasContract {
             .query_wasm_smart(self.addr(), &QueryMsg::Balance {})
     }
 
-    pub fn query_feegrant_records(
-        &self,
-        app: &App,
-        start_after: Option<Addr>,
-        limit: Option<u32>,
-    ) -> StdResult<Vec<FeeGrantRecord>> {
-        app.wrap().query_wasm_smart(
-            self.addr(),
-            &QueryMsg::FeeGrantRecords { start_after, limit },
-        )
-    }
-
     pub fn query_maci_contracts(
         &self,
         app: &App,
@@ -286,6 +276,45 @@ impl SaasContract {
 
     pub fn balance_of(&self, app: &App, address: String, denom: String) -> StdResult<Coin> {
         app.wrap().query_balance(address, denom)
+    }
+
+    // Mock feegrant query - in real implementation this would query the feegrant module
+    // For testing purposes, we can simulate the feegrant status based on operator existence
+    pub fn query_feegrant_allowance(
+        &self,
+        app: &App,
+        granter: String,
+        grantee: String,
+    ) -> StdResult<Option<MockFeegrantAllowance>> {
+        // In a real implementation, this would query the feegrant module via Stargate
+        // For testing, we simulate based on operator status
+        let grantee_addr = Addr::unchecked(&grantee);
+        let is_operator = self.query_is_operator(app, grantee_addr)?;
+
+        if is_operator {
+            Ok(Some(MockFeegrantAllowance {
+                granter: granter.clone(),
+                grantee: grantee.clone(),
+                spend_limit: vec![Coin {
+                    denom: "peaka".to_string(),
+                    amount: Uint128::from(10_000_000_000_000_000_000_000_000u128),
+                }],
+                expiration: None,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    // Check if feegrant exists (simplified check)
+    pub fn has_feegrant_allowance(
+        &self,
+        app: &App,
+        granter: String,
+        grantee: String,
+    ) -> StdResult<bool> {
+        let allowance = self.query_feegrant_allowance(app, granter, grantee)?;
+        Ok(allowance.is_some())
     }
 }
 

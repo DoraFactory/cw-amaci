@@ -43,14 +43,8 @@ pub enum ContractError {
     #[error("No funds sent")]
     NoFunds {},
 
-    #[error("Feegrant amount must be greater than zero")]
-    InvalidFeegrantAmount {},
-
     #[error("Cannot withdraw zero amount")]
     InvalidWithdrawAmount {},
-
-    #[error("Address list cannot be empty")]
-    EmptyAddressList {},
 
     #[error("Value too large for conversion")]
     ValueTooLarge {},

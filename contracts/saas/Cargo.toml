@@ -33,9 +33,12 @@ cw-amaci = { path = "../amaci", features = ["library"] }
 cw-oracle-maci = { path = "../oracle-maci", features = ["library"] }
 anyhow = {version = "1.0", optional = true}
 cw-multi-test = {version = "0.20.0", optional = true}
+cosmos-sdk-proto = { version = "0.19.0", default-features = false }
+prost = "0.11"
+prost-types = "0.11"
 
 [dev-dependencies]
-cw-multi-test = "0.20.0"
+cw-multi-test = { version = "0.20.0", features = ["cosmwasm_1_4"] }
 anyhow = "1.0"
 cw-amaci-registry = { path = "../registry", features = ["mt"] }
 cw-amaci = { path = "../amaci", features = ["mt"] }

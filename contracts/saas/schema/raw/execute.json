@@ -132,55 +132,6 @@
     {
       "type": "object",
       "required": [
-        "batch_feegrant"
-      ],
-      "properties": {
-        "batch_feegrant": {
-          "type": "object",
-          "required": [
-            "amount",
-            "recipients"
-          ],
-          "properties": {
-            "amount": {
-              "$ref": "#/definitions/Uint128"
-            },
-            "recipients": {
-              "type": "array",
-              "items": {
-                "$ref": "#/definitions/Addr"
-              }
-            }
-          },
-          "additionalProperties": false
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "batch_fee_grant_to_operators"
-      ],
-      "properties": {
-        "batch_fee_grant_to_operators": {
-          "type": "object",
-          "required": [
-            "amount"
-          ],
-          "properties": {
-            "amount": {
-              "$ref": "#/definitions/Uint128"
-            }
-          },
-          "additionalProperties": false
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
         "update_oracle_maci_code_id"
       ],
       "properties": {

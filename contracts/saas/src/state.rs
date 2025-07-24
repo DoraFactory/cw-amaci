@@ -19,15 +19,12 @@ impl Config {
 pub struct OperatorInfo {
     pub address: Addr,
     pub added_at: Timestamp,
-    pub active: bool,
 }
 
-#[cw_serde]
-pub struct FeeGrantRecord {
-    pub grantee: Addr,
-    pub amount: Uint128,
-    pub granted_at: Timestamp,
-    pub granted_by: Addr,
+impl OperatorInfo {
+    pub fn new(address: Addr, added_at: Timestamp) -> Self {
+        Self { address, added_at }
+    }
 }
 
 // 新增: MACI 合约信息跟踪
@@ -45,7 +42,6 @@ pub struct MaciContractInfo {
 pub const CONFIG: Item<Config> = Item::new("config");
 pub const OPERATORS: Map<&Addr, OperatorInfo> = Map::new("operators");
 pub const TOTAL_BALANCE: Item<Uint128> = Item::new("total_balance");
-pub const FEEGRANT_RECORDS: Map<&Addr, FeeGrantRecord> = Map::new("feegrant_records");
 
 // 新增: MACI 合约跟踪存储
 pub const MACI_CONTRACT_COUNTER: Item<u64> = Item::new("maci_contract_counter");

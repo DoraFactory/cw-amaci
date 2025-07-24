@@ -1,8 +1,8 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary, Coin, Uint128, Uint256};
+use cosmwasm_std::{Addr, Uint128, Uint256};
 use cw_amaci::state::RoundInfo;
 
-use crate::state::{Config, FeeGrantRecord, OperatorInfo};
+use crate::state::{Config, OperatorInfo};
 
 #[cw_serde]
 pub struct PubKey {
@@ -40,15 +40,6 @@ pub enum ExecuteMsg {
     Withdraw {
         amount: Uint128,
         recipient: Option<Addr>,
-    },
-
-    // Feegrant functions
-    BatchFeegrant {
-        recipients: Vec<Addr>,
-        amount: Uint128,
-    },
-    BatchFeeGrantToOperators {
-        amount: Uint128,
     },
 
     UpdateOracleMaciCodeId {
@@ -104,12 +95,6 @@ pub enum QueryMsg {
 
     #[returns(Uint128)]
     Balance {},
-
-    #[returns(Vec<FeeGrantRecord>)]
-    FeeGrantRecords {
-        start_after: Option<Addr>,
-        limit: Option<u32>,
-    },
 
     #[returns(Vec<crate::state::MaciContractInfo>)]
     MaciContracts {
