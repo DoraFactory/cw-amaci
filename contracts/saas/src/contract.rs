@@ -377,11 +377,11 @@ pub fn execute_create_oracle_maci_round(
         return Err(ContractError::Unauthorized {});
     }
 
-    // Calculate deployment fee - base fee of 50 DORA for contract deployment
-    let base_fee = Uint128::from(50000000000000000000u128); // 50 DORA
+    // Calculate deployment fee - base fee of 10 DORA for contract deployment
+    let base_fee = Uint128::from(10000000000000000000u128); // 10 DORA
 
-    // Calculate required token amount for Oracle MACI (max_voters * 10 DORA)
-    let token_amount = Uint128::from(max_voters as u128 * 10000000000000000000u128); // max_voters * 10 DORA
+    // Calculate required token amount for Oracle MACI (max_voters * 1 DORA)
+    let token_amount = Uint128::from(max_voters as u128 * 1000000000000000000u128); // max_voters * 1 DORA
 
     // Total required amount = deployment fee + token amount
     let total_required = base_fee + token_amount;

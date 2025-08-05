@@ -309,8 +309,8 @@ fn test_create_oracle_maci_round_success() {
         .expect("Should have reply event");
 
     // Verify balance was deducted correctly
-    let expected_cost = Uint128::from(50000000000000000000u128)
-        + Uint128::from(max_voters * 10000000000000000000u128);
+    let expected_cost = Uint128::from(10000000000000000000u128)
+        + Uint128::from(max_voters * 1000000000000000000u128);
     let final_balance = contract.query_balance(&app).unwrap();
     let expected_remaining = Uint128::from(initial_balance) - expected_cost;
     assert_eq!(final_balance, expected_remaining);
@@ -451,7 +451,7 @@ fn test_create_oracle_maci_round_insufficient_funds() {
             x: Uint256::from(1u32),
             y: Uint256::from(2u32),
         },
-        max_voters: 100, // Requires 1000 DORA tokens + 50 DORA deployment = 1050 DORA total
+        max_voters: 100, // Requires 100 DORA tokens + 10 DORA deployment = 110 DORA total
         vote_option_map: vec!["Option 1".to_string()],
         round_info: cw_amaci::state::RoundInfo {
             title: "Test Round".to_string(),
@@ -474,7 +474,7 @@ fn test_create_oracle_maci_round_insufficient_funds() {
     assert_eq!(
         error.downcast::<ContractError>().unwrap(),
         ContractError::InsufficientFundsForRound {
-            required: Uint128::from(1050000000000000000000u128), // 1050 DORA
+            required: Uint128::from(110000000000000000000u128), // 110 DORA
             available: Uint128::from(initial_balance),
         }
     );
