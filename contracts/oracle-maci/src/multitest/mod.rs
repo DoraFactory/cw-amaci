@@ -1,18 +1,19 @@
 #[cfg(test)]
 mod tests;
 
+// #[cfg(test)]
+// mod certificate_generator;
+
 use anyhow::Result as AnyResult;
 
-use crate::msg::Groth16VKeyType;
 use crate::state::{
-    GrantConfig, MessageData, OracleWhitelistConfig, Period, PubKey, QuinaryTreeRoot, RoundInfo,
-    VotingPowerMode, VotingTime, WhitelistConfig,
+    GrantConfig, MessageData, OracleWhitelistConfig, Period, PubKey, RoundInfo, VotingPowerMode,
+    VotingTime, WhitelistConfig,
 };
 use crate::utils::uint256_from_hex_string;
 use crate::{
     contract::{execute, instantiate, query, reply},
     msg::*,
-    state::*,
 };
 use cosmwasm_std::testing::{MockApi, MockStorage};
 use cosmwasm_std::{Addr, Coin, Empty, StdResult, Timestamp, Uint128, Uint256};
@@ -896,14 +897,14 @@ pub fn match_user_certificate(index: usize) -> Certificate {
 
 pub fn user1_certificate() -> Certificate {
     Certificate {
-        certificate: "/3aY9IIFNNUtwLVHz1i+q+3Hc72yW1XYtFn1SnBZ6GsNUoZpdRTH7gUXz6cyKcJdHviA+pXmebNVXsw0xi1Gdg==".to_string(),
+        certificate: "cPH5ut6LcRY0HhdXLDNcHY4VbYl4IYr9VEYGYLKQo2gcQRyDKn6MIBrWY8TNfSBQQ4KpuUHuMX1RV399HMimOA==".to_string(),
         amount: Uint256::from_u128(100000000u128),
     }
 }
 
 pub fn user2_certificate() -> Certificate {
     Certificate {
-        certificate: "WX+mefbste0fmQZyxfuPjKjFmea7bTJALptAtrUlqwcKi780BtWN3vTENsvVUVmd5a0lYJXNJ5Cqyjigj6JzOQ==".to_string(),
+        certificate: "mjI/v5Xdt6/uHxcriXuqSaJ7H3duJy3rbPyPWc/9k0obyzpL8RBCZEGJBmZUFXBwu1kMMW6BboWeekCVJGcqQw==".to_string(),
         amount: Uint256::from_u128(80000000u128),
     }
 }
@@ -923,7 +924,8 @@ pub fn user3_certificate_before() -> Certificate {
 }
 
 pub fn whitelist_pubkey() -> String {
-    "AoYo/zENN/JquagPdG0/NMbWBBYxOM8BVN677mBXJKJQ".to_string()
+    // "AoYo/zENN/JquagPdG0/NMbWBBYxOM8BVN677mBXJKJQ".to_string()
+    "AurWMPImmkDdmse2sMILI9g0fJlOfcnxjJ1QWyFRBdXr".to_string()
 }
 
 pub fn whitelist_ecosystem() -> String {

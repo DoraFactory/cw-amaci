@@ -506,12 +506,13 @@ pub fn execute_sign_up(
     let whitelist_ecosystem = oracle_whitelist_config.ecosystem;
     let whitelist_backend_pubkey = oracle_whitelist_config.backend_pubkey;
     let payload = serde_json::json!({
-        // "contract_address": env.contract.address.to_string(),
         "address": info.sender.to_string(),
         "amount": amount.to_string(),
-        "height": whitelist_snapshot_height.to_string(),
+        // "height": whitelist_snapshot_height.to_string(),
+        "contract_address": env.contract.address.to_string(),
         "ecosystem": whitelist_ecosystem.to_string(),
     });
+    println!("payload: {:?}", payload);
 
     let msg = payload.to_string().into_bytes();
 
@@ -1451,15 +1452,21 @@ fn execute_withdraw(
         .add_attribute("amount", withdraw_amount.to_string()))
 }
 
-fn can_sign_up(deps: Deps, sender: &str, amount: Uint256, certificate: String) -> StdResult<bool> {
+fn can_sign_up(
+    deps: Deps,
+    env: Env,
+    sender: &str,
+    amount: Uint256,
+    certificate: String,
+) -> StdResult<bool> {
     let oracle_whitelist_config = ORACLE_WHITELIST_CONFIG.load(deps.storage)?;
-    let whitelist_snapshot_height = oracle_whitelist_config.snapshot_height;
     let whitelist_ecosystem = oracle_whitelist_config.ecosystem;
     let whitelist_backend_pubkey = oracle_whitelist_config.backend_pubkey;
     let payload = serde_json::json!({
         "address": sender.to_string(),
         "amount": amount.to_string(),
-        "height": whitelist_snapshot_height.to_string(),
+        // "height": whitelist_snapshot_height.to_string(),
+        "contract_address": env.contract.address.to_string(),
         "ecosystem": whitelist_ecosystem.to_string(),
     });
 
@@ -1479,6 +1486,7 @@ fn can_sign_up(deps: Deps, sender: &str, amount: Uint256, certificate: String) -
 
 fn user_balance_of(
     deps: Deps,
+    env: Env,
     sender: &str,
     amount: Uint256,
     certificate: String,
@@ -1496,7 +1504,7 @@ fn user_balance_of(
     let payload = serde_json::json!({
         "address": sender.to_string(),
         "amount": amount.to_string(),
-        "height": whitelist_snapshot_height.to_string(),
+        "contract_address": env.contract.address.to_string(),
         "ecosystem": whitelist_ecosystem.to_string(),
     });
 
@@ -1682,7 +1690,7 @@ fn is_feegrant_operator(deps: Deps, sender: &str) -> StdResult<bool> {
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::GetRoundInfo {} => {
             to_json_binary::<RoundInfo>(&ROUNDINFO.load(deps.storage).unwrap())
@@ -1729,12 +1737,18 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             sender,
             amount,
             certificate,
-        } => to_json_binary::<bool>(&query_can_sign_up(deps, sender, amount, certificate)?),
+        } => to_json_binary::<bool>(&query_can_sign_up(deps, env, sender, amount, certificate)?),
         QueryMsg::WhiteBalanceOf {
             sender,
             amount,
             certificate,
-        } => to_json_binary::<Uint256>(&query_user_balance_of(deps, sender, amount, certificate)?),
+        } => to_json_binary::<Uint256>(&query_user_balance_of(
+            deps,
+            env,
+            sender,
+            amount,
+            certificate,
+        )?),
         QueryMsg::WhiteInfo { sender } => to_json_binary::<WhitelistConfig>(
             &WHITELIST
                 .load(deps.storage, &Addr::unchecked(sender))
@@ -1773,20 +1787,22 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
 
 pub fn query_can_sign_up(
     deps: Deps,
+    env: Env,
     sender: String,
     amount: Uint256,
     certificate: String,
 ) -> StdResult<bool> {
-    Ok(can_sign_up(deps, &sender, amount, certificate)?)
+    Ok(can_sign_up(deps, env, &sender, amount, certificate)?)
 }
 
 pub fn query_user_balance_of(
     deps: Deps,
+    env: Env,
     sender: String,
     amount: Uint256,
     certificate: String,
 ) -> StdResult<Uint256> {
-    Ok(user_balance_of(deps, &sender, amount, certificate)?)
+    Ok(user_balance_of(deps, env, &sender, amount, certificate)?)
 }
 
 #[cfg(test)]

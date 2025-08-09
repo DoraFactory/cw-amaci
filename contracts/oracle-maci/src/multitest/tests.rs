@@ -1,15 +1,13 @@
 #[cfg(test)]
 mod test {
     use crate::error::ContractError;
-    use crate::msg::{Groth16ProofType, PlonkProofType};
+    use crate::msg::Groth16ProofType;
     use crate::multitest::{
-        create_app, match_user_certificate, owner, uint256_from_decimal_string, user1,
-        user1_certificate, user2, user2_certificate, user2_certificate_before, user3,
-        user3_certificate_before, whitelist_ecosystem, whitelist_slope, whitelist_snapshot_height,
-        whitelist_voting_power_mode, MaciCodeId,
+        create_app, match_user_certificate, owner, uint256_from_decimal_string, user2,
+        whitelist_slope, MaciCodeId,
     };
-    use crate::state::{MessageData, Period, PeriodStatus, PubKey, RoundInfo};
-    use cosmwasm_std::{Addr, Uint128, Uint256};
+    use crate::state::{MessageData, Period, PeriodStatus, PubKey};
+    use cosmwasm_std::{Addr, Uint256};
     use cw_multi_test::next_block;
     use serde::{Deserialize, Serialize};
     use serde_json;
