@@ -2,8 +2,8 @@ use crate::circuit_params::match_vkeys;
 use crate::error::ContractError;
 use crate::groth16_parser::{parse_groth16_proof, parse_groth16_vkey};
 use crate::msg::{
-    ExecuteMsg, Groth16ProofType, InstantiateMsg, InstantiationData, QueryMsg, TallyDelayInfo,
-    WhitelistBase,
+    CheckPolicyResponse, ExecuteMsg, Groth16ProofType, InstantiateMsg, InstantiationData, QueryMsg,
+    TallyDelayInfo, WhitelistBase,
 };
 use crate::state::{
     Admin, DelayRecord, DelayRecords, DelayType, Groth16ProofStr, MaciParameters, MessageData,
@@ -2030,7 +2030,7 @@ fn is_operator(deps: Deps, sender: &str) -> StdResult<bool> {
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::Admin {} => to_json_binary(&ADMIN.load(deps.storage)?.admin),
         QueryMsg::Operator {} => to_json_binary(&MACI_OPERATOR.load(deps.storage)?),
@@ -2136,12 +2136,13 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             sender,
             msg_type,
             msg_data,
-        } => to_binary(&query_check_policy(deps, address, msg_type, msg_data)?),
+        } => to_binary(&query_check_policy(deps, env, address, msg_type, msg_data)?),
     }
 }
 
 pub fn query_check_policy(
     deps: Deps,
+    env: Env,
     address: Addr,
     msg_type: String,
     msg_data: String,
@@ -2149,35 +2150,145 @@ pub fn query_check_policy(
     let cfg = WHITELIST.load(deps.storage)?;
     if msg_type == "sign_up" {
         // 1. decode data
+        let voting_time = VOTINGTIME.load(deps.storage)?;
 
-        // 2. verification
-        if(){
-            return Ok(CheckPolicyResponse { eligible: true });
-        }else{
+        let current_time = env.block.time;
+
+        // Check if the current time is within the voting time range (inclusive of start and end time)
+        if current_time < voting_time.start_time || current_time > voting_time.end_time {
             return Ok(CheckPolicyResponse { eligible: false });
         }
+
+        if !is_whitelist(deps.as_ref(), &address)? {
+            return Ok(CheckPolicyResponse { eligible: false });
+        }
+
+        if is_register(deps.as_ref(), &address)? {
+            return Ok(CheckPolicyResponse { eligible: false });
+        }
+
+        return Ok(CheckPolicyResponse { eligible: true });
     }
 
     if msg_type == "publish_message" {
         // 1. decode data
+        let voting_time = VOTINGTIME.load(deps.storage)?;
 
-        // 2. verification
-        if(){
-            return Ok(CheckPolicyResponse { eligible: true });
-        }else{
+        let current_time = env.block.time;
+
+        // Check if the current time is within the voting time range (inclusive of start and end time)
+        if current_time < voting_time.start_time || current_time > voting_time.end_time {
             return Ok(CheckPolicyResponse { eligible: false });
         }
+
+        return Ok(CheckPolicyResponse { eligible: true });
     }
 
     if msg_type == "publish_deactivate_message" {
         // 1. decode data
+        let voting_time = VOTINGTIME.load(deps.storage)?;
 
-        // 2. verification
-        if(){
-            return Ok(CheckPolicyResponse { eligible: true });
-        }else{
+        let current_time = env.block.time;
+
+        // Check if the current time is within the voting time range (inclusive of start and end time)
+        if current_time < voting_time.start_time || current_time > voting_time.end_time {
             return Ok(CheckPolicyResponse { eligible: false });
         }
+
+        return Ok(CheckPolicyResponse { eligible: true });
+    }
+
+    if msg_type == "add_new_key" {
+        // 1. decode data
+        let voting_time = VOTINGTIME.load(deps.storage)?;
+
+        let current_time = env.block.time;
+
+        // Check if the current time is within the voting time range (inclusive of start and end time)
+        if current_time < voting_time.start_time || current_time > voting_time.end_time {
+            return Ok(CheckPolicyResponse { eligible: false });
+        }
+
+        if !NULLIFIERS.has(deps.storage, nullifier.to_be_bytes().to_vec()) {
+            // Return an error response for invalid user or encrypted public key
+            return Ok(CheckPolicyResponse { eligible: false });
+        }
+
+        let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
+
+        let max_leaves_count = MAX_LEAVES_COUNT.load(deps.storage)?;
+
+        // // Load the scalar field value
+        let snark_scalar_field = uint256_from_hex_string(
+            "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
+        );
+
+        if num_sign_ups >= max_leaves_count {
+            return Ok(CheckPolicyResponse { eligible: false });
+        }
+
+        // Check if the pubkey values are within the allowed range
+        if pubkey.x >= snark_scalar_field || pubkey.y >= snark_scalar_field {
+            return Ok(CheckPolicyResponse { eligible: false });
+        }
+
+        let mut input: [Uint256; 7] = [Uint256::zero(); 7];
+
+        input[0] = PRE_DEACTIVATE_ROOT.load(deps.storage)?;
+        // input[1] = COORDINATORHASH.load(deps.storage)?;
+        input[1] = uint256_from_hex_string(
+            "d53841ab0494365b341d519dcfaf0f69e375ffa406eb4484d38f55e9bdef10b",
+        );
+        input[2] = nullifier;
+        input[3] = d[0];
+        input[4] = d[1];
+        input[5] = d[2];
+        input[6] = d[3];
+
+        // Load the scalar field value
+        let snark_scalar_field = uint256_from_hex_string(
+            "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
+        );
+        //     "21888242871839275222246405745257275088548364400416034343698204186575808495617",
+
+        // Compute the hash of the input values
+        let input_hash =
+            uint256_from_hex_string(&hash_256_uint256_list(&input)) % snark_scalar_field; // input hash
+
+        // Load the process verification keys
+        let process_vkeys_str = GROTH16_NEWKEY_VKEYS.load(deps.storage)?;
+
+        // Parse the SNARK proof
+        let proof_str = Groth16ProofStr {
+            pi_a: hex::decode(groth16_proof.a.clone())
+                .map_err(|_| ContractError::HexDecodingError {})?,
+            pi_b: hex::decode(groth16_proof.b.clone())
+                .map_err(|_| ContractError::HexDecodingError {})?,
+            pi_c: hex::decode(groth16_proof.c.clone())
+                .map_err(|_| ContractError::HexDecodingError {})?,
+        };
+
+        // Parse the verification key and prepare for verification
+        let vkey = parse_groth16_vkey::<Bn256>(process_vkeys_str)?;
+        let pvk = prepare_verifying_key(&vkey);
+
+        // Parse the proof and prepare for verification
+        let pof = parse_groth16_proof::<Bn256>(proof_str.clone())?;
+
+        // Verify the SNARK proof using the input hash
+        let is_passed = groth16_verify(
+            &pvk,
+            &pof,
+            &[Fr::from_str(&input_hash.to_string()).unwrap()],
+        )
+        .unwrap();
+
+        // If the proof verification fails, return an error
+        if !is_passed {
+            return Ok(CheckPolicyResponse { eligible: false });
+        }
+
+        return Ok(CheckPolicyResponse { eligible: true });
     }
 
     // 默认其他的消息都是不赞助（不赞助amaci/maci operator与合约的交互）
