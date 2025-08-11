@@ -215,6 +215,14 @@ pub enum QueryMsg {
 
     #[returns(TallyDelayInfo)]
     GetTallyDelay {},
+
+    #[returns(CheckPolicyResponse)]
+    CheckPolicy { sender: Addr, msg_type: String, msg_data: String },
+}
+
+#[cw_serde]
+pub struct CheckPolicyResponse {
+    pub eligible: bool,
 }
 
 #[cw_serde]

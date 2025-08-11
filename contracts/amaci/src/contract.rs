@@ -11,14 +11,14 @@ use crate::state::{
     WhitelistConfig, ADMIN, CERTSYSTEM, CIRCUITTYPE, COORDINATORHASH, CREATE_ROUND_WINDOW,
     CURRENT_DEACTIVATE_COMMITMENT, CURRENT_STATE_COMMITMENT, CURRENT_TALLY_COMMITMENT,
     DEACTIVATE_COUNT, DEACTIVATE_DELAY, DELAY_RECORDS, DMSG_CHAIN_LENGTH, DMSG_HASHES, DNODES,
-    FEEGRANTS, FIRST_DMSG_TIMESTAMP, GROTH16_DEACTIVATE_VKEYS, GROTH16_NEWKEY_VKEYS,
+    FEEGRANTS, FEE_RECIPIENT, FIRST_DMSG_TIMESTAMP, GROTH16_DEACTIVATE_VKEYS, GROTH16_NEWKEY_VKEYS,
     GROTH16_PROCESS_VKEYS, GROTH16_TALLY_VKEYS, LEAF_IDX_0, MACIPARAMETERS,
     MACI_DEACTIVATE_MESSAGE, MACI_OPERATOR, MAX_LEAVES_COUNT, MAX_VOTE_OPTIONS, MSG_CHAIN_LENGTH,
     MSG_HASHES, NODES, NULLIFIERS, NUMSIGNUPS, PENALTY_RATE, PERIOD, PRE_DEACTIVATE_ROOT,
     PROCESSED_DMSG_COUNT, PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO,
-    SIGNUPED, STATEIDXINC, STATE_ROOT_BY_DMSG, TALLY_TIMEOUT, TOTAL_RESULT,
+    SIGNUPED, STATEIDXINC, STATE_ROOT_BY_DMSG, TALLY_DELAY_MAX_HOURS, TALLY_TIMEOUT, TOTAL_RESULT,
     VOICECREDITBALANCE, VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS,
-    ZEROS_H10, TALLY_DELAY_MAX_HOURS, FEE_RECIPIENT
+    ZEROS_H10,
 };
 use cosmwasm_schema::cw_serde;
 #[cfg(not(feature = "library"))]
@@ -29,8 +29,8 @@ use pairing_ce::bn256::Bn256;
 
 use crate::utils::{hash2, hash5, hash_256_uint256_list, uint256_from_hex_string};
 use cosmwasm_std::{
-    attr, coins, to_json_binary, Addr, BankMsg, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
-    Response, StdResult, Timestamp, Uint128, Uint256, Decimal,
+    attr, coins, to_json_binary, Addr, BankMsg, Binary, CosmosMsg, Decimal, Deps, DepsMut, Env,
+    MessageInfo, Response, StdResult, Timestamp, Uint128, Uint256,
 };
 
 use bellman_ce_verifier::{prepare_verifying_key, verify_proof as groth16_verify};
@@ -293,7 +293,7 @@ pub fn instantiate(
     PERIOD.save(deps.storage, &period)?;
 
     MACI_OPERATOR.save(deps.storage, &msg.operator)?;
-    
+
     FEE_RECIPIENT.save(deps.storage, &msg.fee_recipient)?;
 
     let circuit_type = if msg.circuit_type == Uint256::from_u128(0u128) {
@@ -758,10 +758,16 @@ pub fn execute_publish_deactivate_message(
 
     let maci_parameters: MaciParameters = MACIPARAMETERS.load(deps.storage)?;
     // Calculate maximum allowed deactivate messages: 5^(state_tree_depth+2)-1
-    let max_deactivate_messages = Uint256::from_u128(5u128).pow((maci_parameters.state_tree_depth + 
-        Uint256::from_u128(2u128)).to_string().parse().unwrap()) - Uint256::from_u128(1u128);
+    let max_deactivate_messages = Uint256::from_u128(5u128).pow(
+        (maci_parameters.state_tree_depth + Uint256::from_u128(2u128))
+            .to_string()
+            .parse()
+            .unwrap(),
+    ) - Uint256::from_u128(1u128);
     if dmsg_chain_length + Uint256::from_u128(1u128) > max_deactivate_messages {
-        return Err(ContractError::MaxDeactivateMessagesReached { max_deactivate_messages });
+        return Err(ContractError::MaxDeactivateMessagesReached {
+            max_deactivate_messages,
+        });
     }
     // let snark_scalar_field = uint256_from_decimal_string(
     //     "21888242871839275222246405745257275088548364400416034343698204186575808495617",
@@ -1834,7 +1840,7 @@ fn execute_claim(deps: DepsMut, env: Env, _info: MessageInfo) -> Result<Response
     let penalty_amount = withdraw_amount - operator_reward;
 
     let mut messages: Vec<CosmosMsg> = vec![];
-    
+
     // Send 10% to fee_recipient
     if !fee_amount.is_zero() {
         messages.push(CosmosMsg::Bank(BankMsg::Send {
@@ -2126,7 +2132,56 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 .map_err(|e| cosmwasm_std::StdError::generic_err(e.to_string()))?;
             to_json_binary(&delay_info)
         }
+        QueryMsg::CheckPolicy {
+            sender,
+            msg_type,
+            msg_data,
+        } => to_binary(&query_check_policy(deps, address, msg_type, msg_data)?),
     }
+}
+
+pub fn query_check_policy(
+    deps: Deps,
+    address: Addr,
+    msg_type: String,
+    msg_data: String,
+) -> StdResult<CheckPolicyResponse> {
+    let cfg = WHITELIST.load(deps.storage)?;
+    if msg_type == "sign_up" {
+        // 1. decode data
+
+        // 2. verification
+        if(){
+            return Ok(CheckPolicyResponse { eligible: true });
+        }else{
+            return Ok(CheckPolicyResponse { eligible: false });
+        }
+    }
+
+    if msg_type == "publish_message" {
+        // 1. decode data
+
+        // 2. verification
+        if(){
+            return Ok(CheckPolicyResponse { eligible: true });
+        }else{
+            return Ok(CheckPolicyResponse { eligible: false });
+        }
+    }
+
+    if msg_type == "publish_deactivate_message" {
+        // 1. decode data
+
+        // 2. verification
+        if(){
+            return Ok(CheckPolicyResponse { eligible: true });
+        }else{
+            return Ok(CheckPolicyResponse { eligible: false });
+        }
+    }
+
+    // 默认其他的消息都是不赞助（不赞助amaci/maci operator与合约的交互）
+    Ok(CheckPolicyResponse { eligible: false })
 }
 
 pub fn query_white_list(deps: Deps) -> StdResult<Whitelist> {
