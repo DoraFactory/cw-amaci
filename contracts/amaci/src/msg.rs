@@ -223,6 +223,7 @@ pub enum QueryMsg {
 #[cw_serde]
 pub struct CheckPolicyResponse {
     pub eligible: bool,
+    pub reason: String,
 }
 
 #[cw_serde]

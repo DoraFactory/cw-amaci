@@ -2136,163 +2136,197 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
             sender,
             msg_type,
             msg_data,
-        } => to_binary(&query_check_policy(deps, env, address, msg_type, msg_data)?),
+        } => to_binary(&query_check_policy(deps, env, sender, msg_type, msg_data)?),
     }
 }
 
 pub fn query_check_policy(
     deps: Deps,
     env: Env,
-    address: Addr,
+    sender: Addr,
     msg_type: String,
     msg_data: String,
 ) -> StdResult<CheckPolicyResponse> {
     let cfg = WHITELIST.load(deps.storage)?;
-    if msg_type == "sign_up" {
-        // 1. decode data
-        let voting_time = VOTINGTIME.load(deps.storage)?;
+    let (eligible, reason) = match msg_type.as_str() {
+        "sign_up" => {
+            // 1. decode data
+            let voting_time = VOTINGTIME.load(deps.storage)?;
+            let current_time = env.block.time;
 
-        let current_time = env.block.time;
+            // Check if the current time is within the voting time range (inclusive of start and end time)
+            if current_time < voting_time.start_time || current_time > voting_time.end_time {
+                (false, "voting time not in range".to_string())
+            } else if !is_whitelist(deps.as_ref(), &sender)? {
+                (false, "not in whitelist".to_string())
+            } else if is_register(deps.as_ref(), &sender)? {
+                (false, "already registered".to_string())
+            } else {
+                (true, "sign_up check policy passed".to_string())
+            }
+        }
+        "publish_message" => {
+            // 1. decode data
+            let voting_time = VOTINGTIME.load(deps.storage)?;
+            let current_time = env.block.time;
 
-        // Check if the current time is within the voting time range (inclusive of start and end time)
-        if current_time < voting_time.start_time || current_time > voting_time.end_time {
-            return Ok(CheckPolicyResponse { eligible: false });
+            // Check if the current time is within the voting time range (inclusive of start and end time)
+            if current_time < voting_time.start_time || current_time > voting_time.end_time {
+                (false, "voting time not in range".to_string())
+            } else {
+                (true, "publish_message check policy passed".to_string())
+            }
+        }
+        "publish_deactivate_message" => {
+            // 1. decode data
+            let voting_time = VOTINGTIME.load(deps.storage)?;
+            let current_time = env.block.time;
+
+            // Check if the current time is within the voting time range (inclusive of start and end time)
+            if current_time < voting_time.start_time || current_time > voting_time.end_time {
+                (false, "voting time not in range".to_string())
+            } else {
+                (true, "publish_deactivate_message check policy passed".to_string())
+            }
+        }
+        "add_new_key" => {
+            // Decode msg_data to extract AddNewKey parameters
+            let add_new_key_data: Result<crate::msg::ExecuteMsg, _> =
+                cosmwasm_std::from_json(msg_data.as_bytes());
+
+            match add_new_key_data {
+                Ok(crate::msg::ExecuteMsg::AddNewKey {
+                    pubkey,
+                    nullifier,
+                    d,
+                    groth16_proof,
+                }) => {
+                    let voting_time = VOTINGTIME.load(deps.storage)?;
+                    let current_time = env.block.time;
+
+                    // Check if the current time is within the voting time range
+                    if current_time < voting_time.start_time || current_time > voting_time.end_time
+                    {
+                        (false, "voting time not in range".to_string())
+                    } else if NULLIFIERS.has(deps.storage, nullifier.to_be_bytes().to_vec()) {
+                        (false, "nullifier already exists".to_string())
+                    } else {
+                        let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
+                        let max_leaves_count = MAX_LEAVES_COUNT.load(deps.storage)?;
+
+                        if num_sign_ups >= max_leaves_count {
+                            (false, "max leaves count reached".to_string())
+                        } else {
+                            // Load the scalar field value
+                            let snark_scalar_field = uint256_from_hex_string(
+                                "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
+                            );
+
+                            // Check if the pubkey values are within the allowed range
+                            if pubkey.x >= snark_scalar_field || pubkey.y >= snark_scalar_field {
+                                (false, "pubkey values are out of range".to_string())
+                            } else {
+                                // Prepare input for proof verification
+                                let mut input: [Uint256; 7] = [Uint256::zero(); 7];
+                                input[0] = PRE_DEACTIVATE_ROOT.load(deps.storage)?;
+                                input[1] = uint256_from_hex_string(
+                                    "d53841ab0494365b341d519dcfaf0f69e375ffa406eb4484d38f55e9bdef10b",
+                                );
+                                input[2] = nullifier;
+                                input[3] = d[0];
+                                input[4] = d[1];
+                                input[5] = d[2];
+                                input[6] = d[3];
+
+                                // Compute the hash of the input values
+                                let input_hash =
+                                    uint256_from_hex_string(&hash_256_uint256_list(&input))
+                                        % snark_scalar_field;
+
+                                // Load the process verification keys
+                                match GROTH16_NEWKEY_VKEYS.load(deps.storage) {
+                                    Ok(process_vkeys_str) => {
+                                        // Parse the SNARK proof
+                                        match (
+                                            hex::decode(&groth16_proof.a),
+                                            hex::decode(&groth16_proof.b),
+                                            hex::decode(&groth16_proof.c),
+                                        ) {
+                                            (Ok(pi_a), Ok(pi_b), Ok(pi_c)) => {
+                                                let proof_str =
+                                                    Groth16ProofStr { pi_a, pi_b, pi_c };
+
+                                                // Parse the verification key and proof
+                                                match (
+                                                    parse_groth16_vkey::<Bn256>(process_vkeys_str),
+                                                    parse_groth16_proof::<Bn256>(proof_str),
+                                                ) {
+                                                    (Ok(vkey), Ok(pof)) => {
+                                                        let pvk = prepare_verifying_key(&vkey);
+
+                                                        // Verify the SNARK proof
+                                                        match groth16_verify(
+                                                            &pvk,
+                                                            &pof,
+                                                            &[Fr::from_str(
+                                                                &input_hash.to_string(),
+                                                            )
+                                                            .unwrap()],
+                                                        ) {
+                                                            Ok(is_passed) => {
+                                                                if is_passed {
+                                                                    (
+                                                                        true,
+                                                                        "add_new_key check policy passed"
+                                                                            .to_string(),
+                                                                    )
+                                                                } else {
+                                                                    (
+                                                                        false,
+                                                                        "proof verification failed"
+                                                                            .to_string(),
+                                                                    )
+                                                                }
+                                                            }
+                                                            Err(_) => (
+                                                                false,
+                                                                "proof verification error"
+                                                                    .to_string(),
+                                                            ),
+                                                        }
+                                                    }
+                                                    _ => (
+                                                        false,
+                                                        "failed to parse verification key or proof"
+                                                            .to_string(),
+                                                    ),
+                                                }
+                                            }
+                                            _ => (false, "failed to decode proof hex".to_string()),
+                                        }
+                                    }
+                                    Err(_) => {
+                                        (false, "failed to load verification keys".to_string())
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => (
+                    false,
+                    "failed to decode add_new_key message data".to_string(),
+                ),
+            }
         }
 
-        if !is_whitelist(deps.as_ref(), &address)? {
-            return Ok(CheckPolicyResponse { eligible: false });
+        _ => {
+            // default to false
+            (false, "Not supported message type in check policy of this contract".to_string())
         }
+    };
 
-        if is_register(deps.as_ref(), &address)? {
-            return Ok(CheckPolicyResponse { eligible: false });
-        }
-
-        return Ok(CheckPolicyResponse { eligible: true });
-    }
-
-    if msg_type == "publish_message" {
-        // 1. decode data
-        let voting_time = VOTINGTIME.load(deps.storage)?;
-
-        let current_time = env.block.time;
-
-        // Check if the current time is within the voting time range (inclusive of start and end time)
-        if current_time < voting_time.start_time || current_time > voting_time.end_time {
-            return Ok(CheckPolicyResponse { eligible: false });
-        }
-
-        return Ok(CheckPolicyResponse { eligible: true });
-    }
-
-    if msg_type == "publish_deactivate_message" {
-        // 1. decode data
-        let voting_time = VOTINGTIME.load(deps.storage)?;
-
-        let current_time = env.block.time;
-
-        // Check if the current time is within the voting time range (inclusive of start and end time)
-        if current_time < voting_time.start_time || current_time > voting_time.end_time {
-            return Ok(CheckPolicyResponse { eligible: false });
-        }
-
-        return Ok(CheckPolicyResponse { eligible: true });
-    }
-
-    if msg_type == "add_new_key" {
-        // 1. decode data
-        let voting_time = VOTINGTIME.load(deps.storage)?;
-
-        let current_time = env.block.time;
-
-        // Check if the current time is within the voting time range (inclusive of start and end time)
-        if current_time < voting_time.start_time || current_time > voting_time.end_time {
-            return Ok(CheckPolicyResponse { eligible: false });
-        }
-
-        if !NULLIFIERS.has(deps.storage, nullifier.to_be_bytes().to_vec()) {
-            // Return an error response for invalid user or encrypted public key
-            return Ok(CheckPolicyResponse { eligible: false });
-        }
-
-        let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
-
-        let max_leaves_count = MAX_LEAVES_COUNT.load(deps.storage)?;
-
-        // // Load the scalar field value
-        let snark_scalar_field = uint256_from_hex_string(
-            "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
-        );
-
-        if num_sign_ups >= max_leaves_count {
-            return Ok(CheckPolicyResponse { eligible: false });
-        }
-
-        // Check if the pubkey values are within the allowed range
-        if pubkey.x >= snark_scalar_field || pubkey.y >= snark_scalar_field {
-            return Ok(CheckPolicyResponse { eligible: false });
-        }
-
-        let mut input: [Uint256; 7] = [Uint256::zero(); 7];
-
-        input[0] = PRE_DEACTIVATE_ROOT.load(deps.storage)?;
-        // input[1] = COORDINATORHASH.load(deps.storage)?;
-        input[1] = uint256_from_hex_string(
-            "d53841ab0494365b341d519dcfaf0f69e375ffa406eb4484d38f55e9bdef10b",
-        );
-        input[2] = nullifier;
-        input[3] = d[0];
-        input[4] = d[1];
-        input[5] = d[2];
-        input[6] = d[3];
-
-        // Load the scalar field value
-        let snark_scalar_field = uint256_from_hex_string(
-            "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
-        );
-        //     "21888242871839275222246405745257275088548364400416034343698204186575808495617",
-
-        // Compute the hash of the input values
-        let input_hash =
-            uint256_from_hex_string(&hash_256_uint256_list(&input)) % snark_scalar_field; // input hash
-
-        // Load the process verification keys
-        let process_vkeys_str = GROTH16_NEWKEY_VKEYS.load(deps.storage)?;
-
-        // Parse the SNARK proof
-        let proof_str = Groth16ProofStr {
-            pi_a: hex::decode(groth16_proof.a.clone())
-                .map_err(|_| ContractError::HexDecodingError {})?,
-            pi_b: hex::decode(groth16_proof.b.clone())
-                .map_err(|_| ContractError::HexDecodingError {})?,
-            pi_c: hex::decode(groth16_proof.c.clone())
-                .map_err(|_| ContractError::HexDecodingError {})?,
-        };
-
-        // Parse the verification key and prepare for verification
-        let vkey = parse_groth16_vkey::<Bn256>(process_vkeys_str)?;
-        let pvk = prepare_verifying_key(&vkey);
-
-        // Parse the proof and prepare for verification
-        let pof = parse_groth16_proof::<Bn256>(proof_str.clone())?;
-
-        // Verify the SNARK proof using the input hash
-        let is_passed = groth16_verify(
-            &pvk,
-            &pof,
-            &[Fr::from_str(&input_hash.to_string()).unwrap()],
-        )
-        .unwrap();
-
-        // If the proof verification fails, return an error
-        if !is_passed {
-            return Ok(CheckPolicyResponse { eligible: false });
-        }
-
-        return Ok(CheckPolicyResponse { eligible: true });
-    }
-
-    // 默认其他的消息都是不赞助（不赞助amaci/maci operator与合约的交互）
-    Ok(CheckPolicyResponse { eligible: false })
+    Ok(CheckPolicyResponse { eligible, reason })
 }
 
 pub fn query_white_list(deps: Deps) -> StdResult<Whitelist> {
