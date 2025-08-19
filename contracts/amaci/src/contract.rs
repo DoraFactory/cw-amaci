@@ -2150,43 +2150,204 @@ pub fn query_check_policy(
     let cfg = WHITELIST.load(deps.storage)?;
     let (eligible, reason) = match msg_type.as_str() {
         "sign_up" => {
-            // 1. decode data
-            let voting_time = VOTINGTIME.load(deps.storage)?;
-            let current_time = env.block.time;
+            // Decode msg_data to extract SignUp parameters
+            let sign_up_data: Result<crate::msg::ExecuteMsg, _> =
+                cosmwasm_std::from_json(msg_data.as_bytes());
 
-            // Check if the current time is within the voting time range (inclusive of start and end time)
-            if current_time < voting_time.start_time || current_time > voting_time.end_time {
-                (false, "voting time not in range".to_string())
-            } else if !is_whitelist(deps.as_ref(), &sender)? {
-                (false, "not in whitelist".to_string())
-            } else if is_register(deps.as_ref(), &sender)? {
-                (false, "already registered".to_string())
-            } else {
-                (true, "sign_up check policy passed".to_string())
+            match sign_up_data {
+                Ok(crate::msg::ExecuteMsg::SignUp { pubkey }) => {
+                    // 1. Check voting time
+                    let voting_time = VOTINGTIME.load(deps.storage)?;
+                    let current_time = env.block.time;
+
+                    // Check if the current time is within the voting time range (inclusive of start and end time)
+                    if current_time < voting_time.start_time || current_time > voting_time.end_time
+                    {
+                        (false, "voting time not in range".to_string())
+                    } else if !is_whitelist(deps.as_ref(), &sender)? {
+                        (false, "not in whitelist".to_string())
+                    } else if is_register(deps.as_ref(), &sender)? {
+                        (false, "already registered".to_string())
+                    } else {
+                        // 2. Load the scalar field value for validation
+                        let snark_scalar_field = uint256_from_hex_string(
+                            "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
+                        );
+
+                        // 3. Check if the pubkey values are within the allowed range
+                        if pubkey.x >= snark_scalar_field || pubkey.y >= snark_scalar_field {
+                            (
+                                false,
+                                "pubkey values must be less than snark scalar field".to_string(),
+                            )
+                        } else {
+                            // 4. Check if the number of sign-ups is less than the maximum number of leaves
+                            let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
+                            let max_leaves_count = MAX_LEAVES_COUNT.load(deps.storage)?;
+
+                            if num_sign_ups >= max_leaves_count {
+                                (false, "maximum number of sign-ups reached".to_string())
+                            } else {
+                                (true, "sign_up check policy passed".to_string())
+                            }
+                        }
+                    }
+                }
+                _ => (false, "failed to decode sign_up data".to_string()),
             }
         }
         "publish_message" => {
-            // 1. decode data
-            let voting_time = VOTINGTIME.load(deps.storage)?;
-            let current_time = env.block.time;
+            // Decode msg_data to extract PublishMessage parameters
+            let publish_message_data: Result<crate::msg::ExecuteMsg, _> =
+                cosmwasm_std::from_json(msg_data.as_bytes());
 
-            // Check if the current time is within the voting time range (inclusive of start and end time)
-            if current_time < voting_time.start_time || current_time > voting_time.end_time {
-                (false, "voting time not in range".to_string())
-            } else {
-                (true, "publish_message check policy passed".to_string())
+            match publish_message_data {
+                Ok(crate::msg::ExecuteMsg::PublishMessage {
+                    message,
+                    enc_pub_key,
+                }) => {
+                    // 1. Check voting time
+                    let voting_time = VOTINGTIME.load(deps.storage)?;
+                    let current_time = env.block.time;
+
+                    // Check if the current time is within the voting time range (inclusive of start and end time)
+                    if current_time < voting_time.start_time || current_time > voting_time.end_time
+                    {
+                        (false, "voting time not in range".to_string())
+                    } else {
+                        // 2. Load the scalar field value for validation
+                        let snark_scalar_field = uint256_from_hex_string(
+                            "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
+                        );
+
+                        // 3. Validate message data structure (should have 7 Uint256 elements)
+                        if message.data.len() != 7 {
+                            (
+                                false,
+                                "message data must contain exactly 7 elements".to_string(),
+                            )
+                        }
+                        // 4. Validate each message data element is within scalar field
+                        else if message.data.iter().any(|&x| x >= snark_scalar_field) {
+                            (
+                                false,
+                                "message data elements must be less than snark scalar field"
+                                    .to_string(),
+                            )
+                        }
+                        // 5. Validate encrypted public key
+                        else if enc_pub_key.x == Uint256::from_u128(0u128)
+                            && enc_pub_key.y == Uint256::from_u128(1u128)
+                        {
+                            (false, "encrypted public key cannot be (0, 1)".to_string())
+                        }
+                        // 6. Check if encrypted public key values are within scalar field bounds
+                        else if enc_pub_key.x >= snark_scalar_field
+                            || enc_pub_key.y >= snark_scalar_field
+                        {
+                            (
+                                false,
+                                "encrypted public key values must be less than snark scalar field"
+                                    .to_string(),
+                            )
+                        } else {
+                            (true, "publish_message check policy passed".to_string())
+                        }
+                    }
+                }
+                _ => (false, "failed to decode publish_message data".to_string()),
             }
         }
         "publish_deactivate_message" => {
-            // 1. decode data
-            let voting_time = VOTINGTIME.load(deps.storage)?;
-            let current_time = env.block.time;
+            // Decode msg_data to extract PublishDeactivateMessage parameters
+            let publish_deactivate_message_data: Result<crate::msg::ExecuteMsg, _> =
+                cosmwasm_std::from_json(msg_data.as_bytes());
 
-            // Check if the current time is within the voting time range (inclusive of start and end time)
-            if current_time < voting_time.start_time || current_time > voting_time.end_time {
-                (false, "voting time not in range".to_string())
-            } else {
-                (true, "publish_deactivate_message check policy passed".to_string())
+            match publish_deactivate_message_data {
+                Ok(crate::msg::ExecuteMsg::PublishDeactivateMessage {
+                    message,
+                    enc_pub_key,
+                }) => {
+                    // 1. Check voting time
+                    let voting_time = VOTINGTIME.load(deps.storage)?;
+                    let current_time = env.block.time;
+
+                    // Check if the current time is within the voting time range (inclusive of start and end time)
+                    if current_time < voting_time.start_time || current_time > voting_time.end_time
+                    {
+                        (false, "voting time not in range".to_string())
+                    } else {
+                        // 2. Load the scalar field value for validation
+                        let snark_scalar_field = uint256_from_hex_string(
+                            "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
+                        );
+
+                        // 3. Validate message data structure (should have 7 Uint256 elements)
+                        if message.data.len() != 7 {
+                            (
+                                false,
+                                "message data must contain exactly 7 elements".to_string(),
+                            )
+                        }
+                        // 4. Validate each message data element is within scalar field
+                        else if message.data.iter().any(|&x| x >= snark_scalar_field) {
+                            (
+                                false,
+                                "message data elements must be less than snark scalar field"
+                                    .to_string(),
+                            )
+                        }
+                        // 5. Validate encrypted public key (must not be (0, 1) and must be within scalar field bounds)
+                        else if enc_pub_key.x == Uint256::from_u128(0u128)
+                            && enc_pub_key.y == Uint256::from_u128(1u128)
+                        {
+                            (false, "encrypted public key cannot be (0, 1)".to_string())
+                        }
+                        // 6. Check if encrypted public key values are within scalar field bounds
+                        else if enc_pub_key.x >= snark_scalar_field
+                            || enc_pub_key.y >= snark_scalar_field
+                        {
+                            (
+                                false,
+                                "encrypted public key values must be less than snark scalar field"
+                                    .to_string(),
+                            )
+                        } else {
+                            // 7. Check maximum deactivate messages limit
+                            let dmsg_chain_length = DMSG_CHAIN_LENGTH.load(deps.storage)?;
+                            let maci_parameters = MACIPARAMETERS.load(deps.storage)?;
+
+                            // Calculate maximum allowed deactivate messages: 5^(state_tree_depth+2)-1
+                            let max_deactivate_messages = Uint256::from_u128(5u128).pow(
+                                (maci_parameters.state_tree_depth + Uint256::from_u128(2u128))
+                                    .to_string()
+                                    .parse()
+                                    .unwrap(),
+                            ) - Uint256::from_u128(1u128);
+
+                            if dmsg_chain_length + Uint256::from_u128(1u128)
+                                > max_deactivate_messages
+                            {
+                                (
+                                    false,
+                                    format!(
+                                        "maximum deactivate messages reached (max: {})",
+                                        max_deactivate_messages
+                                    ),
+                                )
+                            } else {
+                                (
+                                    true,
+                                    "publish_deactivate_message check policy passed".to_string(),
+                                )
+                            }
+                        }
+                    }
+                }
+                _ => (
+                    false,
+                    "failed to decode publish_deactivate_message data".to_string(),
+                ),
             }
         }
         "add_new_key" => {
@@ -2322,7 +2483,10 @@ pub fn query_check_policy(
 
         _ => {
             // default to false
-            (false, "Not supported message type in check policy of this contract".to_string())
+            (
+                false,
+                "Not supported message type in check policy of this contract".to_string(),
+            )
         }
     };
 
