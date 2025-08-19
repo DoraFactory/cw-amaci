@@ -117,6 +117,14 @@ pub fn instantiate(
     let whitelist_voting_power_args = msg.whitelist_voting_power_args.clone();
     let feegrant_operator = msg.feegrant_operator.clone();
 
+    // Calculate fee_grant_amount from the sent funds
+    let fee_grant_amount = info
+        .funds
+        .iter()
+        .find(|coin| coin.denom == "peaka") // 或者使用适当的代币名称
+        .map(|coin| coin.amount)
+        .unwrap_or_else(|| Uint128::zero());
+
     // Create an admin with the sender address
     let admin = Admin {
         admin: info.sender.clone(),
@@ -265,7 +273,7 @@ pub fn instantiate(
     ROUNDINFO.save(deps.storage, &msg.round_info)?;
     MAX_WHITELIST_NUM.save(deps.storage, &0u128)?;
 
-    FEEGRANTS.save(deps.storage, &Uint128::from(0u128))?;
+    FEEGRANTS.save(deps.storage, &fee_grant_amount)?;
 
     // Validate voting time
     if msg.voting_time.start_time >= msg.voting_time.end_time {
@@ -324,6 +332,7 @@ pub fn instantiate(
         whitelist_snapshot_height,
         whitelist_voting_power_args,
         feegrant_operator,
+        fee_grant_amount,
     };
 
     Ok(Response::default()

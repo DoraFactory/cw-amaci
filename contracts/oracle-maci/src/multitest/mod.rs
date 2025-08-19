@@ -58,9 +58,24 @@ pub type App<ExecC = Empty, QueryC = Empty> = cw_multi_test::App<
 >;
 
 pub fn create_app() -> App {
-    AppBuilder::new()
+    let mut app = AppBuilder::new()
         .with_stargate(StargateAccepting)
-        .build(no_init)
+        .build(no_init);
+
+    // Initialize account balances for testing
+    let initial_balance = vec![cosmwasm_std::coin(10_000_000u128, "peaka")];
+    app.init_modules(|router, _, storage| {
+        router
+            .bank
+            .init_balance(storage, &owner(), initial_balance.clone())
+            .unwrap();
+        router
+            .bank
+            .init_balance(storage, &user2(), initial_balance.clone())
+            .unwrap();
+    });
+
+    app
 }
 
 #[derive(Clone, Debug, Copy)]
@@ -399,7 +414,7 @@ impl MaciContract {
             code_id.0,
             Addr::unchecked(sender),
             &init_msg,
-            &[],
+            &[cosmwasm_std::coin(1000000u128, "peaka")], // 添加funds作为fee_grant_amount
             label,
             None,
         )
@@ -453,7 +468,7 @@ impl MaciContract {
             code_id.0,
             Addr::unchecked(sender),
             &init_msg,
-            &[],
+            &[cosmwasm_std::coin(1000000u128, "peaka")], // 添加funds作为fee_grant_amount
             label,
             None,
         )

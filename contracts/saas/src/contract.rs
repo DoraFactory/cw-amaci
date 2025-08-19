@@ -875,6 +875,10 @@ fn reply_created_oracle_maci_round(
                 .message_batch_size
                 .to_string(),
         ),
+        attr(
+            "fee_grant_amount",
+            oracle_maci_return_data.fee_grant_amount.to_string(),
+        ),
     ]);
 
     if oracle_maci_return_data.round_info.description != "" {

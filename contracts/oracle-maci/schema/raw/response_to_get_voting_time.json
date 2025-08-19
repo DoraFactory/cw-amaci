@@ -2,26 +2,16 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "VotingTime",
   "type": "object",
+  "required": [
+    "end_time",
+    "start_time"
+  ],
   "properties": {
     "end_time": {
-      "anyOf": [
-        {
-          "$ref": "#/definitions/Timestamp"
-        },
-        {
-          "type": "null"
-        }
-      ]
+      "$ref": "#/definitions/Timestamp"
     },
     "start_time": {
-      "anyOf": [
-        {
-          "$ref": "#/definitions/Timestamp"
-        },
-        {
-          "type": "null"
-        }
-      ]
+      "$ref": "#/definitions/Timestamp"
     }
   },
   "additionalProperties": false,

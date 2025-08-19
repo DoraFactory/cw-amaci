@@ -301,16 +301,27 @@ fn test_create_oracle_maci_round_success() {
         .find(|e| e.ty == "instantiate")
         .expect("Should have instantiate event");
 
-    // Verify reply was handled
-    let _reply_event = response
-        .events
-        .iter()
-        .find(|e| e.ty == "reply")
-        .expect("Should have reply event");
-
-    // Verify balance was deducted correctly
+    // Calculate expected cost for validation
     let expected_cost = Uint128::from(10000000000000000000u128)
         + Uint128::from(max_voters * 1000000000000000000u128);
+
+    // Verify fee_grant_amount event attribute exists and has correct value in wasm events
+    let fee_grant_amount_attr = response
+        .events
+        .iter()
+        .filter(|e| e.ty == "wasm")
+        .flat_map(|e| &e.attributes)
+        .find(|attr| attr.key == "fee_grant_amount")
+        .expect("Should have fee_grant_amount attribute in wasm event");
+
+    // The fee_grant_amount should equal the expected cost (deployment fee + voter tokens)
+    assert_eq!(
+        fee_grant_amount_attr.value,
+        expected_cost.to_string(),
+        "fee_grant_amount should match the total cost sent as funds"
+    );
+
+    // Verify balance was deducted correctly
     let final_balance = contract.query_balance(&app).unwrap();
     let expected_remaining = Uint128::from(initial_balance) - expected_cost;
     assert_eq!(final_balance, expected_remaining);
@@ -548,8 +559,29 @@ fn test_oracle_maci_round_management() {
         create_result.err()
     );
 
+    let response = create_result.unwrap();
+
+    // Verify fee_grant_amount event attribute exists in wasm events
+    let fee_grant_amount_attr = response
+        .events
+        .iter()
+        .filter(|e| e.ty == "wasm")
+        .flat_map(|e| &e.attributes)
+        .find(|attr| attr.key == "fee_grant_amount")
+        .expect("Should have fee_grant_amount attribute in wasm event");
+
+    // Calculate expected cost (10 DORA deployment + 5 DORA for voters)
+    let expected_cost =
+        Uint128::from(10000000000000000000u128) + Uint128::from(5u128 * 1000000000000000000u128);
+
+    assert_eq!(
+        fee_grant_amount_attr.value,
+        expected_cost.to_string(),
+        "fee_grant_amount should match the total cost sent as funds"
+    );
+
     // Get the created contract address from events
-    let oracle_maci_addr = extract_contract_address_from_events(&create_result.unwrap().events);
+    let oracle_maci_addr = extract_contract_address_from_events(&response.events);
     println!("========= oracle_maci_addr: {}", oracle_maci_addr);
 
     // 查询并打印 Oracle MACI round info

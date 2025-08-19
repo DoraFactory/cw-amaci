@@ -241,4 +241,5 @@ pub struct InstantiationData {
     pub whitelist_snapshot_height: Uint256,
     pub whitelist_voting_power_args: VotingPowerArgs,
     pub feegrant_operator: Addr,
+    pub fee_grant_amount: Uint128,
 }

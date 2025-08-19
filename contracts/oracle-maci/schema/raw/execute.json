@@ -50,19 +50,6 @@
     {
       "type": "object",
       "required": [
-        "start_voting_period"
-      ],
-      "properties": {
-        "start_voting_period": {
-          "type": "object",
-          "additionalProperties": false
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
         "sign_up"
       ],
       "properties": {
@@ -96,19 +83,6 @@
       ],
       "properties": {
         "start_process_period": {
-          "type": "object",
-          "additionalProperties": false
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "stop_voting_period"
-      ],
-      "properties": {
-        "stop_voting_period": {
           "type": "object",
           "additionalProperties": false
         }
