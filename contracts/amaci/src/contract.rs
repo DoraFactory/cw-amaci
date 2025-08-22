@@ -2136,7 +2136,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
             sender,
             msg_type,
             msg_data,
-        } => to_binary(&query_check_policy(deps, env, sender, msg_type, msg_data)?),
+        } => to_json_binary(&query_check_policy(deps, env, sender, msg_type, msg_data)?),
     }
 }
 
@@ -2164,9 +2164,9 @@ pub fn query_check_policy(
                     if current_time < voting_time.start_time || current_time > voting_time.end_time
                     {
                         (false, "voting time not in range".to_string())
-                    } else if !is_whitelist(deps.as_ref(), &sender)? {
+                    } else if !is_whitelist(deps, &sender)? {
                         (false, "not in whitelist".to_string())
-                    } else if is_register(deps.as_ref(), &sender)? {
+                    } else if is_register(deps, &sender)? {
                         (false, "already registered".to_string())
                     } else {
                         // 2. Load the scalar field value for validation
