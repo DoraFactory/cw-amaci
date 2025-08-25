@@ -2,8 +2,8 @@ use crate::circuit_params::match_vkeys;
 use crate::error::ContractError;
 use crate::groth16_parser::{parse_groth16_proof, parse_groth16_vkey};
 use crate::msg::{
-    CheckPolicyResponse, ExecuteMsg, Groth16ProofType, InstantiateMsg, InstantiationData,
-    MsgSetSponsor, QueryMsg, TallyDelayInfo, WhitelistBase,
+    CheckPolicyResponse, ExecuteMsg, Groth16ProofType, InstantiateMsg, InstantiationData, QueryMsg,
+    TallyDelayInfo, WhitelistBase,
 };
 use crate::state::{
     Admin, DelayRecord, DelayRecords, DelayType, Groth16ProofStr, MaciParameters, MessageData,
@@ -477,20 +477,6 @@ pub fn execute(
             execute_stop_tallying_period(deps, env, info, results, salt)
         }
         ExecuteMsg::Claim {} => execute_claim(deps, env, info),
-        ExecuteMsg::RegisterSponsor {
-            contract_address,
-            is_sponsored,
-            max_grant_amount,
-            denom,
-        } => execute_register_sponsor(
-            deps,
-            env,
-            info,
-            contract_address,
-            is_sponsored,
-            // max_grant_amount,
-            // denom,
-        ),
     }
 }
 
@@ -1898,51 +1884,6 @@ fn execute_claim(deps: DepsMut, env: Env, _info: MessageInfo) -> Result<Response
         .add_attribute("penalty_amount", penalty_u128_amount.to_string())
         .add_attribute("miss_rate", performance.miss_rate.to_string())
         .add_attribute("is_tally_timeout", "false"))
-}
-
-pub fn execute_register_sponsor(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    contract_address: String,
-    is_sponsored: bool,
-    // max_grant_amount: Uint128,
-    // denom: String,
-) -> Result<Response, ContractError> {
-    // Only admin can register sponsor
-    if !is_admin(deps.as_ref(), info.sender.as_ref())? {
-        return Err(ContractError::Unauthorized {});
-    }
-
-    let max_grant_amount = Uint128::from(1000000000000000000u128);
-    let denom = "peaka".to_string();
-    let max_grant_per_user = coins(max_grant_amount.u128(), &denom);
-
-    // Create the sponsor module message
-    let sponsor_msg = cosmwasm_std::CosmosMsg::Stargate {
-        type_url: "/doravota.sponsor.v1.MsgSetSponsor".to_string(),
-        value: {
-            use prost::Message;
-
-            let msg = MsgSetSponsor {
-                creator: info.sender.to_string(),
-                contract_address: contract_address.clone(),
-                is_sponsored,
-                max_grant_per_user: max_grant_per_user.clone(),
-            };
-
-            msg.encode_to_vec().into()
-        },
-    };
-
-    Ok(Response::new()
-        .add_message(sponsor_msg)
-        .add_attribute("action", "register_sponsor")
-        .add_attribute("creator", info.sender.to_string())
-        .add_attribute("contract_address", contract_address)
-        .add_attribute("is_sponsored", is_sponsored.to_string())
-        .add_attribute("max_grant_amount", max_grant_amount.to_string())
-        .add_attribute("denom", denom))
 }
 
 fn can_sign_up(deps: Deps, sender: &Addr) -> StdResult<bool> {

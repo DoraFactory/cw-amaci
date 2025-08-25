@@ -556,10 +556,10 @@ pub fn execute_register_sponsor(
     // max_grant_amount: Uint128,
     // denom: String,
 ) -> Result<Response, ContractError> {
-    // Only admin can register sponsor
-    if !is_admin(deps.as_ref(), info.sender.as_ref())? {
-        return Err(ContractError::Unauthorized {});
-    }
+    // // Only admin can register sponsor
+    // if !is_admin(deps.as_ref(), info.sender.as_ref())? {
+    //     return Err(ContractError::Unauthorized {});
+    // }
 
     let max_grant_amount = Uint128::from(1000000000000000000u128);
     let denom = "peaka".to_string();
@@ -581,7 +581,7 @@ pub fn execute_register_sponsor(
             use prost::Message;
 
             let msg = MsgSetSponsor {
-                creator: info.sender.to_string(),
+                creator: env.contract.address.to_string(),
                 contract_address: contract_address.clone(),
                 is_sponsored,
                 max_grant_per_user: proto_coins,
