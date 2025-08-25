@@ -1,14 +1,16 @@
+use bech32::{self};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    attr, coins, from_json, to_json_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo,
-    Reply, Response, StdError, StdResult, SubMsg, SubMsgResponse, Uint128, Uint256, WasmMsg,
+    attr, coins, from_json, to_json_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Reply,
+    Response, StdError, StdResult, SubMsg, SubMsgResponse, Uint128, Uint256, WasmMsg,
 };
-use bech32::{self};
 
 use crate::error::ContractError;
 use crate::migrates::migrate_v0_1_4::migrate_v0_1_4;
-use crate::msg::{ExecuteMsg, InstantiateMsg, InstantiationData, MigrateMsg, QueryMsg, MsgSetSponsor};
+use crate::msg::{
+    ExecuteMsg, InstantiateMsg, InstantiationData, MigrateMsg, MsgSetSponsor, QueryMsg,
+};
 use crate::state::{
     Admin, CircuitChargeConfig, ValidatorSet, ADMIN, AMACI_CODE_ID, CIRCUIT_CHARGE_CONFIG,
     COORDINATOR_PUBKEY_MAP, MACI_OPERATOR_IDENTITY, MACI_OPERATOR_PUBKEY, MACI_OPERATOR_SET,
@@ -111,6 +113,20 @@ pub fn execute(
         ExecuteMsg::ChangeChargeConfig { config } => {
             execute_change_charge_config(deps, env, info, config)
         }
+        ExecuteMsg::RegisterSponsor {
+            contract_address,
+            is_sponsored,
+            max_grant_amount,
+            denom,
+        } => execute_register_sponsor(
+            deps,
+            env,
+            info,
+            contract_address,
+            is_sponsored,
+            // max_grant_amount,
+            // denom,
+        ),
     }
 }
 
@@ -148,7 +164,7 @@ pub fn execute_create_round(
     certification_system: Uint256,
 ) -> Result<Response, ContractError> {
     validate_dora_address(operator.as_str())?;
-    
+
     let maci_parameters: MaciParameters;
     let required_fee: Uint128;
 
@@ -203,7 +219,7 @@ pub fn execute_create_round(
 
     let total_fee = required_fee;
     let admin = ADMIN.load(deps.storage)?.admin;
-    
+
     // No longer send admin_fee directly to admin, instead send all fees to amaci contract
     // Add admin_fee information in the instantiate message for potential refunds in the future
 
@@ -252,7 +268,7 @@ pub fn execute_set_maci_operator(
     operator: Addr,
 ) -> Result<Response, ContractError> {
     validate_dora_address(operator.as_str())?;
-    
+
     if !is_validator(deps.as_ref(), &info.sender)? {
         return Err(ContractError::Unauthorized {});
     }
@@ -430,7 +446,7 @@ pub fn execute_change_operator(
     address: Addr,
 ) -> Result<Response, ContractError> {
     validate_dora_address(address.as_str())?;
-    
+
     if !is_admin(deps.as_ref(), info.sender.as_ref())? {
         Err(ContractError::Unauthorized {})
     } else {
@@ -549,6 +565,15 @@ pub fn execute_register_sponsor(
     let denom = "peaka".to_string();
     let max_grant_per_user = coins(max_grant_amount.u128(), &denom);
 
+    // Convert cosmwasm_std::Coin to ProtoCoin for protobuf compatibility
+    let proto_coins: Vec<crate::msg::ProtoCoin> = max_grant_per_user
+        .into_iter()
+        .map(|coin| crate::msg::ProtoCoin {
+            denom: coin.denom,
+            amount: coin.amount.to_string(),
+        })
+        .collect();
+
     // Create the sponsor module message
     let sponsor_msg = cosmwasm_std::CosmosMsg::Stargate {
         type_url: "/doravota.sponsor.v1.MsgSetSponsor".to_string(),
@@ -559,7 +584,7 @@ pub fn execute_register_sponsor(
                 creator: info.sender.to_string(),
                 contract_address: contract_address.clone(),
                 is_sponsored,
-                max_grant_per_user: max_grant_per_user.clone(),
+                max_grant_per_user: proto_coins,
             };
 
             msg.encode_to_vec().into()

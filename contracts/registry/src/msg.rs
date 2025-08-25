@@ -28,6 +28,14 @@ pub struct InstantiateMsg {
 
 // Sponsor module message types
 #[derive(Clone, PartialEq, prost::Message)]
+pub struct ProtoCoin {
+    #[prost(string, tag = "1")]
+    pub denom: String,
+    #[prost(string, tag = "2")]
+    pub amount: String,
+}
+
+#[derive(Clone, PartialEq, prost::Message)]
 pub struct MsgSetSponsor {
     #[prost(string, tag = "1")]
     pub creator: String,
@@ -36,7 +44,7 @@ pub struct MsgSetSponsor {
     #[prost(bool, tag = "3")]
     pub is_sponsored: bool,
     #[prost(message, repeated, tag = "4")]
-    pub max_grant_per_user: Vec<cosmwasm_std::Coin>,
+    pub max_grant_per_user: Vec<ProtoCoin>,
 }
 
 #[cw_serde]
@@ -76,6 +84,12 @@ pub enum ExecuteMsg {
     },
     ChangeChargeConfig {
         config: CircuitChargeConfig,
+    },
+    RegisterSponsor {
+        contract_address: String,
+        is_sponsored: bool,
+        max_grant_amount: Uint128,
+        denom: String,
     },
 }
 
