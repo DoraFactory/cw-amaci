@@ -26,6 +26,19 @@ pub struct InstantiateMsg {
     pub amaci_code_id: u64,
 }
 
+// Sponsor module message types
+#[derive(Clone, PartialEq, prost::Message)]
+pub struct MsgSetSponsor {
+    #[prost(string, tag = "1")]
+    pub creator: String,
+    #[prost(string, tag = "2")]
+    pub contract_address: String,
+    #[prost(bool, tag = "3")]
+    pub is_sponsored: bool,
+    #[prost(message, repeated, tag = "4")]
+    pub max_grant_per_user: Vec<cosmwasm_std::Coin>,
+}
+
 #[cw_serde]
 pub enum ExecuteMsg {
     SetMaciOperator {
