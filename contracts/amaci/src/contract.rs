@@ -1886,7 +1886,6 @@ fn execute_claim(deps: DepsMut, env: Env, _info: MessageInfo) -> Result<Response
         .add_attribute("is_tally_timeout", "false"))
 }
 
-
 fn can_sign_up(deps: Deps, sender: &Addr) -> StdResult<bool> {
     let cfg = WHITELIST.load(deps.storage)?;
     let is_whitelist = cfg.is_whitelist(sender);
