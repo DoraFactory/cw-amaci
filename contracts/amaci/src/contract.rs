@@ -2,8 +2,8 @@ use crate::circuit_params::match_vkeys;
 use crate::error::ContractError;
 use crate::groth16_parser::{parse_groth16_proof, parse_groth16_vkey};
 use crate::msg::{
-    CheckPolicyResponse, ExecuteMsg, Groth16ProofType, InstantiateMsg, InstantiationData, QueryMsg,
-    TallyDelayInfo, WhitelistBase,
+    CheckPolicyResponse, ExecuteMsg, Groth16ProofType, InstantiateMsg, InstantiationData,
+    QueryMsg, TallyDelayInfo, WhitelistBase,
 };
 use crate::state::{
     Admin, DelayRecord, DelayRecords, DelayType, Groth16ProofStr, MaciParameters, MessageData,
