@@ -230,6 +230,19 @@ pub struct CheckPolicyResponse {
     pub reason: String,
 }
 
+// Helper structs for check_policy parameter parsing
+#[cw_serde]
+pub struct PublishMessageParams {
+    pub message: MessageData,
+    pub enc_pub_key: PubKey,
+}
+
+#[cw_serde]
+pub struct PublishDeactivateMessageParams {
+    pub message: MessageData,
+    pub enc_pub_key: PubKey,
+}
+
 #[cw_serde]
 pub struct TallyDelayInfo {
     pub delay_seconds: u64,

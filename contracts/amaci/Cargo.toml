@@ -49,6 +49,7 @@ cosmwasm-schema = "1.1.0"
 cw2 = "1.0.1"
 schemars = "0.8.10"
 serde = { version = "1.0.145", default-features = false, features = ["derive"] }
+serde_json = "1.0"
 thiserror = "1.0.31"
 bellman-ce-verifier = { git = "https://github.com/DoraFactory/snarkjs-bellman-adapter.git", default-features = false, version = "0.1.0" }
 hex = "0.4"
