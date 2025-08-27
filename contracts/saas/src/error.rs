@@ -57,4 +57,7 @@ pub enum ContractError {
 
     #[error("Contract instantiation failed")]
     ContractInstantiationFailed {},
+
+    #[error("Treasury manager unauthorized")]
+    TreasuryManagerUnauthorized {},
 }

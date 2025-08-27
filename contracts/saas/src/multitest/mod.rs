@@ -64,6 +64,7 @@ impl SaasCodeId {
         app: &mut App,
         sender: Addr,
         admin: Addr,
+        treasury_manager: Addr,
         registry_contract: Option<Addr>,
         denom: String,
         oracle_maci_code_id: u64,
@@ -74,6 +75,7 @@ impl SaasCodeId {
             self,
             sender,
             admin,
+            treasury_manager,
             registry_contract,
             denom,
             oracle_maci_code_id,
@@ -102,6 +104,7 @@ impl SaasContract {
         code_id: SaasCodeId,
         sender: Addr,
         admin: Addr,
+        treasury_manager: Addr,
         registry_contract: Option<Addr>,
         denom: String,
         oracle_maci_code_id: u64,
@@ -109,6 +112,7 @@ impl SaasContract {
     ) -> AnyResult<Self> {
         let init_msg = InstantiateMsg {
             admin,
+            treasury_manager,
             registry_contract,
             denom,
             oracle_maci_code_id,
@@ -274,6 +278,12 @@ impl SaasContract {
             .query_wasm_smart(self.addr(), &QueryMsg::OracleMaciCodeId {})
     }
 
+
+    pub fn query_treasury_manager(&self, app: &App) -> StdResult<Addr> {
+        app.wrap()
+            .query_wasm_smart(self.addr(), &QueryMsg::TreasuryManager {})
+    }
+
     pub fn balance_of(&self, app: &App, address: String, denom: String) -> StdResult<Coin> {
         app.wrap().query_balance(address, denom)
     }
@@ -359,6 +369,10 @@ pub fn user3() -> Addr {
 
 pub fn mock_registry_contract() -> Addr {
     Addr::unchecked("registry_contract")
+}
+
+pub fn treasury_manager() -> Addr {
+    Addr::unchecked("treasury_manager")
 }
 
 // Helper function to create test round info

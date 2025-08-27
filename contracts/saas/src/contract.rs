@@ -33,7 +33,7 @@ use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, InstantiationData, MigrateMsg, PubKey, QueryMsg};
 use crate::state::{
     Config, MaciContractInfo, OperatorInfo, CONFIG, MACI_CONTRACTS, MACI_CONTRACT_COUNTER,
-    OPERATORS, ORACLE_MACI_CODE_ID, TOTAL_BALANCE,
+    OPERATORS, ORACLE_MACI_CODE_ID, TOTAL_BALANCE, TREASURY_MANAGER,
 };
 
 // Version info for migration
@@ -59,6 +59,8 @@ pub fn instantiate(
     };
 
     CONFIG.save(deps.storage, &config)?;
+    // Store treasury manager separately for easier access
+    TREASURY_MANAGER.save(deps.storage, &msg.treasury_manager)?;
     TOTAL_BALANCE.save(deps.storage, &Uint128::zero())?;
     MACI_CONTRACT_COUNTER.save(deps.storage, &0u64)?;
     ORACLE_MACI_CODE_ID.save(deps.storage, &msg.oracle_maci_code_id)?;
@@ -66,6 +68,7 @@ pub fn instantiate(
     Ok(Response::new()
         .add_attribute("action", "instantiate")
         .add_attribute("admin", config.admin.to_string())
+        .add_attribute("treasury_manager", msg.treasury_manager.to_string())
         .add_attribute("denom", config.denom))
 }
 
@@ -321,9 +324,9 @@ pub fn execute_withdraw(
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
 
-    // Only admin can withdraw
-    if !config.is_admin(&info.sender) {
-        return Err(ContractError::Unauthorized {});
+    // Only treasury manager can withdraw
+    if !is_treasury_manager(deps.as_ref(), info.sender.as_ref())? {
+        return Err(ContractError::TreasuryManagerUnauthorized {});
     }
 
     if amount.is_zero() {
@@ -422,7 +425,7 @@ pub fn execute_create_oracle_maci_round(
         circuit_type,
         certification_system,
         whitelist_backend_pubkey: whitelist_backend_pubkey.clone(),
-        // 写死的默认值 - 1人1票系统
+        // Fixed default values - one person one vote system
         whitelist_ecosystem: "doravota".to_string(),
         whitelist_snapshot_height: Uint256::zero(),
         whitelist_voting_power_args: VotingPowerArgs {
@@ -444,7 +447,7 @@ pub fn execute_create_oracle_maci_round(
 
     // Prepare the instantiate message with SaaS contract as admin and token funds
     let instantiate_msg = WasmMsg::Instantiate {
-        admin: Some(env.contract.address.to_string()), // SaaS合约作为Oracle MACI的admin
+        admin: Some(env.contract.address.to_string()), // SaaS contract as Oracle MACI admin
         code_id: oracle_maci_code_id,
         msg: serialized_msg,
         funds: coins(total_required.u128(), "peaka"), // Send all fees, include user signup and vote fees
@@ -458,7 +461,7 @@ pub fn execute_create_oracle_maci_round(
 
     // Save MACI contract info with temporary address (will be updated in reply)
     let maci_contract_info = MaciContractInfo {
-        contract_address: Addr::unchecked("pending"), // 临时地址，将在reply中更新
+        contract_address: Addr::unchecked("pending"), // Temporary address, will be updated in reply
         creator_operator: info.sender.clone(),
         round_title: round_info.title.clone(),
         created_at: env.block.time,
@@ -467,7 +470,7 @@ pub fn execute_create_oracle_maci_round(
     };
     MACI_CONTRACTS.save(deps.storage, maci_counter, &maci_contract_info)?;
 
-    // Create SubMsg with reply using registry pattern - 这样可以获取真实的合约地址
+    // Create SubMsg with reply using registry pattern - this allows getting the real contract address
     let submsg = SubMsg::reply_on_success(instantiate_msg, CREATED_ORACLE_MACI_ROUND_REPLY_ID);
     Ok(Response::new()
         .add_submessage(submsg)
@@ -674,6 +677,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             to_json_binary(&query_maci_contract(deps, contract_id)?)
         }
         QueryMsg::OracleMaciCodeId {} => to_json_binary(&ORACLE_MACI_CODE_ID.load(deps.storage)?),
+        QueryMsg::TreasuryManager {} => to_json_binary(&TREASURY_MANAGER.load(deps.storage)?),
     }
 }
 
@@ -758,10 +762,10 @@ fn reply_created_oracle_maci_round(
     _env: Env,
     result: Result<SubMsgResponse, String>,
 ) -> Result<Response, ContractError> {
-    // 解析SubMsg响应
+    // Parse SubMsg response
     let response = result.map_err(StdError::generic_err)?;
 
-    // 使用和registry相同的方式解析响应数据
+    // Parse response data using the same method as registry
     let data = response
         .data
         .ok_or(ContractError::Std(StdError::generic_err(
@@ -782,16 +786,16 @@ fn reply_created_oracle_maci_round(
     let oracle_maci_return_data: OracleMaciInstantiationData =
         from_json(&parsed_response.data.unwrap())?;
 
-    // 获取当前的MACI合约计数器
+    // Get current MACI contract counter
     let maci_counter = MACI_CONTRACT_COUNTER.load(deps.storage)?;
 
     let oracle_maci_code_id = ORACLE_MACI_CODE_ID.load(deps.storage)?;
-    // 更新MACI合约记录中的合约地址（从临时地址更新为真实地址）
+    // Update contract address in MACI contract record (from temporary to real address)
     let mut maci_contract_info = MACI_CONTRACTS.load(deps.storage, maci_counter)?;
     maci_contract_info.contract_address = contract_address.clone();
     MACI_CONTRACTS.save(deps.storage, maci_counter, &maci_contract_info)?;
 
-    // 准备返回数据 - 现在包含完整的oracle maci实例化数据
+    // Prepare return data - now contains complete oracle maci instantiation data
     let saas_instantiation_data = InstantiationData {
         addr: contract_address.clone(),
     };
@@ -806,7 +810,7 @@ fn reply_created_oracle_maci_round(
         attr("maci_counter", maci_counter.to_string()),
     ];
 
-    // 如果成功解析了Oracle MACI的实例化数据，添加更多详细信息
+    // If successfully parsed Oracle MACI instantiation data, add more detailed information
     // if let Some(ref oracle_maci_data) = oracle_maci_instantiation_data {
     response_attrs.extend(vec![
         attr(
@@ -901,11 +905,23 @@ fn reply_created_oracle_maci_round(
 pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
     cw2::ensure_from_older_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
+    // Load existing config
+    let config = CONFIG.load(deps.storage)?;
+
+    // Set treasury manager to admin for backward compatibility if not set
+    let treasury_manager = if TREASURY_MANAGER.may_load(deps.storage)?.is_none() {
+        TREASURY_MANAGER.save(deps.storage, &config.admin)?;
+        config.admin.clone()
+    } else {
+        TREASURY_MANAGER.load(deps.storage)?
+    };
+
     ORACLE_MACI_CODE_ID.save(deps.storage, &152u64)?;
 
     Ok(Response::new().add_attributes(vec![
         attr("action", "migrate"),
         attr("version", CONTRACT_VERSION),
+        attr("treasury_manager_set", treasury_manager.to_string()),
     ]))
 }
 
@@ -921,6 +937,12 @@ fn is_operator(deps: Deps, sender: &str) -> StdResult<bool> {
     // Check if sender is an operator
     let sender_addr = Addr::unchecked(sender);
     Ok(OPERATORS.has(deps.storage, &sender_addr))
+}
+
+fn is_treasury_manager(deps: Deps, sender: &str) -> StdResult<bool> {
+    let treasury_manager = TREASURY_MANAGER.load(deps.storage)?;
+    let sender_addr = Addr::unchecked(sender);
+    Ok(treasury_manager == sender_addr)
 }
 
 pub fn validate_dora_address(address: &str) -> Result<(), ContractError> {

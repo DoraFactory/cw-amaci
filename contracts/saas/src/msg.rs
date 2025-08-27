@@ -13,6 +13,7 @@ pub struct PubKey {
 #[cw_serde]
 pub struct InstantiateMsg {
     pub admin: Addr,
+    pub treasury_manager: Addr,
     pub registry_contract: Option<Addr>,
     pub denom: String,
     pub oracle_maci_code_id: u64,
@@ -57,10 +58,10 @@ pub enum ExecuteMsg {
         circuit_type: Uint256,
         certification_system: Uint256,
         whitelist_backend_pubkey: String,
-        // 以下参数在合约内部写死:
+        // The following parameters are hardcoded in the contract:
         // whitelist_ecosystem: "doravota"
         // whitelist_snapshot_height: 0
-        // whitelist_voting_power_args: slope 模式 (1人1票)
+        // whitelist_voting_power_args: slope mode (one person one vote)
     },
 
     // Oracle MACI management
@@ -114,6 +115,9 @@ pub enum QueryMsg {
 
     #[returns(u64)]
     OracleMaciCodeId {},
+
+    #[returns(Addr)]
+    TreasuryManager {},
 }
 
 #[cw_serde]

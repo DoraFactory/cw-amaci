@@ -27,7 +27,7 @@ impl OperatorInfo {
     }
 }
 
-// 新增: MACI 合约信息跟踪
+// Added: MACI contract information tracking
 #[cw_serde]
 pub struct MaciContractInfo {
     pub contract_address: Addr,
@@ -43,10 +43,13 @@ pub const CONFIG: Item<Config> = Item::new("config");
 pub const OPERATORS: Map<&Addr, OperatorInfo> = Map::new("operators");
 pub const TOTAL_BALANCE: Item<Uint128> = Item::new("total_balance");
 
-// 新增: MACI 合约跟踪存储
+// Added: MACI contract tracking storage
 pub const MACI_CONTRACT_COUNTER: Item<u64> = Item::new("maci_contract_counter");
 pub const MACI_CONTRACTS: Map<u64, MaciContractInfo> = Map::new("maci_contracts");
 pub const MACI_CONTRACTS_BY_OPERATOR: Map<(&Addr, u64), bool> =
     Map::new("maci_contracts_by_operator");
 
 pub const ORACLE_MACI_CODE_ID: Item<u64> = Item::new("oracle_maci_code_id");
+
+// Treasury manager storage for easier access and migration support
+pub const TREASURY_MANAGER: Item<Addr> = Item::new("treasury_manager");

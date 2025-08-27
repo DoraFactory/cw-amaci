@@ -4,8 +4,8 @@ use cw_multi_test::{AppBuilder, Contract, ContractWrapper, Executor, StargateAcc
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, PubKey};
 use crate::multitest::{
-    admin, create_app, creator, mock_registry_contract, operator1, operator2, user1, user2,
-    SaasCodeId, DORA_DEMON,
+    admin, create_app, creator, mock_registry_contract, operator1, operator2, treasury_manager, 
+    user1, user2, SaasCodeId, DORA_DEMON,
 };
 use cw_amaci::multitest::uint256_from_decimal_string;
 use cw_oracle_maci;
@@ -22,6 +22,7 @@ fn test_instantiate_saas_contract() {
             &mut app,
             creator(),
             admin(),
+            treasury_manager(),
             Some(mock_registry_contract()),
             DORA_DEMON.to_string(),
             oracle_maci_code_id,
@@ -34,6 +35,10 @@ fn test_instantiate_saas_contract() {
     assert_eq!(config.admin, admin());
     assert_eq!(config.registry_contract, Some(mock_registry_contract()));
     assert_eq!(config.denom, DORA_DEMON);
+
+    // Verify treasury manager query
+    let queried_treasury_manager = contract.query_treasury_manager(&app).unwrap();
+    assert_eq!(queried_treasury_manager, treasury_manager());
 
     // Verify initial balance is zero
     let balance = contract.query_balance(&app).unwrap();
@@ -59,6 +64,7 @@ fn test_update_config() {
             &mut app,
             creator(),
             admin(),
+            treasury_manager(),
             Some(mock_registry_contract()),
             DORA_DEMON.to_string(),
             oracle_maci_code_id,
@@ -95,6 +101,7 @@ fn test_operator_management() {
             &mut app,
             creator(),
             admin(),
+            treasury_manager(),
             Some(mock_registry_contract()),
             DORA_DEMON.to_string(),
             oracle_maci_code_id,
@@ -173,6 +180,7 @@ fn test_deposit_and_withdraw() {
             &mut app,
             creator(),
             admin(),
+            treasury_manager(),
             Some(mock_registry_contract()),
             DORA_DEMON.to_string(),
             oracle_maci_code_id,
@@ -193,10 +201,10 @@ fn test_deposit_and_withdraw() {
     let err = contract.deposit(&mut app, user1(), &[]).unwrap_err();
     assert!(err.to_string().contains("Error executing WasmMsg"));
 
-    // Withdraw funds as admin
+    // Withdraw funds as treasury manager
     let withdraw_amount = Uint128::from(500000u128);
     contract
-        .withdraw(&mut app, admin(), withdraw_amount, None)
+        .withdraw(&mut app, treasury_manager(), withdraw_amount, None)
         .unwrap();
 
     // Check balance updated
@@ -241,6 +249,7 @@ fn test_create_oracle_maci_round_success() {
             &mut app,
             creator(),
             admin(),
+            treasury_manager(),
             None,
             DORA_DEMON.to_string(),
             oracle_maci_code_id,
@@ -332,17 +341,17 @@ fn test_create_oracle_maci_round_success() {
     assert_eq!(maci_contracts[0].round_title, "Test Round");
     assert_eq!(maci_contracts[0].creator_operator, operator1());
 
-    // 方法二：通过 SAAS 合约查询获取 Oracle MACI 地址，然后查询详细的 round info
+    // Method 2: Query Oracle MACI address through SAAS contract, then query detailed round info
     if let Some(first_maci) = maci_contracts.first() {
-        println!("========= 通过 SAAS 查询到的 MACI 合约信息 ==========");
-        println!("合约地址: {}", first_maci.contract_address);
-        println!("创建者: {}", first_maci.creator_operator);
-        println!("轮次标题: {}", first_maci.round_title);
-        println!("创建时间: {}", first_maci.created_at);
-        println!("代码ID: {}", first_maci.code_id);
-        println!("创建费用: {}", first_maci.creation_fee);
+        println!("========= MACI Contract Info Queried through SAAS ==========");
+        println!("Contract Address: {}", first_maci.contract_address);
+        println!("Creator: {}", first_maci.creator_operator);
+        println!("Round Title: {}", first_maci.round_title);
+        println!("Created At: {}", first_maci.created_at);
+        println!("Code ID: {}", first_maci.code_id);
+        println!("Creation Fee: {}", first_maci.creation_fee);
 
-        // 查询详细的 round info
+        // Query detailed round info
         let round_info_query_msg = serde_json::json!({
             "get_round_info": {}
         });
@@ -353,14 +362,14 @@ fn test_create_oracle_maci_round_success() {
 
         match round_info_result {
             Ok(round_info) => {
-                println!("======== 详细的 Round Info ========");
+                println!("======== Detailed Round Info =======");
                 println!("Title: {}", round_info.title);
                 println!("Description: {}", round_info.description);
                 println!("Link: {}", round_info.link);
                 println!("==================================");
             }
             Err(e) => {
-                println!("查询详细 round info 失败: {:?}", e);
+                println!("Failed to query detailed round info: {:?}", e);
             }
         }
         println!("================================================");
@@ -378,6 +387,7 @@ fn test_create_oracle_maci_round_unauthorized() {
             &mut app,
             creator(),
             admin(),
+            treasury_manager(),
             None,
             DORA_DEMON.to_string(),
             oracle_maci_code_id,
@@ -442,6 +452,7 @@ fn test_create_oracle_maci_round_insufficient_funds() {
             &mut app,
             creator(),
             admin(),
+            treasury_manager(),
             None,
             DORA_DEMON.to_string(),
             oracle_maci_code_id,
@@ -510,6 +521,7 @@ fn test_oracle_maci_round_management() {
             &mut app,
             creator(),
             admin(),
+            treasury_manager(),
             None,
             DORA_DEMON.to_string(),
             oracle_maci_code_id,
@@ -584,7 +596,7 @@ fn test_oracle_maci_round_management() {
     let oracle_maci_addr = extract_contract_address_from_events(&response.events);
     println!("========= oracle_maci_addr: {}", oracle_maci_addr);
 
-    // 查询并打印 Oracle MACI round info
+    // Query and print Oracle MACI round info
     let round_info_query_msg = serde_json::json!({
         "get_round_info": {}
     });
@@ -602,7 +614,7 @@ fn test_oracle_maci_round_management() {
             println!("==========================================");
         }
         Err(e) => {
-            println!("查询 round info 失败: {:?}", e);
+            println!("Failed to query round info: {:?}", e);
         }
     }
 
@@ -624,7 +636,7 @@ fn test_oracle_maci_round_management() {
         oracle_maci_addr_again
     );
 
-    // 查询并打印第二个 Oracle MACI round info
+    // Query and print second Oracle MACI round info
     let round_info_query_msg_again = serde_json::json!({
         "get_round_info": {}
     });
@@ -642,7 +654,7 @@ fn test_oracle_maci_round_management() {
             println!("===========================================");
         }
         Err(e) => {
-            println!("查询第二个 round info 失败: {:?}", e);
+            println!("Failed to query second round info: {:?}", e);
         }
     }
     // Test round info management
@@ -760,6 +772,7 @@ fn test_operator_feegrant_lifecycle() {
             &mut app,
             creator(),
             admin(),
+            treasury_manager(),
             Some(mock_registry_contract()),
             DORA_DEMON.to_string(),
             oracle_maci_code_id,
@@ -924,6 +937,307 @@ fn test_operator_feegrant_lifecycle() {
         .has_feegrant_allowance(&app, contract.addr().to_string(), operator2().to_string())
         .unwrap();
     assert!(!has_feegrant);
+}
+
+#[test]
+fn test_treasury_manager_withdraw_success() {
+    let deposit_amount = Uint128::from(1000u128);
+    let mut app = AppBuilder::default()
+        .with_stargate(StargateAccepting)
+        .build(|router, _api, storage| {
+            router
+                .bank
+                .init_balance(storage, &user1(), coins(deposit_amount.u128(), DORA_DEMON))
+                .unwrap();
+        });
+    
+    let oracle_maci_code_id = app.store_code(oracle_maci_contract());
+    let code_id = SaasCodeId::store_code(&mut app);
+    let contract = code_id
+        .instantiate(
+            &mut app,
+            creator(),
+            admin(),
+            treasury_manager(),
+            Some(mock_registry_contract()),
+            DORA_DEMON.to_string(),
+            oracle_maci_code_id,
+            "SaaS Contract",
+        )
+        .unwrap();
+
+    // Deposit funds first
+    let deposit_amount = Uint128::from(1000u128);
+    contract
+        .deposit(&mut app, user1(), &coins(deposit_amount.u128(), DORA_DEMON))
+        .unwrap();
+
+    // Verify balance
+    let balance = contract.query_balance(&app).unwrap();
+    assert_eq!(balance, deposit_amount);
+
+    // Treasury manager withdraws funds
+    let withdraw_amount = Uint128::from(500u128);
+    let response = contract
+        .withdraw(&mut app, treasury_manager(), withdraw_amount, Some(user2()))
+        .unwrap();
+
+    // Verify response attributes
+    let attrs: Vec<_> = response
+        .events
+        .iter()
+        .flat_map(|e| &e.attributes)
+        .collect();
+    let action_attr = attrs.iter().find(|attr| attr.key == "action").unwrap();
+    assert_eq!(action_attr.value, "withdraw");
+
+    // Verify new balance
+    let new_balance = contract.query_balance(&app).unwrap();
+    assert_eq!(new_balance, deposit_amount - withdraw_amount);
+}
+
+#[test]
+fn test_admin_withdraw_fails() {
+    let deposit_amount = Uint128::from(1000u128);
+    let mut app = AppBuilder::default()
+        .with_stargate(StargateAccepting)
+        .build(|router, _api, storage| {
+            router
+                .bank
+                .init_balance(storage, &user1(), coins(deposit_amount.u128(), DORA_DEMON))
+                .unwrap();
+        });
+    
+    let oracle_maci_code_id = app.store_code(oracle_maci_contract());
+    let code_id = SaasCodeId::store_code(&mut app);
+    let contract = code_id
+        .instantiate(
+            &mut app,
+            creator(),
+            admin(),
+            treasury_manager(),
+            Some(mock_registry_contract()),
+            DORA_DEMON.to_string(),
+            oracle_maci_code_id,
+            "SaaS Contract",
+        )
+        .unwrap();
+
+    // Deposit funds first
+    contract
+        .deposit(&mut app, user1(), &coins(deposit_amount.u128(), DORA_DEMON))
+        .unwrap();
+
+    // Admin tries to withdraw (should fail)
+    let withdraw_amount = Uint128::from(500u128);
+    let err = contract
+        .withdraw(&mut app, admin(), withdraw_amount, None)
+        .unwrap_err();
+    
+    // Should get TreasuryManagerUnauthorized error
+    assert!(err.to_string().contains("Error executing WasmMsg"));
+}
+
+
+#[test]
+fn test_treasury_manager_cannot_manage_operators() {
+    let mut app = create_app();
+    
+    let oracle_maci_code_id = app.store_code(oracle_maci_contract());
+    let code_id = SaasCodeId::store_code(&mut app);
+    let contract = code_id
+        .instantiate(
+            &mut app,
+            creator(),
+            admin(),
+            treasury_manager(),
+            Some(mock_registry_contract()),
+            DORA_DEMON.to_string(),
+            oracle_maci_code_id,
+            "SaaS Contract",
+        )
+        .unwrap();
+
+    // Treasury manager tries to add operator (should fail)
+    let err = contract
+        .add_operator(&mut app, treasury_manager(), operator1())
+        .unwrap_err();
+    
+    println!("Error message: {}", err.to_string());
+    assert!(err.to_string().contains("Error executing WasmMsg"));
+
+    // Admin adds operator (should succeed)
+    contract
+        .add_operator(&mut app, admin(), operator1())
+        .unwrap();
+
+    // Treasury manager tries to remove operator (should fail)
+    let err = contract
+        .remove_operator(&mut app, treasury_manager(), operator1())
+        .unwrap_err();
+    
+    assert!(err.to_string().contains("Error executing WasmMsg"));
+}
+
+#[test]
+fn test_deposit_still_public() {
+    let deposit_amount = Uint128::from(1000u128);
+    let mut app = AppBuilder::default()
+        .with_stargate(StargateAccepting)
+        .build(|router, _api, storage| {
+            router
+                .bank
+                .init_balance(storage, &user1(), coins(deposit_amount.u128(), DORA_DEMON))
+                .unwrap();
+            router
+                .bank
+                .init_balance(storage, &user2(), coins(deposit_amount.u128(), DORA_DEMON))
+                .unwrap();
+            router
+                .bank
+                .init_balance(storage, &admin(), coins(deposit_amount.u128(), DORA_DEMON))
+                .unwrap();
+            router
+                .bank
+                .init_balance(storage, &treasury_manager(), coins(deposit_amount.u128(), DORA_DEMON))
+                .unwrap();
+        });
+    
+    let oracle_maci_code_id = app.store_code(oracle_maci_contract());
+    let code_id = SaasCodeId::store_code(&mut app);
+    let contract = code_id
+        .instantiate(
+            &mut app,
+            creator(),
+            admin(),
+            treasury_manager(),
+            Some(mock_registry_contract()),
+            DORA_DEMON.to_string(),
+            oracle_maci_code_id,
+            "SaaS Contract",
+        )
+        .unwrap();
+
+    // Various users can deposit
+    contract
+        .deposit(&mut app, user1(), &coins(deposit_amount.u128(), DORA_DEMON))
+        .unwrap();
+
+    contract
+        .deposit(&mut app, user2(), &coins(deposit_amount.u128(), DORA_DEMON))
+        .unwrap();
+
+    contract
+        .deposit(&mut app, admin(), &coins(deposit_amount.u128(), DORA_DEMON))
+        .unwrap();
+
+    contract
+        .deposit(&mut app, treasury_manager(), &coins(deposit_amount.u128(), DORA_DEMON))
+        .unwrap();
+
+    // Verify total balance
+    let total_balance = contract.query_balance(&app).unwrap();
+    assert_eq!(total_balance, deposit_amount * Uint128::from(4u128));
+}
+
+#[test]
+fn test_role_separation_complete_workflow() {
+    let deposit_amount = Uint128::from(2000u128);
+    let mut app = AppBuilder::default()
+        .with_stargate(StargateAccepting)
+        .build(|router, _api, storage| {
+            router
+                .bank
+                .init_balance(storage, &user1(), coins(deposit_amount.u128(), DORA_DEMON))
+                .unwrap();
+        });
+    
+    let oracle_maci_code_id = app.store_code(oracle_maci_contract());
+    let code_id = SaasCodeId::store_code(&mut app);
+    let contract = code_id
+        .instantiate(
+            &mut app,
+            creator(),
+            admin(),
+            treasury_manager(),
+            Some(mock_registry_contract()),
+            DORA_DEMON.to_string(),
+            oracle_maci_code_id,
+            "SaaS Contract",
+        )
+        .unwrap();
+
+    // Step 1: Public deposits funds
+    contract
+        .deposit(&mut app, user1(), &coins(deposit_amount.u128(), DORA_DEMON))
+        .unwrap();
+
+    // Step 2: Admin manages operators
+    contract
+        .add_operator(&mut app, admin(), operator1())
+        .unwrap();
+
+    let is_operator = contract.query_is_operator(&app, operator1()).unwrap();
+    assert!(is_operator);
+
+    // Step 3: Treasury manager withdraws funds
+    let withdraw_amount = Uint128::from(1000u128);
+    contract
+        .withdraw(&mut app, treasury_manager(), withdraw_amount, Some(user2()))
+        .unwrap();
+
+    // Step 4: Verify balances
+    let remaining_balance = contract.query_balance(&app).unwrap();
+    assert_eq!(remaining_balance, deposit_amount - withdraw_amount);
+
+    // Step 5: Treasury manager is immutable - only the original treasury manager can withdraw
+    let second_withdraw = Uint128::from(500u128);
+    contract
+        .withdraw(&mut app, treasury_manager(), second_withdraw, Some(user1()))
+        .unwrap();
+
+    // Step 6: Verify non-treasury manager (user2) cannot withdraw
+    let err = contract
+        .withdraw(&mut app, user2(), Uint128::from(100u128), None)
+        .unwrap_err();
+    
+    assert!(err.to_string().contains("Error executing WasmMsg"));
+
+    // Verify final balance
+    let final_balance = contract.query_balance(&app).unwrap();
+    assert_eq!(final_balance, deposit_amount - withdraw_amount - second_withdraw);
+}
+
+#[test]
+fn test_migration_sets_treasury_manager() {
+    let mut app = create_app();
+    
+    let oracle_maci_code_id = app.store_code(oracle_maci_contract());
+    let code_id = SaasCodeId::store_code(&mut app);
+    let contract = code_id
+        .instantiate(
+            &mut app,
+            creator(),
+            admin(),
+            treasury_manager(),
+            Some(mock_registry_contract()),
+            DORA_DEMON.to_string(),
+            oracle_maci_code_id,
+            "SaaS Contract",
+        )
+        .unwrap();
+
+    // Verify treasury manager is set correctly after instantiation
+    let queried_treasury_manager = contract.query_treasury_manager(&app).unwrap();
+    assert_eq!(queried_treasury_manager, treasury_manager());
+
+    // Verify treasury manager is still accessible via query
+    let queried_treasury_manager = contract.query_treasury_manager(&app).unwrap();
+    assert_eq!(queried_treasury_manager, treasury_manager());
+
+    // Migration scenario would be tested in integration tests 
+    // where we deploy an old version without treasury_manager 
+    // and then migrate to new version
 }
 
 // Oracle MACI contract wrapper for testing
