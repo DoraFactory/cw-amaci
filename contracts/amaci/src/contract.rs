@@ -2204,24 +2204,24 @@ pub fn query_check_policy(
             } else if is_register(deps, &sender)? {
                 (false, "already registered".to_string())
             } else {
-                // 2. Load the scalar field value for validation
-                let snark_scalar_field = uint256_from_hex_string(
-                    "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
-                );
+                // 2. Check if the number of sign-ups is less than the maximum number of leaves (same order as execute_sign_up)
+                let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
+                let max_leaves_count = MAX_LEAVES_COUNT.load(deps.storage)?;
 
-                // 3. Check if the pubkey values are within the allowed range
-                if pubkey.x >= snark_scalar_field || pubkey.y >= snark_scalar_field {
-                    (
-                        false,
-                        "pubkey values must be less than snark scalar field".to_string(),
-                    )
+                if num_sign_ups >= max_leaves_count {
+                    (false, "maximum number of sign-ups reached".to_string())
                 } else {
-                    // 4. Check if the number of sign-ups is less than the maximum number of leaves
-                    let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
-                    let max_leaves_count = MAX_LEAVES_COUNT.load(deps.storage)?;
+                    // 3. Load the scalar field value for validation
+                    let snark_scalar_field = uint256_from_hex_string(
+                        "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
+                    );
 
-                    if num_sign_ups >= max_leaves_count {
-                        (false, "maximum number of sign-ups reached".to_string())
+                    // 4. Check if the pubkey values are within the allowed range
+                    if pubkey.x >= snark_scalar_field || pubkey.y >= snark_scalar_field {
+                        (
+                            false,
+                            "pubkey values must be less than snark scalar field".to_string(),
+                        )
                     } else {
                         (true, "sign_up check policy passed".to_string())
                     }
@@ -2458,133 +2458,118 @@ pub fn query_check_policy(
             }
         }
         "add_new_key" => {
-            // Decode msg_data to extract AddNewKey parameters
-            let add_new_key_data: Result<crate::msg::ExecuteMsg, _> =
-                cosmwasm_std::from_json(msg_data.as_bytes());
-
-            match add_new_key_data {
-                Ok(crate::msg::ExecuteMsg::AddNewKey {
-                    pubkey,
-                    nullifier,
-                    d,
-                    groth16_proof,
-                }) => {
-                    let voting_time = VOTINGTIME.load(deps.storage)?;
-                    let current_time = env.block.time;
-
-                    // Check if the current time is within the voting time range
-                    if current_time < voting_time.start_time || current_time > voting_time.end_time
-                    {
-                        (false, "voting time not in range".to_string())
-                    } else if NULLIFIERS.has(deps.storage, nullifier.to_be_bytes().to_vec()) {
-                        (false, "nullifier already exists".to_string())
-                    } else {
-                        let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
-                        let max_leaves_count = MAX_LEAVES_COUNT.load(deps.storage)?;
-
-                        if num_sign_ups >= max_leaves_count {
-                            (false, "max leaves count reached".to_string())
-                        } else {
-                            // Load the scalar field value
-                            let snark_scalar_field = uint256_from_hex_string(
-                                "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
-                            );
-
-                            // Check if the pubkey values are within the allowed range
-                            if pubkey.x >= snark_scalar_field || pubkey.y >= snark_scalar_field {
-                                (false, "pubkey values are out of range".to_string())
-                            } else {
-                                // Prepare input for proof verification
-                                let mut input: [Uint256; 7] = [Uint256::zero(); 7];
-                                input[0] = PRE_DEACTIVATE_ROOT.load(deps.storage)?;
-                                input[1] = uint256_from_hex_string(
-                                    "d53841ab0494365b341d519dcfaf0f69e375ffa406eb4484d38f55e9bdef10b",
-                                );
-                                input[2] = nullifier;
-                                input[3] = d[0];
-                                input[4] = d[1];
-                                input[5] = d[2];
-                                input[6] = d[3];
-
-                                // Compute the hash of the input values
-                                let input_hash =
-                                    uint256_from_hex_string(&hash_256_uint256_list(&input))
-                                        % snark_scalar_field;
-
-                                // Load the process verification keys
-                                match GROTH16_NEWKEY_VKEYS.load(deps.storage) {
-                                    Ok(process_vkeys_str) => {
-                                        // Parse the SNARK proof
-                                        match (
-                                            hex::decode(&groth16_proof.a),
-                                            hex::decode(&groth16_proof.b),
-                                            hex::decode(&groth16_proof.c),
-                                        ) {
-                                            (Ok(pi_a), Ok(pi_b), Ok(pi_c)) => {
-                                                let proof_str =
-                                                    Groth16ProofStr { pi_a, pi_b, pi_c };
-
-                                                // Parse the verification key and proof
-                                                match (
-                                                    parse_groth16_vkey::<Bn256>(process_vkeys_str),
-                                                    parse_groth16_proof::<Bn256>(proof_str),
-                                                ) {
-                                                    (Ok(vkey), Ok(pof)) => {
-                                                        let pvk = prepare_verifying_key(&vkey);
-
-                                                        // Verify the SNARK proof
-                                                        match groth16_verify(
-                                                            &pvk,
-                                                            &pof,
-                                                            &[Fr::from_str(
-                                                                &input_hash.to_string(),
-                                                            )
-                                                            .unwrap()],
-                                                        ) {
-                                                            Ok(is_passed) => {
-                                                                if is_passed {
-                                                                    (
-                                                                        true,
-                                                                        "add_new_key check policy passed"
-                                                                            .to_string(),
-                                                                    )
-                                                                } else {
-                                                                    (
-                                                                        false,
-                                                                        "proof verification failed"
-                                                                            .to_string(),
-                                                                    )
-                                                                }
-                                                            }
-                                                            Err(_) => (
-                                                                false,
-                                                                "proof verification error"
-                                                                    .to_string(),
-                                                            ),
-                                                        }
-                                                    }
-                                                    _ => (
-                                                        false,
-                                                        "failed to parse verification key or proof"
-                                                            .to_string(),
-                                                    ),
-                                                }
-                                            }
-                                            _ => (false, "failed to decode proof hex".to_string()),
-                                        }
-                                    }
-                                    Err(_) => {
-                                        (false, "failed to load verification keys".to_string())
-                                    }
+            // Try to decode msg_data as { pubkey: {...}, nullifier: ..., d: [...], groth16Proof: {...} } first, then as ExecuteMsg::AddNewKey
+            let (pubkey, nullifier, d, groth16_proof): (crate::state::PubKey, Uint256, [Uint256; 4], Groth16ProofType) = {
+                let wrapper: Result<serde_json::Value, _> = serde_json::from_str(&msg_data);
+                match wrapper {
+                    Ok(json) => {
+                        if let (Some(pubkey_obj), Some(nullifier_obj), Some(d_obj), Some(groth16_proof_obj)) = 
+                            (json.get("pubkey"), json.get("nullifier"), json.get("d"), json.get("groth16Proof")) {
+                            let pubkey: Result<crate::state::PubKey, _> = cosmwasm_std::from_json(serde_json::to_string(pubkey_obj).unwrap().as_bytes());
+                            let nullifier: Result<Uint256, _> = cosmwasm_std::from_json(serde_json::to_string(nullifier_obj).unwrap().as_bytes());
+                            let d: Result<[Uint256; 4], _> = cosmwasm_std::from_json(serde_json::to_string(d_obj).unwrap().as_bytes());
+                            let groth16_proof: Result<Groth16ProofType, _> = cosmwasm_std::from_json(serde_json::to_string(groth16_proof_obj).unwrap().as_bytes());
+                            match (pubkey, nullifier, d, groth16_proof) {
+                                (Ok(pubkey), Ok(nullifier), Ok(d), Ok(groth16_proof)) => (pubkey, nullifier, d, groth16_proof),
+                                _ => {
+                                    return Ok(CheckPolicyResponse {
+                                        eligible: false,
+                                        reason: "failed to decode add_new_key parameters".to_string(),
+                                    });
                                 }
+                            }
+                        } else {
+                            return Ok(CheckPolicyResponse {
+                                eligible: false,
+                                reason: "missing required fields in add_new_key data".to_string(),
+                            });
+                        }
+                    }
+                    Err(_) => {
+                        // Second try: decode as ExecuteMsg::AddNewKey
+                        let exec_msg: Result<crate::msg::ExecuteMsg, _> = cosmwasm_std::from_json(msg_data.as_bytes());
+                        match exec_msg {
+                            Ok(crate::msg::ExecuteMsg::AddNewKey { pubkey, nullifier, d, groth16_proof }) => {
+                                (pubkey, nullifier, d, groth16_proof)
+                            }
+                            _ => {
+                                return Ok(CheckPolicyResponse {
+                                    eligible: false,
+                                    reason: "failed to decode add_new_key data".to_string(),
+                                });
                             }
                         }
                     }
                 }
-                _ => (
-                    false,
-                    "failed to decode add_new_key message data".to_string(),
-                ),
+            };
+
+            let voting_time = VOTINGTIME.load(deps.storage)?;
+            let current_time = env.block.time;
+            // Check if the current time is within the voting time range
+            if current_time < voting_time.start_time || current_time > voting_time.end_time {
+                (false, "voting time not in range".to_string())
+            } else if NULLIFIERS.has(deps.storage, nullifier.to_be_bytes().to_vec()) {
+                (false, "nullifier already exists".to_string())
+            } else {
+                let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
+                let max_leaves_count = MAX_LEAVES_COUNT.load(deps.storage)?;
+                if num_sign_ups >= max_leaves_count {
+                    (false, "max leaves count reached".to_string())
+                } else {
+                    // Load the scalar field value
+                    let snark_scalar_field = uint256_from_hex_string(
+                        "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
+                    );
+                    // Check if the pubkey values are within the allowed range
+                    if pubkey.x >= snark_scalar_field || pubkey.y >= snark_scalar_field {
+                        (false, "pubkey values are out of range".to_string())
+                    } else {
+                        // Prepare input for proof verification
+                        let mut input: [Uint256; 7] = [Uint256::zero(); 7];
+                        input[0] = DNODES.load(deps.storage, Uint256::from_u128(0u128).to_be_bytes().to_vec())?;
+                        input[1] = COORDINATORHASH.load(deps.storage)?;
+                        input[2] = nullifier;
+                        input[3] = d[0];
+                        input[4] = d[1];
+                        input[5] = d[2];
+                        input[6] = d[3];
+                        
+                        // Compute the hash of the input values
+                        let input_hash = uint256_from_hex_string(&hash_256_uint256_list(&input)) % snark_scalar_field;
+                        
+                        // Load the process verification keys and verify proof
+                        match GROTH16_NEWKEY_VKEYS.load(deps.storage) {
+                            Ok(process_vkeys_str) => {
+                                // Parse the SNARK proof
+                                match (hex::decode(&groth16_proof.a), hex::decode(&groth16_proof.b), hex::decode(&groth16_proof.c)) {
+                                    (Ok(pi_a), Ok(pi_b), Ok(pi_c)) => {
+                                        let proof_str = Groth16ProofStr { pi_a, pi_b, pi_c };
+                                        // Parse the verification key and proof
+                                        match (parse_groth16_vkey::<Bn256>(process_vkeys_str), parse_groth16_proof::<Bn256>(proof_str)) {
+                                            (Ok(vkey), Ok(pof)) => {
+                                                let pvk = prepare_verifying_key(&vkey);
+                                                // Verify the SNARK proof
+                                                match groth16_verify(&pvk, &pof, &[Fr::from_str(&input_hash.to_string()).unwrap()]) {
+                                                    Ok(is_passed) => {
+                                                        if is_passed {
+                                                            (true, "add_new_key check policy passed".to_string())
+                                                        } else {
+                                                            (false, "proof verification failed".to_string())
+                                                        }
+                                                    }
+                                                    Err(_) => (false, "proof verification error".to_string()),
+                                                }
+                                            }
+                                            _ => (false, "failed to parse verification key or proof".to_string()),
+                                        }
+                                    }
+                                    _ => (false, "failed to decode proof hex".to_string()),
+                                }
+                            }
+                            Err(_) => (false, "failed to load verification keys".to_string()),
+                        }
+                    }
+                }
             }
         }
 
