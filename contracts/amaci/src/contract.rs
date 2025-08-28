@@ -2150,45 +2150,15 @@ pub fn query_check_policy(
     let cfg = WHITELIST.load(deps.storage)?;
     let (eligible, reason) = match msg_type.as_str() {
         "sign_up" => {
-            // Try to decode msg_data as { pubkey: PubKey } first, then as direct PubKey
-            let pubkey: crate::state::PubKey = {
-                let wrapper: Result<serde_json::Value, _> = serde_json::from_str(&msg_data);
-                match wrapper {
-                    Ok(json) => {
-                        if let Some(pubkey_obj) = json.get("pubkey") {
-                            let pubkey_str = serde_json::to_string(pubkey_obj).unwrap();
-                            let pubkey: Result<crate::state::PubKey, _> =
-                                cosmwasm_std::from_json(pubkey_str.as_bytes());
-                            match pubkey {
-                                Ok(pubkey) => pubkey,
-                                Err(_) => {
-                                    return Ok(CheckPolicyResponse {
-                                        eligible: false,
-                                        reason: "failed to decode sign_up pubkey".to_string(),
-                                    });
-                                }
-                            }
-                        } else {
-                            return Ok(CheckPolicyResponse {
-                                eligible: false,
-                                reason: "missing pubkey field in sign_up data".to_string(),
-                            });
-                        }
-                    }
-                    Err(_) => {
-                        // Second try: direct { x: "...", y: "..." }
-                        let pubkey: Result<crate::state::PubKey, _> =
-                            cosmwasm_std::from_json(msg_data.as_bytes());
-                        match pubkey {
-                            Ok(pubkey) => pubkey,
-                            Err(_) => {
-                                return Ok(CheckPolicyResponse {
-                                    eligible: false,
-                                    reason: "failed to decode sign_up data".to_string(),
-                                });
-                            }
-                        }
-                    }
+            // Decode msg_data using ExecuteMsg::SignUp struct
+            let exec_msg: Result<ExecuteMsg, _> = cosmwasm_std::from_json(msg_data.as_bytes());
+            let pubkey = match exec_msg {
+                Ok(ExecuteMsg::SignUp { pubkey }) => pubkey,
+                _ => {
+                    return Ok(CheckPolicyResponse {
+                        eligible: false,
+                        reason: "failed to decode sign_up message data".to_string(),
+                    });
                 }
             };
 
@@ -2229,58 +2199,15 @@ pub fn query_check_policy(
             }
         }
         "publish_message" => {
-            // Try to decode msg_data as { message: {...}, encPubKey: {...} } first, then as ExecuteMsg::PublishMessage
-            let (message, enc_pub_key): (crate::state::MessageData, crate::state::PubKey) = {
-                let wrapper: Result<serde_json::Value, _> = serde_json::from_str(&msg_data);
-                match wrapper {
-                    Ok(json) => {
-                        if let Some(message_obj) = json.get("message") {
-                            if let Some(enc_pub_key_obj) = json.get("encPubKey") {
-                                let message_str = serde_json::to_string(message_obj).unwrap();
-                                let message: Result<crate::state::MessageData, _> =
-                                    cosmwasm_std::from_json(message_str.as_bytes());
-                                let enc_pub_key_str = serde_json::to_string(enc_pub_key_obj).unwrap();
-                                let enc_pub_key: Result<crate::state::PubKey, _> =
-                                    cosmwasm_std::from_json(enc_pub_key_str.as_bytes());
-
-                                match (message, enc_pub_key) {
-                                    (Ok(message), Ok(enc_pub_key)) => (message, enc_pub_key),
-                                    _ => {
-                                        return Ok(CheckPolicyResponse {
-                                            eligible: false,
-                                            reason: "failed to decode publish_message parameters".to_string(),
-                                        });
-                                    }
-                                }
-                            } else {
-                                return Ok(CheckPolicyResponse {
-                                    eligible: false,
-                                    reason: "missing encPubKey field in publish_message data".to_string(),
-                                });
-                            }
-                        } else {
-                            return Ok(CheckPolicyResponse {
-                                eligible: false,
-                                reason: "missing message field in publish_message data".to_string(),
-                            });
-                        }
-                    }
-                    Err(_) => {
-                        // Second try: decode as ExecuteMsg::PublishMessage
-                        let exec_msg: Result<crate::msg::ExecuteMsg, _> =
-                            cosmwasm_std::from_json(msg_data.as_bytes());
-                        match exec_msg {
-                            Ok(crate::msg::ExecuteMsg::PublishMessage { message, enc_pub_key }) => {
-                                (message, enc_pub_key)
-                            }
-                            _ => {
-                                return Ok(CheckPolicyResponse {
-                                    eligible: false,
-                                    reason: "failed to decode publish_message data".to_string(),
-                                });
-                            }
-                        }
-                    }
+            // Decode msg_data using ExecuteMsg::PublishMessage struct
+            let exec_msg: Result<ExecuteMsg, _> = cosmwasm_std::from_json(msg_data.as_bytes());
+            let (message, enc_pub_key) = match exec_msg {
+                Ok(ExecuteMsg::PublishMessage { message, enc_pub_key }) => (message, enc_pub_key),
+                _ => {
+                    return Ok(CheckPolicyResponse {
+                        eligible: false,
+                        reason: "failed to decode publish_message message data".to_string(),
+                    });
                 }
             };
 
@@ -2331,58 +2258,15 @@ pub fn query_check_policy(
             }
         }
         "publish_deactivate_message" => {
-            // Try to decode msg_data as { message: {...}, encPubKey: {...} } first, then as ExecuteMsg::PublishDeactivateMessage
-            let (message, enc_pub_key): (crate::state::MessageData, crate::state::PubKey) = {
-                let wrapper: Result<serde_json::Value, _> = serde_json::from_str(&msg_data);
-                match wrapper {
-                    Ok(json) => {
-                        if let Some(message_obj) = json.get("message") {
-                            if let Some(enc_pub_key_obj) = json.get("encPubKey") {
-                                let message_str = serde_json::to_string(message_obj).unwrap();
-                                let message: Result<crate::state::MessageData, _> =
-                                    cosmwasm_std::from_json(message_str.as_bytes());
-                                let enc_pub_key_str = serde_json::to_string(enc_pub_key_obj).unwrap();
-                                let enc_pub_key: Result<crate::state::PubKey, _> =
-                                    cosmwasm_std::from_json(enc_pub_key_str.as_bytes());
-
-                                match (message, enc_pub_key) {
-                                    (Ok(message), Ok(enc_pub_key)) => (message, enc_pub_key),
-                                    _ => {
-                                        return Ok(CheckPolicyResponse {
-                                            eligible: false,
-                                            reason: "failed to decode publish_deactivate_message parameters".to_string(),
-                                        });
-                                    }
-                                }
-                            } else {
-                                return Ok(CheckPolicyResponse {
-                                    eligible: false,
-                                    reason: "missing encPubKey field in publish_deactivate_message data".to_string(),
-                                });
-                            }
-                        } else {
-                            return Ok(CheckPolicyResponse {
-                                eligible: false,
-                                reason: "missing message field in publish_deactivate_message data".to_string(),
-                            });
-                        }
-                    }
-                    Err(_) => {
-                        // Second try: decode as ExecuteMsg::PublishDeactivateMessage
-                        let exec_msg: Result<crate::msg::ExecuteMsg, _> =
-                            cosmwasm_std::from_json(msg_data.as_bytes());
-                        match exec_msg {
-                            Ok(crate::msg::ExecuteMsg::PublishDeactivateMessage { message, enc_pub_key }) => {
-                                (message, enc_pub_key)
-                            }
-                            _ => {
-                                return Ok(CheckPolicyResponse {
-                                    eligible: false,
-                                    reason: "failed to decode publish_deactivate_message data".to_string(),
-                                });
-                            }
-                        }
-                    }
+            // Decode msg_data using ExecuteMsg::PublishDeactivateMessage struct
+            let exec_msg: Result<ExecuteMsg, _> = cosmwasm_std::from_json(msg_data.as_bytes());
+            let (message, enc_pub_key) = match exec_msg {
+                Ok(ExecuteMsg::PublishDeactivateMessage { message, enc_pub_key }) => (message, enc_pub_key),
+                _ => {
+                    return Ok(CheckPolicyResponse {
+                        eligible: false,
+                        reason: "failed to decode publish_deactivate_message message data".to_string(),
+                    });
                 }
             };
 
@@ -2458,48 +2342,15 @@ pub fn query_check_policy(
             }
         }
         "add_new_key" => {
-            // Try to decode msg_data as { pubkey: {...}, nullifier: ..., d: [...], groth16Proof: {...} } first, then as ExecuteMsg::AddNewKey
-            let (pubkey, nullifier, d, groth16_proof): (crate::state::PubKey, Uint256, [Uint256; 4], Groth16ProofType) = {
-                let wrapper: Result<serde_json::Value, _> = serde_json::from_str(&msg_data);
-                match wrapper {
-                    Ok(json) => {
-                        if let (Some(pubkey_obj), Some(nullifier_obj), Some(d_obj), Some(groth16_proof_obj)) = 
-                            (json.get("pubkey"), json.get("nullifier"), json.get("d"), json.get("groth16Proof")) {
-                            let pubkey: Result<crate::state::PubKey, _> = cosmwasm_std::from_json(serde_json::to_string(pubkey_obj).unwrap().as_bytes());
-                            let nullifier: Result<Uint256, _> = cosmwasm_std::from_json(serde_json::to_string(nullifier_obj).unwrap().as_bytes());
-                            let d: Result<[Uint256; 4], _> = cosmwasm_std::from_json(serde_json::to_string(d_obj).unwrap().as_bytes());
-                            let groth16_proof: Result<Groth16ProofType, _> = cosmwasm_std::from_json(serde_json::to_string(groth16_proof_obj).unwrap().as_bytes());
-                            match (pubkey, nullifier, d, groth16_proof) {
-                                (Ok(pubkey), Ok(nullifier), Ok(d), Ok(groth16_proof)) => (pubkey, nullifier, d, groth16_proof),
-                                _ => {
-                                    return Ok(CheckPolicyResponse {
-                                        eligible: false,
-                                        reason: "failed to decode add_new_key parameters".to_string(),
-                                    });
-                                }
-                            }
-                        } else {
-                            return Ok(CheckPolicyResponse {
-                                eligible: false,
-                                reason: "missing required fields in add_new_key data".to_string(),
-                            });
-                        }
-                    }
-                    Err(_) => {
-                        // Second try: decode as ExecuteMsg::AddNewKey
-                        let exec_msg: Result<crate::msg::ExecuteMsg, _> = cosmwasm_std::from_json(msg_data.as_bytes());
-                        match exec_msg {
-                            Ok(crate::msg::ExecuteMsg::AddNewKey { pubkey, nullifier, d, groth16_proof }) => {
-                                (pubkey, nullifier, d, groth16_proof)
-                            }
-                            _ => {
-                                return Ok(CheckPolicyResponse {
-                                    eligible: false,
-                                    reason: "failed to decode add_new_key data".to_string(),
-                                });
-                            }
-                        }
-                    }
+            // Decode msg_data using ExecuteMsg::AddNewKey struct
+            let exec_msg: Result<ExecuteMsg, _> = cosmwasm_std::from_json(msg_data.as_bytes());
+            let (pubkey, nullifier, d, groth16_proof) = match exec_msg {
+                Ok(ExecuteMsg::AddNewKey { pubkey, nullifier, d, groth16_proof }) => (pubkey, nullifier, d, groth16_proof),
+                _ => {
+                    return Ok(CheckPolicyResponse {
+                        eligible: false,
+                        reason: "failed to decode add_new_key message data".to_string(),
+                    });
                 }
             };
 
