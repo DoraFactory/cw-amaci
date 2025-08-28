@@ -853,23 +853,9 @@ fn reply_created_oracle_maci_round(
 pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
     cw2::ensure_from_older_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    // Load existing config
-    let config = CONFIG.load(deps.storage)?;
-
-    // Set treasury manager to admin for backward compatibility if not set
-    let treasury_manager = if TREASURY_MANAGER.may_load(deps.storage)?.is_none() {
-        TREASURY_MANAGER.save(deps.storage, &config.admin)?;
-        config.admin.clone()
-    } else {
-        TREASURY_MANAGER.load(deps.storage)?
-    };
-
-    ORACLE_MACI_CODE_ID.save(deps.storage, &152u64)?;
-
     Ok(Response::new().add_attributes(vec![
         attr("action", "migrate"),
         attr("version", CONTRACT_VERSION),
-        attr("treasury_manager_set", treasury_manager.to_string()),
     ]))
 }
 
