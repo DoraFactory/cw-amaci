@@ -124,8 +124,8 @@ pub fn execute(
             info,
             contract_address,
             is_sponsored,
-            // max_grant_amount,
-            // denom,
+            max_grant_amount,
+            denom,
         ),
     }
 }
@@ -553,16 +553,10 @@ pub fn execute_register_sponsor(
     info: MessageInfo,
     contract_address: String,
     is_sponsored: bool,
-    // max_grant_amount: Uint128,
-    // denom: String,
+    max_grant_amount: Uint128,
+    denom: String,
 ) -> Result<Response, ContractError> {
-    // // Only admin can register sponsor
-    // if !is_admin(deps.as_ref(), info.sender.as_ref())? {
-    //     return Err(ContractError::Unauthorized {});
-    // }
 
-    let max_grant_amount = Uint128::from(1000000000000000000u128);
-    let denom = "peaka".to_string();
     let max_grant_per_user = coins(max_grant_amount.u128(), &denom);
 
     // Convert cosmwasm_std::Coin to ProtoCoin for protobuf compatibility
