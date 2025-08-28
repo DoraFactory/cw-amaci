@@ -4,7 +4,7 @@ use cw_multi_test::{AppBuilder, Contract, ContractWrapper, Executor, StargateAcc
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, PubKey};
 use crate::multitest::{
-    admin, create_app, creator, mock_registry_contract, operator1, operator2, treasury_manager, 
+    admin, create_app, creator, mock_registry_contract, operator1, operator2, treasury_manager,
     user1, user2, SaasCodeId, DORA_DEMON,
 };
 use cw_amaci::multitest::uint256_from_decimal_string;
@@ -950,7 +950,7 @@ fn test_treasury_manager_withdraw_success() {
                 .init_balance(storage, &user1(), coins(deposit_amount.u128(), DORA_DEMON))
                 .unwrap();
         });
-    
+
     let oracle_maci_code_id = app.store_code(oracle_maci_contract());
     let code_id = SaasCodeId::store_code(&mut app);
     let contract = code_id
@@ -983,11 +983,7 @@ fn test_treasury_manager_withdraw_success() {
         .unwrap();
 
     // Verify response attributes
-    let attrs: Vec<_> = response
-        .events
-        .iter()
-        .flat_map(|e| &e.attributes)
-        .collect();
+    let attrs: Vec<_> = response.events.iter().flat_map(|e| &e.attributes).collect();
     let action_attr = attrs.iter().find(|attr| attr.key == "action").unwrap();
     assert_eq!(action_attr.value, "withdraw");
 
@@ -1007,7 +1003,7 @@ fn test_admin_withdraw_fails() {
                 .init_balance(storage, &user1(), coins(deposit_amount.u128(), DORA_DEMON))
                 .unwrap();
         });
-    
+
     let oracle_maci_code_id = app.store_code(oracle_maci_contract());
     let code_id = SaasCodeId::store_code(&mut app);
     let contract = code_id
@@ -1033,16 +1029,15 @@ fn test_admin_withdraw_fails() {
     let err = contract
         .withdraw(&mut app, admin(), withdraw_amount, None)
         .unwrap_err();
-    
+
     // Should get TreasuryManagerUnauthorized error
     assert!(err.to_string().contains("Error executing WasmMsg"));
 }
 
-
 #[test]
 fn test_treasury_manager_cannot_manage_operators() {
     let mut app = create_app();
-    
+
     let oracle_maci_code_id = app.store_code(oracle_maci_contract());
     let code_id = SaasCodeId::store_code(&mut app);
     let contract = code_id
@@ -1062,8 +1057,7 @@ fn test_treasury_manager_cannot_manage_operators() {
     let err = contract
         .add_operator(&mut app, treasury_manager(), operator1())
         .unwrap_err();
-    
-    println!("Error message: {}", err.to_string());
+
     assert!(err.to_string().contains("Error executing WasmMsg"));
 
     // Admin adds operator (should succeed)
@@ -1075,7 +1069,7 @@ fn test_treasury_manager_cannot_manage_operators() {
     let err = contract
         .remove_operator(&mut app, treasury_manager(), operator1())
         .unwrap_err();
-    
+
     assert!(err.to_string().contains("Error executing WasmMsg"));
 }
 
@@ -1099,10 +1093,14 @@ fn test_deposit_still_public() {
                 .unwrap();
             router
                 .bank
-                .init_balance(storage, &treasury_manager(), coins(deposit_amount.u128(), DORA_DEMON))
+                .init_balance(
+                    storage,
+                    &treasury_manager(),
+                    coins(deposit_amount.u128(), DORA_DEMON),
+                )
                 .unwrap();
         });
-    
+
     let oracle_maci_code_id = app.store_code(oracle_maci_contract());
     let code_id = SaasCodeId::store_code(&mut app);
     let contract = code_id
@@ -1132,7 +1130,11 @@ fn test_deposit_still_public() {
         .unwrap();
 
     contract
-        .deposit(&mut app, treasury_manager(), &coins(deposit_amount.u128(), DORA_DEMON))
+        .deposit(
+            &mut app,
+            treasury_manager(),
+            &coins(deposit_amount.u128(), DORA_DEMON),
+        )
         .unwrap();
 
     // Verify total balance
@@ -1151,7 +1153,7 @@ fn test_role_separation_complete_workflow() {
                 .init_balance(storage, &user1(), coins(deposit_amount.u128(), DORA_DEMON))
                 .unwrap();
         });
-    
+
     let oracle_maci_code_id = app.store_code(oracle_maci_contract());
     let code_id = SaasCodeId::store_code(&mut app);
     let contract = code_id
@@ -1200,18 +1202,21 @@ fn test_role_separation_complete_workflow() {
     let err = contract
         .withdraw(&mut app, user2(), Uint128::from(100u128), None)
         .unwrap_err();
-    
+
     assert!(err.to_string().contains("Error executing WasmMsg"));
 
     // Verify final balance
     let final_balance = contract.query_balance(&app).unwrap();
-    assert_eq!(final_balance, deposit_amount - withdraw_amount - second_withdraw);
+    assert_eq!(
+        final_balance,
+        deposit_amount - withdraw_amount - second_withdraw
+    );
 }
 
 #[test]
 fn test_migration_sets_treasury_manager() {
     let mut app = create_app();
-    
+
     let oracle_maci_code_id = app.store_code(oracle_maci_contract());
     let code_id = SaasCodeId::store_code(&mut app);
     let contract = code_id
@@ -1235,8 +1240,8 @@ fn test_migration_sets_treasury_manager() {
     let queried_treasury_manager = contract.query_treasury_manager(&app).unwrap();
     assert_eq!(queried_treasury_manager, treasury_manager());
 
-    // Migration scenario would be tested in integration tests 
-    // where we deploy an old version without treasury_manager 
+    // Migration scenario would be tested in integration tests
+    // where we deploy an old version without treasury_manager
     // and then migrate to new version
 }
 

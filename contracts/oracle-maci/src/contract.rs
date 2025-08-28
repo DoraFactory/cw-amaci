@@ -521,7 +521,6 @@ pub fn execute_sign_up(
         "contract_address": env.contract.address.to_string(),
         "ecosystem": whitelist_ecosystem.to_string(),
     });
-    println!("payload: {:?}", payload);
 
     let msg = payload.to_string().into_bytes();
 
@@ -706,8 +705,6 @@ pub fn execute_start_process_period(
 
     let leaf_idx_0 = LEAF_IDX_0.load(deps.storage)?;
     let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
-    println!("leaf_idx_0: {:?}", leaf_idx_0);
-    println!("num_sign_ups: {:?}", num_sign_ups);
     let _ = state_update_at(
         &mut deps,
         leaf_idx_0 + num_sign_ups - Uint256::from_u128(1u128),
@@ -727,11 +724,6 @@ pub fn execute_start_process_period(
         deps.storage,
         &hash2([state_root, Uint256::from_u128(0u128)]),
     )?;
-    println!("-------- state_root: {:?}", state_root);
-    println!(
-        "CURRENT_STATE_COMMITMENT: {:?}",
-        CURRENT_STATE_COMMITMENT.load(deps.storage)?
-    );
 
     // Return a success response
     Ok(Response::new().add_attribute("action", "start_process_period"))
@@ -802,12 +794,7 @@ pub fn execute_process_message(
 
     // Set the new state commitment
     input[5] = new_state_commitment;
-    println!("input[0]: {:?}", input[0]);
-    println!("input[1]: {:?}", input[1]);
-    println!("input[2]: {:?}", input[2]);
-    println!("input[3]: {:?}", input[3]);
-    println!("input[4]: {:?}", input[4]);
-    println!("input[5]: {:?}", input[5]);
+
     // Load the scalar field value (optimization: use cached values)
     let snark_scalar_field = get_snark_scalar_field();
 
@@ -1549,7 +1536,6 @@ fn state_root(deps: Deps) -> Uint256 {
             Uint256::from_u128(0u128).to_be_bytes().to_vec(),
         )
         .unwrap();
-    println!("root: {:?}", root);
     root
 }
 

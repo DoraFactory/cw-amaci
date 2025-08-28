@@ -305,7 +305,7 @@ pub fn execute_update_oracle_maci_code_id(
     info: MessageInfo,
     code_id: u64,
 ) -> Result<Response, ContractError> {
-    if !is_operator(deps.as_ref(), info.sender.as_ref())? {
+    if !is_admin(deps.as_ref(), info.sender.as_ref())? {
         Err(ContractError::Unauthorized {})
     } else {
         ORACLE_MACI_CODE_ID.save(deps.storage, &code_id)?;
@@ -481,58 +481,6 @@ pub fn execute_create_oracle_maci_round(
         .add_attribute("new_balance", new_balance.to_string())
         .add_attribute("max_voters", max_voters.to_string())
         .add_attribute("maci_counter", maci_counter.to_string()))
-}
-
-pub fn execute_execute_contract(
-    deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
-    contract_addr: String,
-    msg: Binary,
-    funds: Vec<Coin>,
-) -> Result<Response, ContractError> {
-    let config = CONFIG.load(deps.storage)?;
-
-    // Only operators can execute contracts
-    if !OPERATORS.has(deps.storage, &info.sender) {
-        return Err(ContractError::Unauthorized {});
-    }
-
-    // Validate the contract address format
-    let target_addr = deps.api.addr_validate(&contract_addr)?;
-
-    // Calculate total funds amount for recording
-    let total_amount = funds
-        .iter()
-        .filter(|coin| coin.denom == config.denom)
-        .map(|coin| coin.amount)
-        .fold(Uint128::zero(), |acc, amount| acc + amount);
-
-    // If funds are being sent with the message, check if SaaS has sufficient balance
-    if !total_amount.is_zero() {
-        let total_balance = TOTAL_BALANCE.load(deps.storage)?;
-        if total_balance < total_amount {
-            return Err(ContractError::InsufficientBalance {});
-        }
-
-        // Update total balance
-        let new_balance = total_balance - total_amount;
-        TOTAL_BALANCE.save(deps.storage, &new_balance)?;
-    }
-
-    // Execute the contract call
-    let execute_msg = WasmMsg::Execute {
-        contract_addr: target_addr.to_string(),
-        msg,
-        funds,
-    };
-
-    Ok(Response::new()
-        .add_message(execute_msg)
-        .add_attribute("action", "execute_contract")
-        .add_attribute("operator", info.sender.to_string())
-        .add_attribute("target_contract", contract_addr)
-        .add_attribute("funds_amount", total_amount.to_string()))
 }
 
 pub fn execute_set_round_info(
@@ -923,6 +871,16 @@ pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, C
         attr("version", CONTRACT_VERSION),
         attr("treasury_manager_set", treasury_manager.to_string()),
     ]))
+}
+
+// Utility functions
+fn is_admin(deps: Deps, sender: &str) -> StdResult<bool> {
+    let config = CONFIG.load(deps.storage)?;
+
+    if config.is_admin(&Addr::unchecked(sender)) {
+        return Ok(true);
+    }
+    Ok(false)
 }
 
 // Utility functions

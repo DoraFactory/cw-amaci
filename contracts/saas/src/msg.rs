@@ -28,6 +28,10 @@ pub enum ExecuteMsg {
         denom: Option<String>,
     },
 
+    UpdateOracleMaciCodeId {
+        code_id: u64,
+    },
+
     // Operator management
     AddOperator {
         operator: Addr,
@@ -41,10 +45,6 @@ pub enum ExecuteMsg {
     Withdraw {
         amount: Uint128,
         recipient: Option<Addr>,
-    },
-
-    UpdateOracleMaciCodeId {
-        code_id: u64,
     },
 
     // Create Oracle MACI round
