@@ -2134,9 +2134,8 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
         }
         QueryMsg::CheckPolicy {
             sender,
-            msg_type,
             msg_data,
-        } => to_json_binary(&query_check_policy(deps, env, sender, msg_type, msg_data)?),
+        } => to_json_binary(&query_check_policy(deps, env, sender, msg_data)?),
     }
 }
 
@@ -2144,23 +2143,14 @@ pub fn query_check_policy(
     deps: Deps,
     env: Env,
     sender: Addr,
-    msg_type: String,
     msg_data: String,
 ) -> StdResult<CheckPolicyResponse> {
-    let cfg = WHITELIST.load(deps.storage)?;
-    let (eligible, reason) = match msg_type.as_str() {
-        "sign_up" => {
-            // Decode msg_data using ExecuteMsg::SignUp struct
-            let exec_msg: Result<ExecuteMsg, _> = cosmwasm_std::from_json(msg_data.as_bytes());
-            let pubkey = match exec_msg {
-                Ok(ExecuteMsg::SignUp { pubkey }) => pubkey,
-                _ => {
-                    return Ok(CheckPolicyResponse {
-                        eligible: false,
-                        reason: "failed to decode sign_up message data".to_string(),
-                    });
-                }
-            };
+    let _cfg = WHITELIST.load(deps.storage)?;
+    
+    // Parse the ExecuteMsg directly from msg_data
+    let exec_msg: Result<ExecuteMsg, _> = cosmwasm_std::from_json(msg_data.as_bytes());
+    let (eligible, reason) = match exec_msg {
+        Ok(ExecuteMsg::SignUp { pubkey }) => {
 
             // 1. Check voting time
             let voting_time = VOTINGTIME.load(deps.storage)?;
@@ -2198,18 +2188,7 @@ pub fn query_check_policy(
                 }
             }
         }
-        "publish_message" => {
-            // Decode msg_data using ExecuteMsg::PublishMessage struct
-            let exec_msg: Result<ExecuteMsg, _> = cosmwasm_std::from_json(msg_data.as_bytes());
-            let (message, enc_pub_key) = match exec_msg {
-                Ok(ExecuteMsg::PublishMessage { message, enc_pub_key }) => (message, enc_pub_key),
-                _ => {
-                    return Ok(CheckPolicyResponse {
-                        eligible: false,
-                        reason: "failed to decode publish_message message data".to_string(),
-                    });
-                }
-            };
+        Ok(ExecuteMsg::PublishMessage { message, enc_pub_key }) => {
 
             // 1. Check voting time
             let voting_time = VOTINGTIME.load(deps.storage)?;
@@ -2257,18 +2236,7 @@ pub fn query_check_policy(
                 }
             }
         }
-        "publish_deactivate_message" => {
-            // Decode msg_data using ExecuteMsg::PublishDeactivateMessage struct
-            let exec_msg: Result<ExecuteMsg, _> = cosmwasm_std::from_json(msg_data.as_bytes());
-            let (message, enc_pub_key) = match exec_msg {
-                Ok(ExecuteMsg::PublishDeactivateMessage { message, enc_pub_key }) => (message, enc_pub_key),
-                _ => {
-                    return Ok(CheckPolicyResponse {
-                        eligible: false,
-                        reason: "failed to decode publish_deactivate_message message data".to_string(),
-                    });
-                }
-            };
+        Ok(ExecuteMsg::PublishDeactivateMessage { message, enc_pub_key }) => {
 
             // 1. Check voting time
             let voting_time = VOTINGTIME.load(deps.storage)?;
@@ -2341,18 +2309,7 @@ pub fn query_check_policy(
                 }
             }
         }
-        "add_new_key" => {
-            // Decode msg_data using ExecuteMsg::AddNewKey struct
-            let exec_msg: Result<ExecuteMsg, _> = cosmwasm_std::from_json(msg_data.as_bytes());
-            let (pubkey, nullifier, d, groth16_proof) = match exec_msg {
-                Ok(ExecuteMsg::AddNewKey { pubkey, nullifier, d, groth16_proof }) => (pubkey, nullifier, d, groth16_proof),
-                _ => {
-                    return Ok(CheckPolicyResponse {
-                        eligible: false,
-                        reason: "failed to decode add_new_key message data".to_string(),
-                    });
-                }
-            };
+        Ok(ExecuteMsg::AddNewKey { pubkey, nullifier, d, groth16_proof }) => {
 
             let voting_time = VOTINGTIME.load(deps.storage)?;
             let current_time = env.block.time;
@@ -2423,9 +2380,15 @@ pub fn query_check_policy(
                 }
             }
         }
-
+        Err(_) => {
+            // Failed to decode ExecuteMsg
+            (
+                false,
+                "Failed to decode message data as ExecuteMsg".to_string(),
+            )
+        }
         _ => {
-            // default to false
+            // Unsupported ExecuteMsg variant
             (
                 false,
                 "Not supported message type in check policy of this contract".to_string(),

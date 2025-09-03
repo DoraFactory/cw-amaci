@@ -219,7 +219,6 @@ pub enum QueryMsg {
     #[returns(CheckPolicyResponse)]
     CheckPolicy {
         sender: Addr,
-        msg_type: String,
         msg_data: String,
     },
 }
