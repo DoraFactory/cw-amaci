@@ -2380,11 +2380,11 @@ pub fn query_check_policy(
                 }
             }
         }
-        Err(_) => {
+        Err(err) => {
             // Failed to decode ExecuteMsg
             (
                 false,
-                "Failed to decode message data as ExecuteMsg".to_string(),
+                format!("Failed to decode message data as ExecuteMsg: {}", err),
             )
         }
         _ => {
