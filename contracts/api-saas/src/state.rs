@@ -1,0 +1,55 @@
+use cosmwasm_schema::cw_serde;
+use cosmwasm_std::{Addr, Timestamp, Uint128};
+use cw_storage_plus::{Item, Map};
+
+#[cw_serde]
+pub struct Config {
+    pub admin: Addr,
+    pub registry_contract: Option<Addr>,
+    pub denom: String,
+}
+
+impl Config {
+    pub fn is_admin(&self, addr: &Addr) -> bool {
+        self.admin == *addr
+    }
+}
+
+#[cw_serde]
+pub struct OperatorInfo {
+    pub address: Addr,
+    pub added_at: Timestamp,
+}
+
+impl OperatorInfo {
+    pub fn new(address: Addr, added_at: Timestamp) -> Self {
+        Self { address, added_at }
+    }
+}
+
+// Added: MACI contract information tracking
+#[cw_serde]
+pub struct MaciContractInfo {
+    pub contract_address: Addr,
+    pub creator_operator: Addr,
+    pub round_title: String,
+    pub created_at: Timestamp,
+    pub code_id: u64,
+    pub creation_fee: Uint128,
+}
+
+// Storage items
+pub const CONFIG: Item<Config> = Item::new("config");
+pub const OPERATORS: Map<&Addr, OperatorInfo> = Map::new("operators");
+pub const TOTAL_BALANCE: Item<Uint128> = Item::new("total_balance");
+
+// Added: MACI contract tracking storage
+pub const MACI_CONTRACT_COUNTER: Item<u64> = Item::new("maci_contract_counter");
+pub const MACI_CONTRACTS: Map<u64, MaciContractInfo> = Map::new("maci_contracts");
+pub const MACI_CONTRACTS_BY_OPERATOR: Map<(&Addr, u64), bool> =
+    Map::new("maci_contracts_by_operator");
+
+pub const ORACLE_MACI_CODE_ID: Item<u64> = Item::new("oracle_maci_code_id");
+
+// Treasury manager storage for easier access and migration support
+pub const TREASURY_MANAGER: Item<Addr> = Item::new("treasury_manager");

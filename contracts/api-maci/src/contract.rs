@@ -78,6 +78,29 @@ fn get_circuit_max_voters(state_tree_depth: &Uint256) -> u128 {
     }
 }
 
+/// Convert a contract address to Uint256 format
+/// This function takes the address bytes and converts them to a Uint256
+fn address_to_uint256(address: &Addr) -> Uint256 {
+    let address_bytes = address.as_bytes();
+
+    // Use SHA256 hash to convert the address to a fixed-length 32-byte format
+    let mut hasher = Sha256::new();
+    hasher.update(address_bytes);
+    let hash_result = hasher.finalize();
+
+    // Convert the hash bytes to Uint256
+    let mut bytes = [0u8; 32];
+    bytes.copy_from_slice(&hash_result[..]);
+
+    // Convert bytes to Uint256 (big-endian)
+    let mut uint256_bytes = [0u8; 32];
+    for (i, &byte) in bytes.iter().enumerate() {
+        uint256_bytes[31 - i] = byte; // Reverse for little-endian to big-endian conversion
+    }
+
+    Uint256::from_be_bytes(uint256_bytes)
+}
+
 fn get_circuit_max_vote_options(vote_option_tree_depth: &Uint256) -> u128 {
     if *vote_option_tree_depth == Uint256::from_u128(1) {
         CIRCUIT_2_1_1_5_MAX_OPTIONS
@@ -509,6 +532,22 @@ pub fn execute_sign_up(
     if amount == Uint256::from_u128(0u128) {
         return Err(ContractError::AmountIsZero {});
     }
+
+    // Convert contract address to uint256 format
+    let contract_address_uint256 = address_to_uint256(&env.contract.address);
+
+    println!("==============================");
+    println!("contract address: {:?}", env.contract.address);
+    println!(
+        "contract address string: {:?}",
+        env.contract.address.to_string()
+    );
+    println!(
+        "contract address bytes: {:?}",
+        env.contract.address.as_bytes()
+    );
+    println!("contract address uint256: {:?}", contract_address_uint256);
+    println!("==============================");
 
     let oracle_whitelist_config = ORACLE_WHITELIST_CONFIG.load(deps.storage)?;
     let whitelist_ecosystem = oracle_whitelist_config.ecosystem;
