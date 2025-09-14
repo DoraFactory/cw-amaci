@@ -278,7 +278,6 @@ impl SaasContract {
             .query_wasm_smart(self.addr(), &QueryMsg::OracleMaciCodeId {})
     }
 
-
     pub fn query_treasury_manager(&self, app: &App) -> StdResult<Addr> {
         app.wrap()
             .query_wasm_smart(self.addr(), &QueryMsg::TreasuryManager {})

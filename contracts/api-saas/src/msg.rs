@@ -90,7 +90,6 @@ pub enum QueryMsg {
     #[returns(Uint128)]
     Balance {},
 
-
     #[returns(u64)]
     MaciCodeId {},
 

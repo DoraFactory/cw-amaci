@@ -7,15 +7,15 @@ mod tests;
 use anyhow::Result as AnyResult;
 
 use crate::state::{
-    MessageData, OracleWhitelistConfig, Period, PubKey, RoundInfo, VotingPowerMode,
-    VotingTime, WhitelistConfig,
+    MessageData, OracleWhitelistConfig, Period, PubKey, RoundInfo, VotingPowerMode, VotingTime,
+    WhitelistConfig,
 };
-use base64::prelude::*;
 use crate::utils::uint256_from_hex_string;
 use crate::{
     contract::{execute, instantiate, query, reply},
     msg::*,
 };
+use base64::prelude::*;
 use cosmwasm_std::testing::{MockApi, MockStorage};
 use cosmwasm_std::{Addr, Coin, Empty, StdResult, Timestamp, Uint128, Uint256};
 use serde::{Deserialize, Serialize};
@@ -881,7 +881,7 @@ pub fn generate_test_certificate_for_pubkey(pubkey: &PubKey, amount: Uint256) ->
     // For testing purposes, we generate a deterministic certificate based on pubkey
     // In real implementation, this would be signed by the oracle backend
     use sha2::{Digest, Sha256};
-    
+
     let payload = format!("test_cert_{}_{}", pubkey.x, pubkey.y);
     let hash = Sha256::digest(payload.as_bytes());
     BASE64_STANDARD.encode(&hash[0..32]) // Use first 32 bytes as mock certificate
@@ -893,11 +893,11 @@ pub fn user1_certificate() -> Certificate {
     let pubkey_x = "8446677751716569713622015905729882243875224951572887602730835165068040887285";
     let pubkey_y = "12484654491029393893324568717198080229359788322121893494118068510674758553628";
     let amount = Uint256::from_u128(100000000u128); // 100M to ensure voting power > 0
-    
+
     // let certificate = certificate_generator::generate_certificate_for_pubkey(
     //     "51788793381365401356776017899576520467898468617578197738183646369208722835043", // SHA256 hash of "contract0"
-    //     pubkey_x, 
-    //     pubkey_y, 
+    //     pubkey_x,
+    //     pubkey_y,
     //     100000000u128
     // );
 
@@ -912,11 +912,11 @@ pub fn user2_certificate() -> Certificate {
     let pubkey_x = "4934845797881523927654842245387640257368309434525961062601274110069416343731";
     let pubkey_y = "7218132018004361008636029786293016526331813670637191622129869640055131468762";
     let amount = Uint256::from_u128(80000000u128); // 80M to ensure voting power > 0
-    
+
     // let certificate = certificate_generator::generate_certificate_for_pubkey(
     //     "51788793381365401356776017899576520467898468617578197738183646369208722835043", // SHA256 hash of "contract0"
-    //     pubkey_x, 
-    //     pubkey_y, 
+    //     pubkey_x,
+    //     pubkey_y,
     //     80000000u128
     // );
 

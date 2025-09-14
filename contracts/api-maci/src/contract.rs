@@ -6,15 +6,15 @@ use crate::msg::{
 };
 use crate::plonk_parser::{parse_plonk_proof, parse_plonk_vkey};
 use crate::state::{
-    Admin, Groth16ProofStr, MessageData, OracleWhitelistConfig,
-    Period, PeriodStatus, PlonkProofStr, PubKey, QuinaryTreeRoot, RoundInfo, StateLeaf,
-    VotingPowerConfig, VotingPowerMode, VotingTime, WhitelistConfig, ADMIN, CERTSYSTEM,
-    CIRCUITTYPE, COORDINATORHASH, CURRENT_STATE_COMMITMENT, CURRENT_TALLY_COMMITMENT,
-    FEEGRANTS, GROTH16_PROCESS_VKEYS, GROTH16_TALLY_VKEYS, LEAF_IDX_0,
-    MACIPARAMETERS, MAX_LEAVES_COUNT, MAX_VOTE_OPTIONS, MAX_WHITELIST_NUM, MSG_CHAIN_LENGTH,
-    MSG_HASHES, NODES, NUMSIGNUPS, ORACLE_WHITELIST_CONFIG, PERIOD, PLONK_PROCESS_VKEYS,
-    PLONK_TALLY_VKEYS, PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO,
-    STATEIDXINC, TOTAL_RESULT, VOICECREDITBALANCE, VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS,
+    Admin, Groth16ProofStr, MessageData, OracleWhitelistConfig, Period, PeriodStatus,
+    PlonkProofStr, PubKey, QuinaryTreeRoot, RoundInfo, StateLeaf, VotingPowerConfig,
+    VotingPowerMode, VotingTime, WhitelistConfig, ADMIN, CERTSYSTEM, CIRCUITTYPE, COORDINATORHASH,
+    CURRENT_STATE_COMMITMENT, CURRENT_TALLY_COMMITMENT, FEEGRANTS, GROTH16_PROCESS_VKEYS,
+    GROTH16_TALLY_VKEYS, LEAF_IDX_0, MACIPARAMETERS, MAX_LEAVES_COUNT, MAX_VOTE_OPTIONS,
+    MAX_WHITELIST_NUM, MSG_CHAIN_LENGTH, MSG_HASHES, NODES, NUMSIGNUPS, ORACLE_WHITELIST_CONFIG,
+    PERIOD, PLONK_PROCESS_VKEYS, PLONK_TALLY_VKEYS, PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT,
+    QTR_LIB, RESULT, ROUNDINFO, STATEIDXINC, TOTAL_RESULT, VOICECREDITBALANCE, VOTEOPTIONMAP,
+    VOTINGTIME, WHITELIST, ZEROS,
 };
 use sha2::{Digest as ShaDigest, Sha256};
 
@@ -27,8 +27,8 @@ use bellman_ce::plonk::better_cs::cs::PlonkCsWidth4WithNextStepParams;
 use cosmwasm_std::entry_point;
 
 use cosmwasm_std::{
-    attr, coins, to_json_binary, Addr, BankMsg, Binary, Deps, DepsMut, Env, MessageInfo,
-    Reply, Response, StdResult, Uint128, Uint256,
+    attr, coins, to_json_binary, Addr, BankMsg, Binary, Deps, DepsMut, Env, MessageInfo, Reply,
+    Response, StdResult, Uint128, Uint256,
 };
 
 use crate::utils::{hash2, hash5, hash_256_uint256_list, uint256_from_hex_string};
@@ -535,7 +535,13 @@ pub fn execute_sign_up(
         return Err(ContractError::InvalidSignature {});
     }
 
-    if WHITELIST.has(deps.storage, &(pubkey.x.to_be_bytes().to_vec(), pubkey.y.to_be_bytes().to_vec())) {
+    if WHITELIST.has(
+        deps.storage,
+        &(
+            pubkey.x.to_be_bytes().to_vec(),
+            pubkey.y.to_be_bytes().to_vec(),
+        ),
+    ) {
         return Err(ContractError::AlreadySignedUp {});
     }
 
@@ -600,7 +606,14 @@ pub fn execute_sign_up(
         balance: voting_power,
         is_register: true,
     };
-    WHITELIST.save(deps.storage, &(pubkey.x.to_be_bytes().to_vec(), pubkey.y.to_be_bytes().to_vec()), &white_curr)?;
+    WHITELIST.save(
+        deps.storage,
+        &(
+            pubkey.x.to_be_bytes().to_vec(),
+            pubkey.y.to_be_bytes().to_vec(),
+        ),
+        &white_curr,
+    )?;
 
     Ok(Response::new()
         .add_attribute("action", "sign_up")
@@ -1315,7 +1328,6 @@ fn can_sign_up(
         "pubkey_y": pubkey.y.to_string(),
     });
 
-
     let msg = payload.to_string().into_bytes();
 
     let hash = Sha256::digest(&msg);
@@ -1338,8 +1350,20 @@ fn user_balance_of(
     amount: Uint256,
     certificate: String,
 ) -> StdResult<Uint256> {
-    if WHITELIST.has(deps.storage, &(pubkey.x.to_be_bytes().to_vec(), pubkey.y.to_be_bytes().to_vec())) {
-        let cfg = WHITELIST.load(deps.storage, &(pubkey.x.to_be_bytes().to_vec(), pubkey.y.to_be_bytes().to_vec()))?;
+    if WHITELIST.has(
+        deps.storage,
+        &(
+            pubkey.x.to_be_bytes().to_vec(),
+            pubkey.y.to_be_bytes().to_vec(),
+        ),
+    ) {
+        let cfg = WHITELIST.load(
+            deps.storage,
+            &(
+                pubkey.x.to_be_bytes().to_vec(),
+                pubkey.y.to_be_bytes().to_vec(),
+            ),
+        )?;
         return Ok(cfg.balance_of());
     }
 
@@ -1590,7 +1614,13 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
         )?),
         QueryMsg::WhiteInfo { pubkey } => to_json_binary::<WhitelistConfig>(
             &WHITELIST
-                .load(deps.storage, &(pubkey.x.to_be_bytes().to_vec(), pubkey.y.to_be_bytes().to_vec()))
+                .load(
+                    deps.storage,
+                    &(
+                        pubkey.x.to_be_bytes().to_vec(),
+                        pubkey.y.to_be_bytes().to_vec(),
+                    ),
+                )
                 .unwrap(),
         ),
         QueryMsg::MaxWhitelistNum {} => to_json_binary::<u128>(

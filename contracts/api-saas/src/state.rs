@@ -26,12 +26,10 @@ impl OperatorInfo {
     }
 }
 
-
 // Storage items
 pub const CONFIG: Item<Config> = Item::new("config");
 pub const OPERATORS: Map<&Addr, OperatorInfo> = Map::new("operators");
 pub const TOTAL_BALANCE: Item<Uint128> = Item::new("total_balance");
-
 
 pub const MACI_CODE_ID: Item<u64> = Item::new("maci_code_id");
 pub const REGISTRY_CONTRACT_ADDR: Item<Addr> = Item::new("registry_contract_addr");

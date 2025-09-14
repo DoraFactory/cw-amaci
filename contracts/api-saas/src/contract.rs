@@ -1,9 +1,9 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    attr, from_json, to_json_binary, Addr, BankMsg, Binary, Coin, CosmosMsg, Deps, DepsMut,
-    Env, MessageInfo, Order, Reply, Response, StdError, StdResult, SubMsg, SubMsgResponse,
-    Timestamp, Uint128, Uint256, WasmMsg,
+    attr, from_json, to_json_binary, Addr, BankMsg, Binary, Coin, CosmosMsg, Deps, DepsMut, Env,
+    MessageInfo, Order, Reply, Response, StdError, StdResult, SubMsg, SubMsgResponse, Timestamp,
+    Uint128, Uint256, WasmMsg,
 };
 use cw2::set_contract_version;
 use cw_utils::{may_pay, parse_instantiate_response_data};
@@ -31,7 +31,8 @@ use cosmos_sdk_proto::traits::TypeUrl;
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, InstantiationData, MigrateMsg, PubKey, QueryMsg};
 use crate::state::{
-    Config, OperatorInfo, CONFIG, MACI_CODE_ID, OPERATORS, REGISTRY_CONTRACT_ADDR, TOTAL_BALANCE, TREASURY_MANAGER,
+    Config, OperatorInfo, CONFIG, MACI_CODE_ID, OPERATORS, REGISTRY_CONTRACT_ADDR, TOTAL_BALANCE,
+    TREASURY_MANAGER,
 };
 
 // Version info for migration
@@ -388,7 +389,6 @@ pub fn execute_create_api_maci_round(
         return Err(ContractError::Unauthorized {});
     }
 
-
     // Create Oracle MACI VotingTime using provided start_time and end_time
     let oracle_voting_time = OracleMaciVotingTime {
         start_time: start_time,
@@ -437,7 +437,6 @@ pub fn execute_create_api_maci_round(
         funds: vec![], // No funds needed for MACI contract
         label: format!("API Maci Round - {}", round_info.title),
     };
-
 
     // Create SubMsg with reply using registry pattern - this allows getting the real contract address
     let submsg = SubMsg::reply_on_success(instantiate_msg, CREATED_ORACLE_MACI_ROUND_REPLY_ID);
@@ -549,7 +548,6 @@ fn query_operators(deps: Deps) -> StdResult<Vec<OperatorInfo>> {
 fn query_is_operator(deps: Deps, address: Addr) -> StdResult<bool> {
     Ok(OPERATORS.has(deps.storage, &address))
 }
-
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {

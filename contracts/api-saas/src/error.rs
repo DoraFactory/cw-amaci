@@ -25,7 +25,6 @@ pub enum ContractError {
     #[error("Invalid address: {address}")]
     InvalidAddress { address: String },
 
-
     #[error("No registry contract set")]
     NoRegistryContract {},
 

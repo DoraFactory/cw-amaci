@@ -89,7 +89,6 @@ pub fn match_vkeys(parameters: &MaciParameters) -> Result<VkeyParams, ContractEr
             vk_delta_2: "198e9393920d483a7260bfb731fb5d25f1aa493335a9e71297e485b7aef312c21800deef121f1e76426a00665e5c4479674322d4f75edadd46debd5cd992f6ed090689d0585ff075ec9e99ad690c3395bc4b313370b38ef355acdadcd122975b12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa".to_string(),
             vk_ic0: "2dbbb532c47e57c996a41c322bc54ac68b013ba0ff1771d5b70a4bc48531307812d75438820b13ef0535a5968d2b8b5b2d5e52cafe1c62276b1f4d6c83c49509".to_string(),
             vk_ic1: "1003003b0c3c93ab80b2e37ee1b38f80a769445a49535fd86f86fb07b269073c1059f3de74eb805c960928de9d3cda4416c59dbe39a11f7e6fbbbd5c99e10bff".to_string(),
-        
         };
         // Create a process_vkeys struct from the process_vkey in the message
         let groth16_add_new_key_vkeys = format_vkey(&groth16_add_new_key_vkey)?;

@@ -1,10 +1,10 @@
+use bech32::{self};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    attr, coins, from_json, to_json_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo,
-    Reply, Response, StdError, StdResult, SubMsg, SubMsgResponse, Uint128, Uint256, WasmMsg,
+    attr, coins, from_json, to_json_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Reply,
+    Response, StdError, StdResult, SubMsg, SubMsgResponse, Uint128, Uint256, WasmMsg,
 };
-use bech32::{self};
 
 use crate::error::ContractError;
 use crate::migrates::migrate_v0_1_4::migrate_v0_1_4;
@@ -148,7 +148,7 @@ pub fn execute_create_round(
     certification_system: Uint256,
 ) -> Result<Response, ContractError> {
     validate_dora_address(operator.as_str())?;
-    
+
     let maci_parameters: MaciParameters;
     let required_fee: Uint128;
 
@@ -203,7 +203,7 @@ pub fn execute_create_round(
 
     let total_fee = required_fee;
     let admin = ADMIN.load(deps.storage)?.admin;
-    
+
     // No longer send admin_fee directly to admin, instead send all fees to amaci contract
     // Add admin_fee information in the instantiate message for potential refunds in the future
 
@@ -252,7 +252,7 @@ pub fn execute_set_maci_operator(
     operator: Addr,
 ) -> Result<Response, ContractError> {
     validate_dora_address(operator.as_str())?;
-    
+
     if !is_validator(deps.as_ref(), &info.sender)? {
         return Err(ContractError::Unauthorized {});
     }
@@ -430,7 +430,7 @@ pub fn execute_change_operator(
     address: Addr,
 ) -> Result<Response, ContractError> {
     validate_dora_address(address.as_str())?;
-    
+
     if !is_admin(deps.as_ref(), info.sender.as_ref())? {
         Err(ContractError::Unauthorized {})
     } else {

@@ -1,6 +1,6 @@
 use crate::state::{
-    MaciParameters, MessageData, OracleWhitelistConfig, PeriodStatus, PubKey,
-    RoundInfo, VotingPowerMode, VotingTime, WhitelistConfig,
+    MaciParameters, MessageData, OracleWhitelistConfig, PeriodStatus, PubKey, RoundInfo,
+    VotingPowerMode, VotingTime, WhitelistConfig,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128, Uint256};

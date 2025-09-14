@@ -5,8 +5,9 @@ use cw_multi_test::App;
 // use crate::msg::ClaimsResponse;
 use crate::{
     multitest::{
-        operator, operator2, operator3, operator_pubkey1, operator_pubkey2, operator_pubkey3,
-        admin, creator, user1, user2, user3, user4, AmaciRegistryCodeId, InstantiationData, DORA_DEMON,
+        admin, creator, operator, operator2, operator3, operator_pubkey1, operator_pubkey2,
+        operator_pubkey3, user1, user2, user3, user4, AmaciRegistryCodeId, InstantiationData,
+        DORA_DEMON,
     },
     state::ValidatorSet,
 };
@@ -174,13 +175,12 @@ pub fn next_block_22_minutes(block: &mut BlockInfo) {
 pub fn next_block_31_minutes(block: &mut BlockInfo) {
     block.time = block.time.plus_minutes(31);
     block.height += 1;
-}   
+}
 
 pub fn next_block_3_hours(block: &mut BlockInfo) {
     block.time = block.time.plus_hours(3);
     block.height += 1;
 }
-
 
 pub fn next_block_4_days(block: &mut BlockInfo) {
     block.time = block.time.plus_days(4);
@@ -530,23 +530,20 @@ fn create_round_with_reward_should_works() {
     let creator_balance_after = contract
         .balance_of(&app, creator().to_string(), DORA_DEMON.to_string())
         .unwrap();
-    
+
     // Record admin balance after creating round
     let admin_balance_after = contract
         .balance_of(&app, admin().to_string(), DORA_DEMON.to_string())
         .unwrap();
-    
+
     // Verify that creator balance decreased by small_base_payamount
     assert_eq!(
         creator_balance_before.amount - Uint128::from(small_base_payamount),
         creator_balance_after.amount
     );
-    
+
     // Verify that admin balance did not change
-    assert_eq!(
-        admin_balance_before.amount,
-        admin_balance_after.amount
-    );
+    assert_eq!(admin_balance_before.amount, admin_balance_after.amount);
 
     let amaci_round_balance = contract
         .balance_of(
@@ -648,7 +645,7 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
     let creator_balance_before = contract
         .balance_of(&app, creator().to_string(), DORA_DEMON.to_string())
         .unwrap();
-    
+
     let admin_balance_before = contract
         .balance_of(&app, admin().to_string(), DORA_DEMON.to_string())
         .unwrap();
@@ -663,12 +660,12 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
             &coins(small_base_payamount, DORA_DEMON),
         )
         .unwrap();
-    
+
     // Record balance after creating round
     let creator_balance_after = contract
         .balance_of(&app, creator().to_string(), DORA_DEMON.to_string())
         .unwrap();
-    
+
     // Verify that creator balance decreased by small_base_payamount
     assert_eq!(
         creator_balance_before.amount - Uint128::from(small_base_payamount),
@@ -888,7 +885,7 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
                 let proof = Groth16ProofType {
                     a: data.proof.pi_a.to_string(),
                     b: data.proof.pi_b.to_string(),
-                    c: data.proof.pi_c.to_string()
+                    c: data.proof.pi_c.to_string(),
                 };
 
                 println!("add_new_key proof {:?}", proof);
@@ -962,7 +959,7 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
                 let proof = Groth16ProofType {
                     a: data.proof.pi_a.to_string(),
                     b: data.proof.pi_b.to_string(),
-                    c: data.proof.pi_c.to_string()
+                    c: data.proof.pi_c.to_string(),
                 };
                 println!("process_message proof {:?}", proof);
                 println!(
@@ -1002,7 +999,7 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
                 let tally_proof = Groth16ProofType {
                     a: data.proof.pi_a.to_string(),
                     b: data.proof.pi_b.to_string(),
-                    c: data.proof.pi_c.to_string()
+                    c: data.proof.pi_c.to_string(),
                 };
 
                 _ = maci_contract
@@ -1130,10 +1127,7 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
             DORA_DEMON.to_string(),
         )
         .unwrap();
-    println!(
-        "round_balance_after_claim: {:?}",
-        round_balance_after_claim
-    );
+    println!("round_balance_after_claim: {:?}", round_balance_after_claim);
 
     let total_amount = Uint128::from(round_balance_before_claim.amount);
     let admin_fee = circuit_charge_config.fee_rate * total_amount;
@@ -1144,28 +1138,24 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
     let penalty_amount = claim_amount - operator_reward;
     println!("operator_reward: {:?}", operator_reward);
     println!("penalty_amount: {:?}", penalty_amount);
-    
+
     assert_eq!(
         operator_balance.amount,
-        operator_reward + operator_balance_before_claim.amount
-        // Uint128::from(0u128) // after 4 days, operator reward is 0, all funds are returned to creator
+        operator_reward + operator_balance_before_claim.amount // Uint128::from(0u128) // after 4 days, operator reward is 0, all funds are returned to creator
     );
-    
-    assert_eq!(
-        admin_balance.amount,
-        admin_fee
-    );
-    
+
+    assert_eq!(admin_balance.amount, admin_fee);
+
     assert_eq!(
         creator_balance.amount,
         penalty_amount + creator_balance_before_claim.amount
     );
-    
+
     assert_eq!(
         round_balance_after_claim.amount,
         round_balance_before_claim.amount - claim_amount - admin_fee
     );
-    
+
     assert_eq!(round_balance_after_claim.amount, Uint128::from(0u128));
 
     let claim_error = maci_contract.amaci_claim(&mut app, creator()).unwrap_err();
@@ -1263,7 +1253,7 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
     let creator_balance_before = contract
         .balance_of(&app, creator().to_string(), DORA_DEMON.to_string())
         .unwrap();
-    
+
     let resp = contract
         .create_round_with_whitelist(
             &mut app,
@@ -1274,12 +1264,12 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
             &coins(small_base_payamount, DORA_DEMON),
         )
         .unwrap();
-    
+
     // Record balance after creating the round
     let creator_balance_after = contract
         .balance_of(&app, creator().to_string(), DORA_DEMON.to_string())
         .unwrap();
-    
+
     // Verify that the creator's balance decreased by small_base_payamount
     assert_eq!(
         creator_balance_before.amount - Uint128::from(small_base_payamount),
@@ -1498,7 +1488,7 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
                 let proof = Groth16ProofType {
                     a: data.proof.pi_a.to_string(),
                     b: data.proof.pi_b.to_string(),
-                    c: data.proof.pi_c.to_string()
+                    c: data.proof.pi_c.to_string(),
                 };
 
                 println!("add_new_key proof {:?}", proof);
@@ -1572,7 +1562,7 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
                 let proof = Groth16ProofType {
                     a: data.proof.pi_a.to_string(),
                     b: data.proof.pi_b.to_string(),
-                    c: data.proof.pi_c.to_string()
+                    c: data.proof.pi_c.to_string(),
                 };
                 println!("process_message proof {:?}", proof);
                 println!(
@@ -1612,7 +1602,7 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
                 let tally_proof = Groth16ProofType {
                     a: data.proof.pi_a.to_string(),
                     b: data.proof.pi_b.to_string(),
-                    c: data.proof.pi_c.to_string()
+                    c: data.proof.pi_c.to_string(),
                 };
 
                 _ = maci_contract
@@ -1740,10 +1730,7 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
             DORA_DEMON.to_string(),
         )
         .unwrap();
-    println!(
-        "round_balance_after_claim: {:?}",
-        round_balance_after_claim
-    );
+    println!("round_balance_after_claim: {:?}", round_balance_after_claim);
 
     let total_amount = Uint128::from(round_balance_before_claim.amount);
     // let admin_fee = circuit_charge_config.fee_rate * total_amount;
@@ -1755,27 +1742,24 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
     let penalty_amount = claim_amount - operator_reward;
     println!("operator_reward: {:?}", operator_reward);
     println!("penalty_amount: {:?}", penalty_amount);
-    
+
     assert_eq!(
         operator_balance.amount,
         Uint128::from(0u128) // after 4 days, operator reward is 0, all funds are returned to creator
     );
-    
-    assert_eq!(
-        admin_balance.amount,
-        admin_fee
-    );
-    
+
+    assert_eq!(admin_balance.amount, admin_fee);
+
     assert_eq!(
         creator_balance.amount,
         penalty_amount + creator_balance_before_claim.amount
     );
-    
+
     assert_eq!(
         round_balance_after_claim.amount,
         round_balance_before_claim.amount - claim_amount - admin_fee
     );
-    
+
     assert_eq!(round_balance_after_claim.amount, Uint128::from(0u128));
 
     let claim_error = maci_contract.amaci_claim(&mut app, creator()).unwrap_err();
