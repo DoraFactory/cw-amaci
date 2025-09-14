@@ -7,7 +7,6 @@ members = [
     "contracts/oracle-maci",
     "contracts/api-maci",
     "contracts/api-saas",
-    "contracts/api-amaci",
 ]
 resolver = "2"
 
