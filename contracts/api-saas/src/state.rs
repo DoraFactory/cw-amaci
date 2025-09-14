@@ -5,7 +5,6 @@ use cw_storage_plus::{Item, Map};
 #[cw_serde]
 pub struct Config {
     pub admin: Addr,
-    pub registry_contract: Option<Addr>,
     pub denom: String,
 }
 
@@ -49,7 +48,7 @@ pub const MACI_CONTRACTS: Map<u64, MaciContractInfo> = Map::new("maci_contracts"
 pub const MACI_CONTRACTS_BY_OPERATOR: Map<(&Addr, u64), bool> =
     Map::new("maci_contracts_by_operator");
 
-pub const ORACLE_MACI_CODE_ID: Item<u64> = Item::new("oracle_maci_code_id");
+pub const MACI_CODE_ID: Item<u64> = Item::new("maci_code_id");
 
 // Treasury manager storage for easier access and migration support
 pub const TREASURY_MANAGER: Item<Addr> = Item::new("treasury_manager");

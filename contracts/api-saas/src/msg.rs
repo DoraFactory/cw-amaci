@@ -16,7 +16,7 @@ pub struct InstantiateMsg {
     pub treasury_manager: Addr,
     pub registry_contract: Option<Addr>,
     pub denom: String,
-    pub oracle_maci_code_id: u64,
+    pub maci_code_id: u64,
 }
 
 #[cw_serde]
@@ -24,11 +24,10 @@ pub enum ExecuteMsg {
     // Admin management
     UpdateConfig {
         admin: Option<Addr>,
-        registry_contract: Option<Addr>,
         denom: Option<String>,
     },
 
-    UpdateOracleMaciCodeId {
+    UpdateMaciCodeId {
         code_id: u64,
     },
 
@@ -47,8 +46,8 @@ pub enum ExecuteMsg {
         recipient: Option<Addr>,
     },
 
-    // Create Oracle MACI round
-    CreateOracleMaciRound {
+    // Create API MACI round
+    CreateApiMaciRound {
         coordinator: PubKey,
         max_voters: u128,
         vote_option_map: Vec<String>,
@@ -59,12 +58,10 @@ pub enum ExecuteMsg {
         certification_system: Uint256,
         whitelist_backend_pubkey: String,
         // The following parameters are hardcoded in the contract:
-        // whitelist_ecosystem: "doravota"
-        // whitelist_snapshot_height: 0
         // whitelist_voting_power_args: slope mode (one person one vote)
     },
 
-    // Oracle MACI management
+    // API MACI management
     SetRoundInfo {
         contract_addr: String,
         round_info: RoundInfo,
@@ -72,13 +69,6 @@ pub enum ExecuteMsg {
     SetVoteOptionsMap {
         contract_addr: String,
         vote_option_map: Vec<String>,
-    },
-
-    // Oracle MACI feegrant management
-    GrantToVoter {
-        contract_addr: String,
-        grantee: Addr,
-        base_amount: Uint128,
     },
 }
 
@@ -114,7 +104,7 @@ pub enum QueryMsg {
     MaciContract { contract_id: u64 },
 
     #[returns(u64)]
-    OracleMaciCodeId {},
+    MaciCodeId {},
 
     #[returns(Addr)]
     TreasuryManager {},

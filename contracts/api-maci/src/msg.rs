@@ -1,5 +1,5 @@
 use crate::state::{
-    GrantConfig, MaciParameters, MessageData, OracleWhitelistConfig, PeriodStatus, PubKey,
+    MaciParameters, MessageData, OracleWhitelistConfig, PeriodStatus, PubKey,
     RoundInfo, VotingPowerMode, VotingTime, WhitelistConfig,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
@@ -37,11 +37,7 @@ pub struct InstantiateMsg {
     pub certification_system: Uint256, // <0: groth16 | 1: plonk>
 
     pub whitelist_backend_pubkey: String,
-    pub whitelist_ecosystem: String,
-    pub whitelist_snapshot_height: Uint256,
     pub whitelist_voting_power_args: VotingPowerArgs,
-
-    pub feegrant_operator: Addr,
 }
 
 #[cw_serde]
@@ -126,13 +122,6 @@ pub enum ExecuteMsg {
         results: Vec<Uint256>,
         salt: Uint256,
     },
-    Grant {
-        base_amount: Uint128,
-        grantee: Addr,
-    },
-    Revoke {
-        grantee: Addr,
-    },
     Bond {},
     Withdraw {
         amount: Option<Uint128>,
@@ -185,23 +174,20 @@ pub enum QueryMsg {
     /// before any further state changes, should also succeed.
     #[returns(bool)]
     IsWhiteList {
-        sender: String,
+        pubkey: PubKey,
         amount: Uint256,
         certificate: String,
     },
 
     #[returns(Uint256)]
     WhiteBalanceOf {
-        sender: String,
+        pubkey: PubKey,
         amount: Uint256,
         certificate: String,
     },
 
     #[returns(WhitelistConfig)]
-    WhiteInfo { sender: String },
-
-    #[returns(GrantConfig)]
-    GrantInfo { grantee: String },
+    WhiteInfo { pubkey: PubKey },
 
     #[returns(u128)]
     MaxWhitelistNum {},
@@ -237,9 +223,5 @@ pub struct InstantiationData {
     pub circuit_type: String,
     pub certification_system: String,
     pub whitelist_backend_pubkey: String,
-    pub whitelist_ecosystem: String,
-    pub whitelist_snapshot_height: Uint256,
     pub whitelist_voting_power_args: VotingPowerArgs,
-    pub feegrant_operator: Addr,
-    pub fee_grant_amount: Uint128,
 }

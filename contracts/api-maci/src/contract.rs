@@ -6,11 +6,11 @@ use crate::msg::{
 };
 use crate::plonk_parser::{parse_plonk_proof, parse_plonk_vkey};
 use crate::state::{
-    Admin, FeeGrantOperator, GrantConfig, Groth16ProofStr, MessageData, OracleWhitelistConfig,
+    Admin, FeeGrantOperator, Groth16ProofStr, MessageData, OracleWhitelistConfig,
     Period, PeriodStatus, PlonkProofStr, PubKey, QuinaryTreeRoot, RoundInfo, StateLeaf,
     VotingPowerConfig, VotingPowerMode, VotingTime, WhitelistConfig, ADMIN, CERTSYSTEM,
     CIRCUITTYPE, COORDINATORHASH, CURRENT_STATE_COMMITMENT, CURRENT_TALLY_COMMITMENT,
-    FEEGRANTOPERATOR, FEEGRANTS, GRANTLIST, GROTH16_PROCESS_VKEYS, GROTH16_TALLY_VKEYS, LEAF_IDX_0,
+    FEEGRANTS, GROTH16_PROCESS_VKEYS, GROTH16_TALLY_VKEYS, LEAF_IDX_0,
     MACIPARAMETERS, MAX_LEAVES_COUNT, MAX_VOTE_OPTIONS, MAX_WHITELIST_NUM, MSG_CHAIN_LENGTH,
     MSG_HASHES, NODES, NUMSIGNUPS, ORACLE_WHITELIST_CONFIG, PERIOD, PLONK_PROCESS_VKEYS,
     PLONK_TALLY_VKEYS, PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO,
@@ -135,10 +135,7 @@ pub fn instantiate(
     let circuit_type = msg.circuit_type;
     let certification_system = msg.certification_system;
     let whitelist_backend_pubkey = msg.whitelist_backend_pubkey.clone();
-    let whitelist_ecosystem = msg.whitelist_ecosystem.clone();
-    let whitelist_snapshot_height = msg.whitelist_snapshot_height;
     let whitelist_voting_power_args = msg.whitelist_voting_power_args.clone();
-    let feegrant_operator = msg.feegrant_operator.clone();
 
     // Calculate fee_grant_amount from the sent funds
     let fee_grant_amount = info
@@ -309,19 +306,11 @@ pub fn instantiate(
 
     let oracle_whitelist_config = OracleWhitelistConfig {
         backend_pubkey: whitelist_backend_pubkey_binary,
-        ecosystem: msg.whitelist_ecosystem.clone(),
-        snapshot_height: msg.whitelist_snapshot_height,
         voting_power_mode: msg.whitelist_voting_power_args.mode.clone(),
         slope: msg.whitelist_voting_power_args.slope,
         threshold: msg.whitelist_voting_power_args.threshold,
     };
     ORACLE_WHITELIST_CONFIG.save(deps.storage, &oracle_whitelist_config)?;
-    FEEGRANTOPERATOR.save(
-        deps.storage,
-        &FeeGrantOperator {
-            operator: msg.feegrant_operator.clone(),
-        },
-    )?;
 
     // Create a period struct with the initial status set to Voting
     let period = Period {
@@ -351,11 +340,7 @@ pub fn instantiate(
             "plonk".to_string()
         },
         whitelist_backend_pubkey,
-        whitelist_ecosystem,
-        whitelist_snapshot_height,
         whitelist_voting_power_args,
-        feegrant_operator,
-        fee_grant_amount,
     };
 
     Ok(Response::default()
@@ -428,11 +413,6 @@ pub fn execute(
         ExecuteMsg::StopTallyingPeriod { results, salt } => {
             execute_stop_tallying_period(deps, env, info, results, salt)
         }
-        ExecuteMsg::Grant {
-            base_amount,
-            grantee,
-        } => execute_grant(deps, env, info, base_amount, grantee),
-        ExecuteMsg::Revoke { grantee } => execute_revoke(deps, env, info, grantee),
         ExecuteMsg::Bond {} => execute_bond(deps, env, info),
         ExecuteMsg::Withdraw { amount } => execute_withdraw(deps, env, info, amount),
     }
@@ -536,28 +516,14 @@ pub fn execute_sign_up(
     // Convert contract address to uint256 format
     let contract_address_uint256 = address_to_uint256(&env.contract.address);
 
-    println!("==============================");
-    println!("contract address: {:?}", env.contract.address);
-    println!(
-        "contract address string: {:?}",
-        env.contract.address.to_string()
-    );
-    println!(
-        "contract address bytes: {:?}",
-        env.contract.address.as_bytes()
-    );
-    println!("contract address uint256: {:?}", contract_address_uint256);
-    println!("==============================");
-
     let oracle_whitelist_config = ORACLE_WHITELIST_CONFIG.load(deps.storage)?;
-    let whitelist_ecosystem = oracle_whitelist_config.ecosystem;
     let whitelist_backend_pubkey = oracle_whitelist_config.backend_pubkey;
+
     let payload = serde_json::json!({
-        "address": info.sender.to_string(),
         "amount": amount.to_string(),
-        // "height": whitelist_snapshot_height.to_string(),
-        "contract_address": env.contract.address.to_string(),
-        "ecosystem": whitelist_ecosystem.to_string(),
+        "contract_address": contract_address_uint256.to_string(),
+        "pubkey_x": pubkey.x.to_string(),
+        "pubkey_y": pubkey.y.to_string(),
     });
 
     let msg = payload.to_string().into_bytes();
@@ -578,7 +544,7 @@ pub fn execute_sign_up(
         return Err(ContractError::InvalidSignature {});
     }
 
-    if WHITELIST.has(deps.storage, &info.sender) {
+    if WHITELIST.has(deps.storage, &(pubkey.x.to_be_bytes().to_vec(), pubkey.y.to_be_bytes().to_vec())) {
         return Err(ContractError::AlreadySignedUp {});
     }
 
@@ -642,10 +608,8 @@ pub fn execute_sign_up(
     let white_curr = WhitelistConfig {
         balance: voting_power,
         is_register: true,
-        fee_amount: Uint128::from(0u128),
-        fee_grant: false,
     };
-    WHITELIST.save(deps.storage, &info.sender, &white_curr)?;
+    WHITELIST.save(deps.storage, &(pubkey.x.to_be_bytes().to_vec(), pubkey.y.to_be_bytes().to_vec()), &white_curr)?;
 
     Ok(Response::new()
         .add_attribute("action", "sign_up")
@@ -1279,157 +1243,6 @@ fn execute_stop_tallying_period(
         .add_attribute("all_result", sum.to_string()))
 }
 
-fn execute_grant(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    base_amount: Uint128,
-    grantee: Addr,
-) -> Result<Response, ContractError> {
-    // Check if the sender is authorized to execute the function
-    if !is_feegrant_operator(deps.as_ref(), info.sender.as_ref())? {
-        return Err(ContractError::Unauthorized {});
-    }
-
-    let voting_time = VOTINGTIME.load(deps.storage)?;
-    check_voting_time(env.clone(), voting_time)?;
-
-    // if FEEGRANTS.exists(deps.storage) {
-    //     return Err(ContractError::FeeGrantAlreadyExists {});
-    // }
-
-    let denom = "peaka".to_string();
-
-    let mut amount: Uint128 = Uint128::new(0);
-    // Iterate through the funds and find the amount with the MACI denomination
-    info.funds.iter().for_each(|fund| {
-        if fund.denom == denom {
-            amount = fund.amount;
-        }
-    });
-    // FEEGRANTS.save(deps.storage, &max_amount)?;
-
-    let feegrants = FEEGRANTS.load(deps.storage)?;
-
-    // let whitelist = WHITELIST.load(deps.storage)?;z
-
-    // let base_amount = max_amount / Uint128::from(whitelist.users.len() as u128);
-
-    // let mut expiration_time: Option<SdkTimestamp> = None;
-
-    let voting_time: VotingTime = VOTINGTIME.load(deps.storage)?;
-
-    // if let Some(voting_time) = voting_time {
-    //     expiration_time = Some(SdkTimestamp {
-    //         seconds: voting_time.end_time.seconds() as i64,
-    //         nanos: 0,
-    //     })
-    // }
-    let expiration_time = Some(SdkTimestamp {
-        seconds: voting_time.end_time.seconds() as i64,
-        nanos: 0,
-    });
-
-    let allowance = BasicAllowance {
-        spend_limit: vec![SdkCoin {
-            denom: denom,
-            amount: base_amount.to_string(),
-        }],
-        expiration: expiration_time,
-    };
-
-    let allowed_allowance = AllowedMsgAllowance {
-        allowance: Some(Any {
-            type_url: BasicAllowance::TYPE_URL.to_string(),
-            value: allowance.encode_to_vec(),
-        }),
-        allowed_messages: vec!["/cosmwasm.wasm.v1.MsgExecuteContract".to_string()],
-    };
-
-    // for i in 0..whitelists.users.len() {
-    // let addr_str = whitelists.users[i].addr.to_string();
-    // let addr = &Addr::unchecked(&addr_str);
-
-    let mut curr;
-    if GRANTLIST.has(deps.storage, &grantee) {
-        curr = GRANTLIST.load(deps.storage, &grantee)?;
-    } else {
-        curr = GrantConfig {
-            fee_amount: Uint128::from(0u128),
-            fee_grant: false,
-        }
-    }
-
-    if curr.fee_grant == true {
-        return Err(ContractError::AlreadySetFeeGrant {
-            grantee: grantee.to_string(),
-        });
-    }
-    let grant_msg = MsgGrantAllowance {
-        granter: env.contract.address.to_string(),
-        grantee: grantee.to_string(),
-        allowance: Some(Any {
-            type_url: AllowedMsgAllowance::TYPE_URL.to_string(),
-            value: allowed_allowance.encode_to_vec(),
-        }),
-    };
-
-    let mut messages = vec![];
-    let message = CosmosMsg::Stargate {
-        type_url: MsgGrantAllowance::TYPE_URL.to_string(),
-        value: grant_msg.encode_to_vec().into(),
-    };
-    messages.push(message);
-
-    curr.grant(base_amount);
-    GRANTLIST.save(deps.storage, &grantee, &curr)?;
-
-    let total_feegrant_amount = feegrants + base_amount;
-    FEEGRANTS.save(deps.storage, &total_feegrant_amount)?;
-
-    Ok(Response::default().add_messages(messages).add_attributes([
-        ("action", "grant"),
-        ("total_amount", total_feegrant_amount.to_string().as_str()),
-        ("update_amount", base_amount.to_string().as_str()),
-        ("base_amount", base_amount.to_string().as_str()),
-        ("bond_amount", amount.to_string().as_str()),
-        ("grantee", grantee.to_string().as_str()),
-    ]))
-}
-
-fn execute_revoke(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    grantee: Addr,
-) -> Result<Response, ContractError> {
-    // Check if the sender is authorized to execute the function
-    if !can_execute(deps.as_ref(), info.sender.as_ref())? {
-        return Err(ContractError::Unauthorized {});
-    }
-
-    let mut messages = vec![];
-    let mut curr = WHITELIST.load(deps.storage, &grantee)?;
-    if curr.fee_grant == true {
-        let revoke_msg = MsgRevokeAllowance {
-            granter: env.contract.address.to_string(),
-            grantee: grantee.to_string(),
-        };
-        let message = CosmosMsg::Stargate {
-            type_url: MsgRevokeAllowance::TYPE_URL.to_string(),
-            value: revoke_msg.encode_to_vec().into(),
-        };
-        messages.push(message);
-    }
-    curr.revoke();
-    WHITELIST.save(deps.storage, &grantee, &curr)?;
-
-    Ok(Response::default().add_messages(messages).add_attributes([
-        ("action", "revoke"),
-        ("grantee", grantee.to_string().as_str()),
-    ]))
-}
-
 fn execute_bond(_deps: DepsMut, _env: Env, info: MessageInfo) -> Result<Response, ContractError> {
     // if !can_execute(deps.as_ref(), info.sender.as_ref())? {
     //     return Err(ContractError::Unauthorized {});
@@ -1489,20 +1302,28 @@ fn execute_withdraw(
 fn can_sign_up(
     deps: Deps,
     env: Env,
-    sender: &str,
+    pubkey: PubKey,
     amount: Uint256,
     certificate: String,
 ) -> StdResult<bool> {
     let oracle_whitelist_config = ORACLE_WHITELIST_CONFIG.load(deps.storage)?;
-    let whitelist_ecosystem = oracle_whitelist_config.ecosystem;
     let whitelist_backend_pubkey = oracle_whitelist_config.backend_pubkey;
+    // let payload = serde_json::json!({
+    //     "address": sender.to_string(),
+    //     "amount": amount.to_string(),
+    //     // "height": whitelist_snapshot_height.to_string(),
+    //     "contract_address": env.contract.address.to_string(),
+    //     "ecosystem": whitelist_ecosystem.to_string(),
+    // });
+    let contract_address_uint256 = address_to_uint256(&env.contract.address);
+
     let payload = serde_json::json!({
-        "address": sender.to_string(),
         "amount": amount.to_string(),
-        // "height": whitelist_snapshot_height.to_string(),
-        "contract_address": env.contract.address.to_string(),
-        "ecosystem": whitelist_ecosystem.to_string(),
+        "contract_address": contract_address_uint256.to_string(),
+        "pubkey_x": pubkey.x.to_string(),
+        "pubkey_y": pubkey.y.to_string(),
     });
+
 
     let msg = payload.to_string().into_bytes();
 
@@ -1521,24 +1342,31 @@ fn can_sign_up(
 fn user_balance_of(
     deps: Deps,
     env: Env,
-    sender: &str,
+    // sender: &str,
+    pubkey: PubKey,
     amount: Uint256,
     certificate: String,
 ) -> StdResult<Uint256> {
-    let addr = Addr::unchecked(sender);
-    if WHITELIST.has(deps.storage, &addr) {
-        let cfg = WHITELIST.load(deps.storage, &addr)?;
+    if WHITELIST.has(deps.storage, &(pubkey.x.to_be_bytes().to_vec(), pubkey.y.to_be_bytes().to_vec())) {
+        let cfg = WHITELIST.load(deps.storage, &(pubkey.x.to_be_bytes().to_vec(), pubkey.y.to_be_bytes().to_vec()))?;
         return Ok(cfg.balance_of());
     }
 
     let oracle_whitelist_config = ORACLE_WHITELIST_CONFIG.load(deps.storage)?;
-    let whitelist_ecosystem = oracle_whitelist_config.ecosystem;
     let whitelist_backend_pubkey = oracle_whitelist_config.backend_pubkey;
+    // let payload = serde_json::json!({
+    //     "address": sender.to_string(),
+    //     "amount": amount.to_string(),
+    //     "contract_address": env.contract.address.to_string(),
+    //     "ecosystem": whitelist_ecosystem.to_string(),
+    // });
+
+    let contract_address_uint256 = address_to_uint256(&env.contract.address);
     let payload = serde_json::json!({
-        "address": sender.to_string(),
         "amount": amount.to_string(),
-        "contract_address": env.contract.address.to_string(),
-        "ecosystem": whitelist_ecosystem.to_string(),
+        "contract_address": contract_address_uint256.to_string(),
+        "pubkey_x": pubkey.x.to_string(),
+        "pubkey_y": pubkey.y.to_string(),
     });
 
     let msg = payload.to_string().into_bytes();
@@ -1709,18 +1537,6 @@ fn can_execute(deps: Deps, sender: &str) -> StdResult<bool> {
     Ok(can)
 }
 
-// Only feegrant_operator/admin can execute
-fn is_feegrant_operator(deps: Deps, sender: &str) -> StdResult<bool> {
-    let admin = ADMIN.load(deps.storage)?;
-    let can_admin = admin.is_admin(&sender);
-
-    let operator = FEEGRANTOPERATOR.load(deps.storage)?;
-    let can_operator = operator.is_operator(&sender);
-
-    let can = can_admin || can_operator;
-    Ok(can)
-}
-
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
@@ -1766,29 +1582,24 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 .unwrap(),
         ),
         QueryMsg::IsWhiteList {
-            sender,
+            pubkey,
             amount,
             certificate,
-        } => to_json_binary::<bool>(&query_can_sign_up(deps, env, sender, amount, certificate)?),
+        } => to_json_binary::<bool>(&query_can_sign_up(deps, env, pubkey, amount, certificate)?),
         QueryMsg::WhiteBalanceOf {
-            sender,
+            pubkey,
             amount,
             certificate,
         } => to_json_binary::<Uint256>(&query_user_balance_of(
             deps,
             env,
-            sender,
+            pubkey,
             amount,
             certificate,
         )?),
-        QueryMsg::WhiteInfo { sender } => to_json_binary::<WhitelistConfig>(
+        QueryMsg::WhiteInfo { pubkey } => to_json_binary::<WhitelistConfig>(
             &WHITELIST
-                .load(deps.storage, &Addr::unchecked(sender))
-                .unwrap(),
-        ),
-        QueryMsg::GrantInfo { grantee } => to_json_binary::<GrantConfig>(
-            &GRANTLIST
-                .load(deps.storage, &Addr::unchecked(grantee))
+                .load(deps.storage, &(pubkey.x.to_be_bytes().to_vec(), pubkey.y.to_be_bytes().to_vec()))
                 .unwrap(),
         ),
         QueryMsg::MaxWhitelistNum {} => to_json_binary::<u128>(
@@ -1820,21 +1631,21 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
 pub fn query_can_sign_up(
     deps: Deps,
     env: Env,
-    sender: String,
+    pubkey: PubKey,
     amount: Uint256,
     certificate: String,
 ) -> StdResult<bool> {
-    Ok(can_sign_up(deps, env, &sender, amount, certificate)?)
+    Ok(can_sign_up(deps, env, pubkey, amount, certificate)?)
 }
 
 pub fn query_user_balance_of(
     deps: Deps,
     env: Env,
-    sender: String,
+    pubkey: PubKey,
     amount: Uint256,
     certificate: String,
 ) -> StdResult<Uint256> {
-    Ok(user_balance_of(deps, env, &sender, amount, certificate)?)
+    Ok(user_balance_of(deps, env, pubkey, amount, certificate)?)
 }
 
 #[cfg(test)]

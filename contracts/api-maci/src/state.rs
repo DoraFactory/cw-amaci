@@ -71,7 +71,6 @@ pub struct MaciParameters {
 pub const STATEIDXINC: Map<&Addr, Uint256> = Map::new("state_idx_inc");
 
 pub const ADMIN: Item<Admin> = Item::new("admin");
-pub const FEEGRANTOPERATOR: Item<FeeGrantOperator> = Item::new("feegrant_operator");
 pub const PERIOD: Item<Period> = Item::new("period");
 pub const MACIPARAMETERS: Item<MaciParameters> = Item::new("maci_param");
 
@@ -215,8 +214,6 @@ pub const QTR_LIB: Item<QuinaryTreeRoot> = Item::new("qtr_lib");
 pub struct WhitelistConfig {
     pub balance: Uint256,
     pub is_register: bool,
-    pub fee_amount: Uint128,
-    pub fee_grant: bool,
 }
 
 impl WhitelistConfig {
@@ -225,22 +222,13 @@ impl WhitelistConfig {
         self.balance = Uint256::from_u128(0u128);
     }
 
-    pub fn grant(&mut self, amount: Uint128) {
-        self.fee_grant = true;
-        self.fee_amount = amount;
-    }
-
-    pub fn revoke(&mut self) {
-        self.fee_grant = false;
-        self.fee_amount = Uint128::from(0u128);
-    }
-
     pub fn balance_of(&self) -> Uint256 {
         return self.balance;
     }
 }
 
-pub const WHITELIST: Map<&Addr, WhitelistConfig> = Map::new("whitelist");
+// (x, y) - whitelist_config
+pub const WHITELIST: Map<&(Vec<u8>, Vec<u8>), WhitelistConfig> = Map::new("whitelist");
 
 pub const MAX_WHITELIST_NUM: Item<u128> = Item::new("max_whitelist_num");
 
@@ -296,8 +284,6 @@ pub const PLONK_PROCESS_VKEYS: Item<PlonkVkeyStr> = Item::new("plonk_process_vke
 pub const PLONK_TALLY_VKEYS: Item<PlonkVkeyStr> = Item::new("plonk_tally_vkeys");
 
 // pub const WHITELIST_BACKEND_PUBKEY: Item<Binary> = Item::new("whitelist_backend_pubkey");
-// pub const WHITELIST_ECOSYSTEM: Item<String> = Item::new("whitelist_ecosystem");
-// pub const WHITELIST_SNAPSHOT_HEIGHT: Item<Uint256> = Item::new("whitelist_snapshot_height");
 
 #[cw_serde]
 pub enum VotingPowerMode {
@@ -315,8 +301,6 @@ pub struct VotingPowerConfig {
 #[cw_serde]
 pub struct OracleWhitelistConfig {
     pub backend_pubkey: Binary,
-    pub ecosystem: String,
-    pub snapshot_height: Uint256,
     pub slope: Uint256,
     pub voting_power_mode: VotingPowerMode,
     pub threshold: Uint256,
@@ -324,26 +308,6 @@ pub struct OracleWhitelistConfig {
 
 pub const ORACLE_WHITELIST_CONFIG: Item<OracleWhitelistConfig> =
     Item::new("oracle_whitelist_config");
-
-#[cw_serde]
-pub struct GrantConfig {
-    pub fee_amount: Uint128,
-    pub fee_grant: bool,
-}
-
-impl GrantConfig {
-    pub fn grant(&mut self, amount: Uint128) {
-        self.fee_grant = true;
-        self.fee_amount = amount;
-    }
-
-    pub fn revoke(&mut self) {
-        self.fee_grant = false;
-        self.fee_amount = Uint128::from(0u128);
-    }
-}
-
-pub const GRANTLIST: Map<&Addr, GrantConfig> = Map::new("grantlist");
 
 #[cfg(test)]
 mod tests {

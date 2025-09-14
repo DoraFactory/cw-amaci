@@ -2,7 +2,6 @@
 mod tests;
 
 use anyhow::Result as AnyResult;
-use cosmwasm_schema::cw_serde;
 use cosmwasm_std::testing::{MockApi, MockStorage};
 use cosmwasm_std::{Addr, Coin, Empty, StdResult, Timestamp, Uint128};
 use cw_amaci::state::RoundInfo;
@@ -19,14 +18,7 @@ use crate::{
 
 pub const DORA_DEMON: &str = "peaka";
 
-// Mock feegrant allowance for testing purposes
-#[cw_serde]
-pub struct MockFeegrantAllowance {
-    pub granter: String,
-    pub grantee: String,
-    pub spend_limit: Vec<Coin>,
-    pub expiration: Option<Timestamp>,
-}
+// Note: Mock feegrant functionality removed as it's handled by Oracle MACI contract
 
 pub type App<ExecC = Empty, QueryC = Empty> = cw_multi_test::App<
     BankKeeper,
@@ -107,7 +99,7 @@ impl SaasContract {
         treasury_manager: Addr,
         registry_contract: Option<Addr>,
         denom: String,
-        oracle_maci_code_id: u64,
+        maci_code_id: u64,
         label: &str,
     ) -> AnyResult<Self> {
         let init_msg = InstantiateMsg {
@@ -115,7 +107,7 @@ impl SaasContract {
             treasury_manager,
             registry_contract,
             denom,
-            oracle_maci_code_id,
+            maci_code_id,
         };
 
         app.instantiate_contract(code_id.0, sender, &init_msg, &[], label, None)
@@ -128,7 +120,6 @@ impl SaasContract {
         app: &mut App,
         sender: Addr,
         admin: Option<Addr>,
-        registry_contract: Option<Addr>,
         denom: Option<String>,
     ) -> AnyResult<AppResponse> {
         app.execute_contract(
@@ -136,7 +127,6 @@ impl SaasContract {
             self.addr(),
             &ExecuteMsg::UpdateConfig {
                 admin,
-                registry_contract,
                 denom,
             },
             &[],
@@ -195,7 +185,7 @@ impl SaasContract {
     }
 
     #[track_caller]
-    pub fn update_oracle_maci_code_id(
+    pub fn update_maci_code_id(
         &self,
         app: &mut App,
         sender: Addr,
@@ -204,13 +194,13 @@ impl SaasContract {
         app.execute_contract(
             sender,
             self.addr(),
-            &ExecuteMsg::UpdateOracleMaciCodeId { code_id },
+            &ExecuteMsg::UpdateMaciCodeId { code_id },
             &[],
         )
     }
 
     #[track_caller]
-    pub fn create_oracle_maci_round(
+    pub fn create_api_maci_round(
         &self,
         app: &mut App,
         sender: Addr,
@@ -227,7 +217,7 @@ impl SaasContract {
         app.execute_contract(
             sender,
             self.addr(),
-            &ExecuteMsg::CreateOracleMaciRound {
+            &ExecuteMsg::CreateApiMaciRound {
                 coordinator,
                 max_voters,
                 vote_option_map,
@@ -273,9 +263,9 @@ impl SaasContract {
             .query_wasm_smart(self.addr(), &QueryMsg::MaciContracts { start_after, limit })
     }
 
-    pub fn query_oracle_maci_code_id(&self, app: &App) -> StdResult<u64> {
+    pub fn query_maci_code_id(&self, app: &App) -> StdResult<u64> {
         app.wrap()
-            .query_wasm_smart(self.addr(), &QueryMsg::OracleMaciCodeId {})
+            .query_wasm_smart(self.addr(), &QueryMsg::MaciCodeId {})
     }
 
 
@@ -288,44 +278,7 @@ impl SaasContract {
         app.wrap().query_balance(address, denom)
     }
 
-    // Mock feegrant query - in real implementation this would query the feegrant module
-    // For testing purposes, we can simulate the feegrant status based on operator existence
-    pub fn query_feegrant_allowance(
-        &self,
-        app: &App,
-        granter: String,
-        grantee: String,
-    ) -> StdResult<Option<MockFeegrantAllowance>> {
-        // In a real implementation, this would query the feegrant module via Stargate
-        // For testing, we simulate based on operator status
-        let grantee_addr = Addr::unchecked(&grantee);
-        let is_operator = self.query_is_operator(app, grantee_addr)?;
-
-        if is_operator {
-            Ok(Some(MockFeegrantAllowance {
-                granter: granter.clone(),
-                grantee: grantee.clone(),
-                spend_limit: vec![Coin {
-                    denom: "peaka".to_string(),
-                    amount: Uint128::from(10_000_000_000_000_000_000_000_000u128),
-                }],
-                expiration: None,
-            }))
-        } else {
-            Ok(None)
-        }
-    }
-
-    // Check if feegrant exists (simplified check)
-    pub fn has_feegrant_allowance(
-        &self,
-        app: &App,
-        granter: String,
-        grantee: String,
-    ) -> StdResult<bool> {
-        let allowance = self.query_feegrant_allowance(app, granter, grantee)?;
-        Ok(allowance.is_some())
-    }
+    // Note: Feegrant query functions removed as they're handled by Oracle MACI contract
 }
 
 impl From<Addr> for SaasContract {

@@ -8,8 +8,8 @@ use crate::multitest::{
     user1, user2, SaasCodeId, DORA_DEMON,
 };
 use cw_amaci::multitest::uint256_from_decimal_string;
-use cw_oracle_maci;
-use cw_oracle_maci::state::RoundInfo as OracleMaciRoundInfo;
+use cw_api_maci;
+use cw_api_maci::state::RoundInfo as OracleMaciRoundInfo;
 
 #[test]
 fn test_instantiate_saas_contract() {
@@ -33,7 +33,6 @@ fn test_instantiate_saas_contract() {
     // Verify config
     let config = contract.query_config(&app).unwrap();
     assert_eq!(config.admin, admin());
-    assert_eq!(config.registry_contract, Some(mock_registry_contract()));
     assert_eq!(config.denom, DORA_DEMON);
 
     // Verify treasury manager query
@@ -49,7 +48,7 @@ fn test_instantiate_saas_contract() {
     assert!(operators.is_empty());
 
     // Verify oracle maci code id is set correctly
-    let stored_code_id = contract.query_oracle_maci_code_id(&app).unwrap();
+    let stored_code_id = contract.query_maci_code_id(&app).unwrap();
     assert_eq!(stored_code_id, oracle_maci_code_id);
 }
 
@@ -76,7 +75,7 @@ fn test_update_config() {
 
     // Update config as admin
     contract
-        .update_config(&mut app, admin(), Some(new_admin.clone()), None, None)
+        .update_config(&mut app, admin(), Some(new_admin.clone()), None)
         .unwrap();
 
     // Verify config updated
@@ -85,7 +84,7 @@ fn test_update_config() {
 
     // Try to update as non-admin (should fail)
     let err = contract
-        .update_config(&mut app, user2(), Some(admin()), None, None)
+        .update_config(&mut app, user2(), Some(admin()), None)
         .unwrap_err();
     assert!(err.to_string().contains("Error executing WasmMsg"));
 }
@@ -231,7 +230,7 @@ fn test_deposit_and_withdraw() {
 }
 
 #[test]
-fn test_create_oracle_maci_round_success() {
+fn test_create_api_maci_round_success() {
     let initial_balance = 1000000000000000000000u128; // 1000 DORA
     let mut app = AppBuilder::default()
         .with_stargate(StargateAccepting)
@@ -270,7 +269,7 @@ fn test_create_oracle_maci_round_success() {
 
     // Create Oracle MACI round
     let max_voters = 5u128;
-    let create_msg = ExecuteMsg::CreateOracleMaciRound {
+    let create_msg = ExecuteMsg::CreateApiMaciRound {
         coordinator: PubKey {
             x: Uint256::from(1u32),
             y: Uint256::from(2u32),
@@ -314,21 +313,7 @@ fn test_create_oracle_maci_round_success() {
     let expected_cost = Uint128::from(10000000000000000000u128)
         + Uint128::from(max_voters * 1000000000000000000u128);
 
-    // Verify fee_grant_amount event attribute exists and has correct value in wasm events
-    let fee_grant_amount_attr = response
-        .events
-        .iter()
-        .filter(|e| e.ty == "wasm")
-        .flat_map(|e| &e.attributes)
-        .find(|attr| attr.key == "fee_grant_amount")
-        .expect("Should have fee_grant_amount attribute in wasm event");
-
-    // The fee_grant_amount should equal the expected cost (deployment fee + voter tokens)
-    assert_eq!(
-        fee_grant_amount_attr.value,
-        expected_cost.to_string(),
-        "fee_grant_amount should match the total cost sent as funds"
-    );
+    // Note: fee_grant_amount verification removed as feegrant is handled by Oracle MACI contract
 
     // Verify balance was deducted correctly
     let final_balance = contract.query_balance(&app).unwrap();
@@ -377,7 +362,7 @@ fn test_create_oracle_maci_round_success() {
 }
 
 #[test]
-fn test_create_oracle_maci_round_unauthorized() {
+fn test_create_api_maci_round_unauthorized() {
     let mut app = create_app();
 
     let oracle_maci_code_id = app.store_code(oracle_maci_contract());
@@ -395,7 +380,7 @@ fn test_create_oracle_maci_round_unauthorized() {
         )
         .unwrap();
 
-    let create_msg = ExecuteMsg::CreateOracleMaciRound {
+    let create_msg = ExecuteMsg::CreateApiMaciRound {
         coordinator: PubKey {
             x: uint256_from_decimal_string(
                 "3557592161792765812904087712812111121909518311142005886657252371904276697771",
@@ -434,7 +419,7 @@ fn test_create_oracle_maci_round_unauthorized() {
 }
 
 #[test]
-fn test_create_oracle_maci_round_insufficient_funds() {
+fn test_create_api_maci_round_insufficient_funds() {
     let initial_balance = 10000000000000000000u128; // 10 DORA - not enough
     let mut app = AppBuilder::default()
         .with_stargate(StargateAccepting)
@@ -468,7 +453,7 @@ fn test_create_oracle_maci_round_insufficient_funds() {
         .deposit(&mut app, user1(), &coins(initial_balance, DORA_DEMON))
         .unwrap();
 
-    let create_msg = ExecuteMsg::CreateOracleMaciRound {
+    let create_msg = ExecuteMsg::CreateApiMaciRound {
         coordinator: PubKey {
             x: Uint256::from(1u32),
             y: Uint256::from(2u32),
@@ -538,7 +523,7 @@ fn test_oracle_maci_round_management() {
         .unwrap();
 
     // Create Oracle MACI round first
-    let create_msg = ExecuteMsg::CreateOracleMaciRound {
+    let create_msg = ExecuteMsg::CreateApiMaciRound {
         coordinator: PubKey {
             x: uint256_from_decimal_string(
                 "3557592161792765812904087712812111121909518311142005886657252371904276697771",
@@ -573,24 +558,7 @@ fn test_oracle_maci_round_management() {
 
     let response = create_result.unwrap();
 
-    // Verify fee_grant_amount event attribute exists in wasm events
-    let fee_grant_amount_attr = response
-        .events
-        .iter()
-        .filter(|e| e.ty == "wasm")
-        .flat_map(|e| &e.attributes)
-        .find(|attr| attr.key == "fee_grant_amount")
-        .expect("Should have fee_grant_amount attribute in wasm event");
-
-    // Calculate expected cost (10 DORA deployment + 5 DORA for voters)
-    let expected_cost =
-        Uint128::from(10000000000000000000u128) + Uint128::from(5u128 * 1000000000000000000u128);
-
-    assert_eq!(
-        fee_grant_amount_attr.value,
-        expected_cost.to_string(),
-        "fee_grant_amount should match the total cost sent as funds"
-    );
+    // Note: fee_grant_amount verification removed as feegrant is handled by Oracle MACI contract
 
     // Get the created contract address from events
     let oracle_maci_addr = extract_contract_address_from_events(&response.events);
@@ -715,36 +683,8 @@ fn test_oracle_maci_round_management() {
         );
     }
 
-    // Test fee grant management
-    let fee_grant_amount = Uint128::from(1000000000000000000u128); // 1 DORA
-
-    let grant_msg = ExecuteMsg::GrantToVoter {
-        contract_addr: oracle_maci_addr,
-        grantee: user1(),
-        base_amount: fee_grant_amount,
-    };
-
-    // Operator should be able to grant fee grants
-    let result = app.execute_contract(operator1(), contract.addr(), &grant_msg, &[]);
-    if let Err(e) = &result {
-        let error_msg = e.to_string();
-        assert!(
-            !error_msg.contains("Unauthorized"),
-            "Should not fail due to authorization"
-        );
-    }
-
-    println!("========= grant_msg =======");
-    // Non-operator should not be able to grant fee grants
-    let result = app.execute_contract(user1(), contract.addr(), &grant_msg, &[]);
-    assert!(
-        result.is_err(),
-        "Non-operator should not be able to grant fee grants"
-    );
-    assert_eq!(
-        result.unwrap_err().downcast::<ContractError>().unwrap(),
-        ContractError::Unauthorized {}
-    );
+    // Note: Fee grant management functionality has been removed as it's 
+    // handled directly by the Oracle MACI contract
 }
 
 // Helper function to extract contract address from events
@@ -761,183 +701,8 @@ fn extract_contract_address_from_events(events: &[cosmwasm_std::Event]) -> Strin
     "contract1".to_string() // Default fallback for test
 }
 
-#[test]
-fn test_operator_feegrant_lifecycle() {
-    let mut app = create_app();
-
-    let oracle_maci_code_id = app.store_code(oracle_maci_contract());
-    let code_id = SaasCodeId::store_code(&mut app);
-    let contract = code_id
-        .instantiate(
-            &mut app,
-            creator(),
-            admin(),
-            treasury_manager(),
-            Some(mock_registry_contract()),
-            DORA_DEMON.to_string(),
-            oracle_maci_code_id,
-            "SaaS Contract",
-        )
-        .unwrap();
-
-    // Verify no operators initially
-    let operators = contract.query_operators(&app).unwrap();
-    assert!(operators.is_empty());
-
-    // Add operator1 and check feegrant is granted
-    let res = contract
-        .add_operator(&mut app, admin(), operator1())
-        .unwrap();
-
-    // Check that feegrant was granted (via events/attributes)
-    let grant_attrs: Vec<_> = res
-        .events
-        .iter()
-        .flat_map(|e| &e.attributes)
-        .filter(|attr| attr.key == "feegrant_action")
-        .collect();
-    assert!(!grant_attrs.is_empty());
-    assert_eq!(grant_attrs[0].value, "auto_grant");
-
-    // Check that feegrant amount was recorded
-    let amount_attrs: Vec<_> = res
-        .events
-        .iter()
-        .flat_map(|e| &e.attributes)
-        .filter(|attr| attr.key == "feegrant_amount")
-        .collect();
-    assert!(!amount_attrs.is_empty());
-    assert_eq!(amount_attrs[0].value, "10000000000000000000000000"); // 10B tokens
-
-    // Check that denom was recorded
-    let denom_attrs: Vec<_> = res
-        .events
-        .iter()
-        .flat_map(|e| &e.attributes)
-        .filter(|attr| attr.key == "feegrant_denom")
-        .collect();
-    assert!(!denom_attrs.is_empty());
-    assert_eq!(denom_attrs[0].value, DORA_DEMON);
-
-    // Verify operator was added
-    let operators = contract.query_operators(&app).unwrap();
-    assert_eq!(operators.len(), 1);
-    assert_eq!(operators[0].address, operator1());
-
-    // Verify operator is recognized
-    let is_operator = contract.query_is_operator(&app, operator1()).unwrap();
-    assert!(is_operator);
-
-    // Query feegrant allowance (should exist for operator)
-    let allowance = contract
-        .query_feegrant_allowance(&app, contract.addr().to_string(), operator1().to_string())
-        .unwrap();
-    assert!(allowance.is_some());
-    let allowance = allowance.unwrap();
-    assert_eq!(allowance.granter, contract.addr().to_string());
-    assert_eq!(allowance.grantee, operator1().to_string());
-    assert_eq!(allowance.spend_limit[0].denom, "peaka");
-    assert_eq!(
-        allowance.spend_limit[0].amount,
-        Uint128::from(10_000_000_000_000_000_000_000_000u128)
-    );
-
-    // Check feegrant exists using convenience method
-    let has_feegrant = contract
-        .has_feegrant_allowance(&app, contract.addr().to_string(), operator1().to_string())
-        .unwrap();
-    assert!(has_feegrant);
-
-    // Add second operator to verify multiple feegrants
-    let res2 = contract
-        .add_operator(&mut app, admin(), operator2())
-        .unwrap();
-
-    // Check second feegrant was also granted
-    let grant_attrs2: Vec<_> = res2
-        .events
-        .iter()
-        .flat_map(|e| &e.attributes)
-        .filter(|attr| attr.key == "feegrant_action")
-        .collect();
-    assert!(!grant_attrs2.is_empty());
-    assert_eq!(grant_attrs2[0].value, "auto_grant");
-
-    // Now remove first operator and check feegrant is revoked
-    let res_remove = contract
-        .remove_operator(&mut app, admin(), operator1())
-        .unwrap();
-
-    // Check that feegrant was revoked (via events/attributes)
-    let revoke_attrs: Vec<_> = res_remove
-        .events
-        .iter()
-        .flat_map(|e| &e.attributes)
-        .filter(|attr| attr.key == "feegrant_action")
-        .collect();
-    assert!(!revoke_attrs.is_empty());
-    assert_eq!(revoke_attrs[0].value, "auto_revoke");
-
-    // Verify operator was removed
-    let operators = contract.query_operators(&app).unwrap();
-    assert_eq!(operators.len(), 1);
-    assert_eq!(operators[0].address, operator2());
-
-    // Verify operator1 is no longer recognized
-    let is_operator = contract.query_is_operator(&app, operator1()).unwrap();
-    assert!(!is_operator);
-
-    // Query feegrant allowance (should NOT exist for removed operator)
-    let allowance = contract
-        .query_feegrant_allowance(&app, contract.addr().to_string(), operator1().to_string())
-        .unwrap();
-    assert!(allowance.is_none());
-
-    // Check feegrant no longer exists
-    let has_feegrant = contract
-        .has_feegrant_allowance(&app, contract.addr().to_string(), operator1().to_string())
-        .unwrap();
-    assert!(!has_feegrant);
-
-    // Verify operator2 is still recognized
-    let is_operator = contract.query_is_operator(&app, operator2()).unwrap();
-    assert!(is_operator);
-
-    // Remove second operator
-    let res_remove2 = contract
-        .remove_operator(&mut app, admin(), operator2())
-        .unwrap();
-
-    // Check second feegrant was also revoked
-    let revoke_attrs2: Vec<_> = res_remove2
-        .events
-        .iter()
-        .flat_map(|e| &e.attributes)
-        .filter(|attr| attr.key == "feegrant_action")
-        .collect();
-    assert!(!revoke_attrs2.is_empty());
-    assert_eq!(revoke_attrs2[0].value, "auto_revoke");
-
-    // Verify all operators are removed
-    let operators = contract.query_operators(&app).unwrap();
-    assert!(operators.is_empty());
-
-    // Verify operator2 is no longer recognized
-    let is_operator = contract.query_is_operator(&app, operator2()).unwrap();
-    assert!(!is_operator);
-
-    // Query feegrant allowance (should NOT exist for removed operator2)
-    let allowance = contract
-        .query_feegrant_allowance(&app, contract.addr().to_string(), operator2().to_string())
-        .unwrap();
-    assert!(allowance.is_none());
-
-    // Check feegrant no longer exists for operator2
-    let has_feegrant = contract
-        .has_feegrant_allowance(&app, contract.addr().to_string(), operator2().to_string())
-        .unwrap();
-    assert!(!has_feegrant);
-}
+// Note: test_operator_feegrant_lifecycle test removed as feegrant functionality
+// is now handled directly by the Oracle MACI contract
 
 #[test]
 fn test_treasury_manager_withdraw_success() {
@@ -1248,10 +1013,10 @@ fn test_migration_sets_treasury_manager() {
 // Oracle MACI contract wrapper for testing
 fn oracle_maci_contract() -> Box<dyn Contract<cosmwasm_std::Empty>> {
     let contract = ContractWrapper::new(
-        cw_oracle_maci::contract::execute,
-        cw_oracle_maci::contract::instantiate,
-        cw_oracle_maci::contract::query,
+        cw_api_maci::contract::execute,
+        cw_api_maci::contract::instantiate,
+        cw_api_maci::contract::query,
     )
-    .with_reply(cw_oracle_maci::contract::reply);
+    .with_reply(cw_api_maci::contract::reply);
     Box::new(contract)
 }

@@ -7,9 +7,10 @@ mod tests;
 use anyhow::Result as AnyResult;
 
 use crate::state::{
-    GrantConfig, MessageData, OracleWhitelistConfig, Period, PubKey, RoundInfo, VotingPowerMode,
+    MessageData, OracleWhitelistConfig, Period, PubKey, RoundInfo, VotingPowerMode,
     VotingTime, WhitelistConfig,
 };
+use base64::prelude::*;
 use crate::utils::uint256_from_hex_string;
 use crate::{
     contract::{execute, instantiate, query, reply},
@@ -400,14 +401,11 @@ impl MaciContract {
             circuit_type,
             certification_system: Uint256::from_u128(0u128),
             whitelist_backend_pubkey: whitelist_pubkey(),
-            whitelist_ecosystem: whitelist_ecosystem(),
-            whitelist_snapshot_height: whitelist_snapshot_height(),
             whitelist_voting_power_args: VotingPowerArgs {
                 mode: whitelist_voting_power_mode(),
                 slope: whitelist_slope(),
                 threshold: whitelist_threshold(),
             },
-            feegrant_operator: owner(),
         };
 
         app.instantiate_contract(
@@ -454,14 +452,11 @@ impl MaciContract {
             circuit_type,
             certification_system: Uint256::from_u128(1u128), // plonk system
             whitelist_backend_pubkey: whitelist_pubkey(),
-            whitelist_ecosystem: whitelist_ecosystem(),
-            whitelist_snapshot_height: whitelist_snapshot_height(),
             whitelist_voting_power_args: VotingPowerArgs {
                 mode: whitelist_voting_power_mode(),
                 slope: whitelist_slope(),
                 threshold: whitelist_threshold(),
             },
-            feegrant_operator: owner(),
         };
 
         app.instantiate_contract(
@@ -793,14 +788,14 @@ impl MaciContract {
     pub fn query_is_whitelist(
         &self,
         app: &App,
-        sender: String,
+        pubkey: PubKey,
         amount: Uint256,
         certificate: String,
     ) -> StdResult<bool> {
         app.wrap().query_wasm_smart(
             self.addr(),
             &QueryMsg::IsWhiteList {
-                sender,
+                pubkey,
                 amount,
                 certificate,
             },
@@ -810,52 +805,23 @@ impl MaciContract {
     pub fn query_white_balance_of(
         &self,
         app: &App,
-        sender: String,
+        pubkey: PubKey,
         amount: Uint256,
         certificate: String,
     ) -> StdResult<Uint256> {
         app.wrap().query_wasm_smart(
             self.addr(),
             &QueryMsg::WhiteBalanceOf {
-                sender,
+                pubkey,
                 amount,
                 certificate,
             },
         )
     }
 
-    #[track_caller]
-    pub fn grant(
-        &self,
-        app: &mut App,
-        sender: Addr,
-        base_amount: Uint128,
-        grantee: Addr,
-    ) -> AnyResult<AppResponse> {
-        app.execute_contract(
-            sender,
-            self.addr(),
-            &ExecuteMsg::Grant {
-                base_amount,
-                grantee,
-            },
-            &[],
-        )
-    }
-
-    #[track_caller]
-    pub fn revoke(&self, app: &mut App, sender: Addr, grantee: Addr) -> AnyResult<AppResponse> {
-        app.execute_contract(sender, self.addr(), &ExecuteMsg::Revoke { grantee }, &[])
-    }
-
-    pub fn query_white_info(&self, app: &App, sender: String) -> StdResult<WhitelistConfig> {
+    pub fn query_white_info(&self, app: &App, pubkey: PubKey) -> StdResult<WhitelistConfig> {
         app.wrap()
-            .query_wasm_smart(self.addr(), &QueryMsg::WhiteInfo { sender })
-    }
-
-    pub fn query_grant_info(&self, app: &App, grantee: String) -> StdResult<GrantConfig> {
-        app.wrap()
-            .query_wasm_smart(self.addr(), &QueryMsg::GrantInfo { grantee })
+            .query_wasm_smart(self.addr(), &QueryMsg::WhiteInfo { pubkey })
     }
 
     pub fn query_oracle_whitelist_config(&self, app: &App) -> StdResult<OracleWhitelistConfig> {
@@ -910,17 +876,53 @@ pub fn match_user_certificate(index: usize) -> Certificate {
     }
 }
 
+// Generate test certificate for a specific pubkey and amount
+pub fn generate_test_certificate_for_pubkey(pubkey: &PubKey, amount: Uint256) -> String {
+    // For testing purposes, we generate a deterministic certificate based on pubkey
+    // In real implementation, this would be signed by the oracle backend
+    use sha2::{Digest, Sha256};
+    
+    let payload = format!("test_cert_{}_{}", pubkey.x, pubkey.y);
+    let hash = Sha256::digest(payload.as_bytes());
+    BASE64_STANDARD.encode(&hash[0..32]) // Use first 32 bytes as mock certificate
+}
+
+// Updated certificates for pubkey-based authentication using test data
 pub fn user1_certificate() -> Certificate {
+    // Using pubkey from logs.json[0], updated balance for sufficient voting power
+    let pubkey_x = "8446677751716569713622015905729882243875224951572887602730835165068040887285";
+    let pubkey_y = "12484654491029393893324568717198080229359788322121893494118068510674758553628";
+    let amount = Uint256::from_u128(100000000u128); // 100M to ensure voting power > 0
+    
+    // let certificate = certificate_generator::generate_certificate_for_pubkey(
+    //     "51788793381365401356776017899576520467898468617578197738183646369208722835043", // SHA256 hash of "contract0"
+    //     pubkey_x, 
+    //     pubkey_y, 
+    //     100000000u128
+    // );
+
     Certificate {
-        certificate: "cPH5ut6LcRY0HhdXLDNcHY4VbYl4IYr9VEYGYLKQo2gcQRyDKn6MIBrWY8TNfSBQQ4KpuUHuMX1RV399HMimOA==".to_string(),
-        amount: Uint256::from_u128(100000000u128),
+        certificate: "PPZsBAo+wqBcArjPfmHGc1DF2smwW0l+NWe6/4HiUE1AUxm+gMBTP401Gw/uuTVnOpW02g3hvSIkaL47YNdbLQ==".to_string(),
+        amount,
     }
 }
 
 pub fn user2_certificate() -> Certificate {
+    // Using pubkey from logs.json[1], updated balance for sufficient voting power
+    let pubkey_x = "4934845797881523927654842245387640257368309434525961062601274110069416343731";
+    let pubkey_y = "7218132018004361008636029786293016526331813670637191622129869640055131468762";
+    let amount = Uint256::from_u128(80000000u128); // 80M to ensure voting power > 0
+    
+    // let certificate = certificate_generator::generate_certificate_for_pubkey(
+    //     "51788793381365401356776017899576520467898468617578197738183646369208722835043", // SHA256 hash of "contract0"
+    //     pubkey_x, 
+    //     pubkey_y, 
+    //     80000000u128
+    // );
+
     Certificate {
-        certificate: "mjI/v5Xdt6/uHxcriXuqSaJ7H3duJy3rbPyPWc/9k0obyzpL8RBCZEGJBmZUFXBwu1kMMW6BboWeekCVJGcqQw==".to_string(),
-        amount: Uint256::from_u128(80000000u128),
+        certificate: "k10chMVB/95/5s23vaZdrI+JBXiJ9pm06DvUwVVdpV86Xp7v3C/I9ZSUY+O9v5vv2EZNODsAwgS2TAKpqigG6A==".to_string(),
+        amount,
     }
 }
 
@@ -939,16 +941,10 @@ pub fn user3_certificate_before() -> Certificate {
 }
 
 pub fn whitelist_pubkey() -> String {
+    // Updated to use the pubkey corresponding to our test private key
     // "AoYo/zENN/JquagPdG0/NMbWBBYxOM8BVN677mBXJKJQ".to_string()
-    "AurWMPImmkDdmse2sMILI9g0fJlOfcnxjJ1QWyFRBdXr".to_string()
-}
-
-pub fn whitelist_ecosystem() -> String {
-    String::from("cosmoshub")
-}
-
-pub fn whitelist_snapshot_height() -> Uint256 {
-    Uint256::from(7166000u128)
+    // "AurWMPImmkDdmse2sMILI9g0fJlOfcnxjJ1QWyFRBdXr".to_string()
+    "A9ekxvWjYNpnHTasS008PG+EuF2ssIkUPaDdnn8ZdzTb".to_string()
 }
 
 pub fn whitelist_slope() -> Uint256 {

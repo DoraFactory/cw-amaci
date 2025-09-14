@@ -18,11 +18,11 @@ use prost::Message;
 
 // External contract types with aliases to avoid path conflicts
 use cw_amaci::state::RoundInfo;
-use cw_oracle_maci::msg::{
+use cw_api_maci::msg::{
     InstantiateMsg as OracleMaciInstantiateMsg, InstantiationData as OracleMaciInstantiationData,
     VotingPowerArgs,
 };
-use cw_oracle_maci::state::{
+use cw_api_maci::state::{
     PubKey as OracleMaciPubKey, RoundInfo as OracleMaciRoundInfo, VotingPowerMode,
     VotingTime as OracleMaciVotingTime,
 };
@@ -33,7 +33,7 @@ use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, InstantiationData, MigrateMsg, PubKey, QueryMsg};
 use crate::state::{
     Config, MaciContractInfo, OperatorInfo, CONFIG, MACI_CONTRACTS, MACI_CONTRACT_COUNTER,
-    OPERATORS, ORACLE_MACI_CODE_ID, TOTAL_BALANCE, TREASURY_MANAGER,
+    OPERATORS, MACI_CODE_ID, TOTAL_BALANCE, TREASURY_MANAGER,
 };
 
 // Version info for migration
@@ -54,7 +54,6 @@ pub fn instantiate(
 
     let config = Config {
         admin: msg.admin,
-        registry_contract: msg.registry_contract,
         denom: msg.denom,
     };
 
@@ -63,7 +62,7 @@ pub fn instantiate(
     TREASURY_MANAGER.save(deps.storage, &msg.treasury_manager)?;
     TOTAL_BALANCE.save(deps.storage, &Uint128::zero())?;
     MACI_CONTRACT_COUNTER.save(deps.storage, &0u64)?;
-    ORACLE_MACI_CODE_ID.save(deps.storage, &msg.oracle_maci_code_id)?;
+    MACI_CODE_ID.save(deps.storage, &msg.maci_code_id)?;
 
     Ok(Response::new()
         .add_attribute("action", "instantiate")
@@ -82,9 +81,8 @@ pub fn execute(
     match msg {
         ExecuteMsg::UpdateConfig {
             admin,
-            registry_contract,
             denom,
-        } => execute_update_config(deps, info, admin, registry_contract, denom),
+        } => execute_update_config(deps, info, admin, denom),
         ExecuteMsg::AddOperator { operator } => execute_add_operator(deps, env, info, operator),
         ExecuteMsg::RemoveOperator { operator } => {
             execute_remove_operator(deps, env, info, operator)
@@ -94,10 +92,10 @@ pub fn execute(
             execute_withdraw(deps, env, info, amount, recipient)
         }
 
-        ExecuteMsg::UpdateOracleMaciCodeId { code_id } => {
-            execute_update_oracle_maci_code_id(deps, env, info, code_id)
+        ExecuteMsg::UpdateMaciCodeId { code_id } => {
+            execute_update_maci_code_id(deps, env, info, code_id)
         }
-        ExecuteMsg::CreateOracleMaciRound {
+        ExecuteMsg::CreateApiMaciRound {
             coordinator,
             max_voters,
             vote_option_map,
@@ -107,7 +105,7 @@ pub fn execute(
             circuit_type,
             certification_system,
             whitelist_backend_pubkey,
-        } => execute_create_oracle_maci_round(
+        } => execute_create_api_maci_round(
             deps,
             env,
             info,
@@ -129,11 +127,6 @@ pub fn execute(
             contract_addr,
             vote_option_map,
         } => execute_set_vote_options_map(deps, env, info, contract_addr, vote_option_map),
-        ExecuteMsg::GrantToVoter {
-            contract_addr,
-            grantee,
-            base_amount,
-        } => execute_grant_to_voter(deps, env, info, contract_addr, grantee, base_amount),
     }
 }
 
@@ -141,7 +134,6 @@ pub fn execute_update_config(
     deps: DepsMut,
     info: MessageInfo,
     admin: Option<Addr>,
-    registry_contract: Option<Addr>,
     denom: Option<String>,
 ) -> Result<Response, ContractError> {
     let mut config = CONFIG.load(deps.storage)?;
@@ -153,9 +145,6 @@ pub fn execute_update_config(
 
     if let Some(admin) = admin {
         config.admin = admin;
-    }
-    if let Some(registry_contract) = registry_contract {
-        config.registry_contract = Some(registry_contract);
     }
     if let Some(denom) = denom {
         config.denom = denom;
@@ -299,7 +288,7 @@ pub fn execute_deposit(
         .add_attribute("total_balance", total_balance.to_string()))
 }
 
-pub fn execute_update_oracle_maci_code_id(
+pub fn execute_update_maci_code_id(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
@@ -308,9 +297,9 @@ pub fn execute_update_oracle_maci_code_id(
     if !is_admin(deps.as_ref(), info.sender.as_ref())? {
         Err(ContractError::Unauthorized {})
     } else {
-        ORACLE_MACI_CODE_ID.save(deps.storage, &code_id)?;
+        MACI_CODE_ID.save(deps.storage, &code_id)?;
         Ok(Response::new()
-            .add_attribute("action", "update_oracle_maci_code_id")
+            .add_attribute("action", "update_maci_code_id")
             .add_attribute("code_id", &code_id.to_string()))
     }
 }
@@ -361,7 +350,7 @@ pub fn execute_withdraw(
         .add_attribute("new_balance", new_balance.to_string()))
 }
 
-pub fn execute_create_oracle_maci_round(
+pub fn execute_create_api_maci_round(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
@@ -375,7 +364,7 @@ pub fn execute_create_oracle_maci_round(
     certification_system: Uint256,
     whitelist_backend_pubkey: String,
 ) -> Result<Response, ContractError> {
-    // Only operators can create Oracle MACI rounds
+    // Only operators can create API MACI rounds
     if !OPERATORS.has(deps.storage, &info.sender) {
         return Err(ContractError::Unauthorized {});
     }
@@ -426,14 +415,11 @@ pub fn execute_create_oracle_maci_round(
         certification_system,
         whitelist_backend_pubkey: whitelist_backend_pubkey.clone(),
         // Fixed default values - one person one vote system
-        whitelist_ecosystem: "doravota".to_string(),
-        whitelist_snapshot_height: Uint256::zero(),
         whitelist_voting_power_args: VotingPowerArgs {
             mode: VotingPowerMode::Slope,
             slope: Uint256::one(),
             threshold: Uint256::one(),
         },
-        feegrant_operator: env.contract.address.clone(),
     };
 
     // Validate the message can be serialized properly
@@ -443,15 +429,15 @@ pub fn execute_create_oracle_maci_round(
         }
     })?;
 
-    let oracle_maci_code_id = ORACLE_MACI_CODE_ID.load(deps.storage)?;
+    let maci_code_id = MACI_CODE_ID.load(deps.storage)?;
 
     // Prepare the instantiate message with SaaS contract as admin and token funds
     let instantiate_msg = WasmMsg::Instantiate {
         admin: Some(env.contract.address.to_string()), // SaaS contract as Oracle MACI admin
-        code_id: oracle_maci_code_id,
+        code_id: maci_code_id,
         msg: serialized_msg,
         funds: coins(total_required.u128(), "peaka"), // Send all fees, include user signup and vote fees
-        label: format!("Oracle Maci Round - {}", round_info.title),
+        label: format!("API Maci Round - {}", round_info.title),
     };
 
     // Get the next MACI contract counter
@@ -465,7 +451,7 @@ pub fn execute_create_oracle_maci_round(
         creator_operator: info.sender.clone(),
         round_title: round_info.title.clone(),
         created_at: env.block.time,
-        code_id: oracle_maci_code_id,
+        code_id: maci_code_id,
         creation_fee: total_required,
     };
     MACI_CONTRACTS.save(deps.storage, maci_counter, &maci_contract_info)?;
@@ -561,46 +547,6 @@ pub fn execute_set_vote_options_map(
         .add_attribute("vote_option_map", format!("{:?}", vote_option_map)))
 }
 
-pub fn execute_grant_to_voter(
-    deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
-    contract_addr: String,
-    grantee: Addr,
-    base_amount: Uint128,
-) -> Result<Response, ContractError> {
-    // Only operators can manage Oracle MACI feegrants
-    if !OPERATORS.has(deps.storage, &info.sender) {
-        return Err(ContractError::Unauthorized {});
-    }
-
-    // Validate the contract address format
-    let target_addr = deps.api.addr_validate(&contract_addr)?;
-
-    // Create Oracle MACI Grant message
-    let oracle_maci_msg = serde_json::json!({
-        "grant": {
-            "base_amount": base_amount.to_string(),
-            "grantee": grantee.to_string()
-        }
-    });
-
-    // Execute the contract call
-    let execute_msg = WasmMsg::Execute {
-        contract_addr: target_addr.to_string(),
-        msg: to_json_binary(&oracle_maci_msg)?,
-        funds: vec![],
-    };
-
-    Ok(Response::new()
-        .add_message(execute_msg)
-        .add_attribute("action", "grant_to_voter")
-        .add_attribute("operator", info.sender.to_string())
-        .add_attribute("target_contract", contract_addr)
-        .add_attribute("grantee", grantee.to_string())
-        .add_attribute("base_amount", base_amount.to_string()))
-}
-
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
@@ -624,7 +570,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::MaciContract { contract_id } => {
             to_json_binary(&query_maci_contract(deps, contract_id)?)
         }
-        QueryMsg::OracleMaciCodeId {} => to_json_binary(&ORACLE_MACI_CODE_ID.load(deps.storage)?),
+        QueryMsg::MaciCodeId {} => to_json_binary(&MACI_CODE_ID.load(deps.storage)?),
         QueryMsg::TreasuryManager {} => to_json_binary(&TREASURY_MANAGER.load(deps.storage)?),
     }
 }
@@ -737,7 +683,7 @@ fn reply_created_oracle_maci_round(
     // Get current MACI contract counter
     let maci_counter = MACI_CONTRACT_COUNTER.load(deps.storage)?;
 
-    let oracle_maci_code_id = ORACLE_MACI_CODE_ID.load(deps.storage)?;
+    let maci_code_id = MACI_CODE_ID.load(deps.storage)?;
     // Update contract address in MACI contract record (from temporary to real address)
     let mut maci_contract_info = MACI_CONTRACTS.load(deps.storage, maci_counter)?;
     maci_contract_info.contract_address = contract_address.clone();
@@ -749,9 +695,9 @@ fn reply_created_oracle_maci_round(
     };
 
     let mut response_attrs = vec![
-        attr("action", "created_oracle_maci_round"),
+        attr("action", "created_api_maci_round"),
         attr("round_addr", &contract_address.to_string()),
-        attr("code_id", &oracle_maci_code_id.to_string()),
+        attr("code_id", &maci_code_id.to_string()),
         attr("caller", &oracle_maci_return_data.caller.to_string()),
         attr("admin", &oracle_maci_return_data.caller.to_string()),
         attr("operator", &oracle_maci_return_data.caller.to_string()),
@@ -827,10 +773,6 @@ fn reply_created_oracle_maci_round(
                 .message_batch_size
                 .to_string(),
         ),
-        attr(
-            "fee_grant_amount",
-            oracle_maci_return_data.fee_grant_amount.to_string(),
-        ),
     ]);
 
     if oracle_maci_return_data.round_info.description != "" {
@@ -867,20 +809,6 @@ fn is_admin(deps: Deps, sender: &str) -> StdResult<bool> {
         return Ok(true);
     }
     Ok(false)
-}
-
-// Utility functions
-fn is_operator(deps: Deps, sender: &str) -> StdResult<bool> {
-    let config = CONFIG.load(deps.storage)?;
-
-    // Admin is always considered an operator
-    if config.is_admin(&Addr::unchecked(sender)) {
-        return Ok(true);
-    }
-
-    // Check if sender is an operator
-    let sender_addr = Addr::unchecked(sender);
-    Ok(OPERATORS.has(deps.storage, &sender_addr))
 }
 
 fn is_treasury_manager(deps: Deps, sender: &str) -> StdResult<bool> {
