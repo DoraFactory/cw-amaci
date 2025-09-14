@@ -35,18 +35,6 @@ impl Admin {
 }
 
 #[cw_serde]
-pub struct FeeGrantOperator {
-    pub operator: Addr,
-}
-
-impl FeeGrantOperator {
-    pub fn is_operator(&self, addr: impl AsRef<str>) -> bool {
-        let addr = addr.as_ref();
-        self.operator.as_ref() == addr
-    }
-}
-
-#[cw_serde]
 pub enum PeriodStatus {
     Pending,
     Voting,

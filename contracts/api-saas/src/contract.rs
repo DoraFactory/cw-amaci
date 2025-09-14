@@ -32,8 +32,8 @@ use cosmos_sdk_proto::traits::TypeUrl;
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, InstantiationData, MigrateMsg, PubKey, QueryMsg};
 use crate::state::{
-    Config, MaciContractInfo, OperatorInfo, CONFIG, MACI_CONTRACTS, MACI_CONTRACT_COUNTER,
-    OPERATORS, MACI_CODE_ID, TOTAL_BALANCE, TREASURY_MANAGER,
+    Config, MaciContractInfo, OperatorInfo, CONFIG, MACI_CODE_ID, MACI_CONTRACTS,
+    MACI_CONTRACT_COUNTER, OPERATORS, REGISTRY_CONTRACT_ADDR, TOTAL_BALANCE, TREASURY_MANAGER,
 };
 
 // Version info for migration
@@ -63,6 +63,7 @@ pub fn instantiate(
     TOTAL_BALANCE.save(deps.storage, &Uint128::zero())?;
     MACI_CONTRACT_COUNTER.save(deps.storage, &0u64)?;
     MACI_CODE_ID.save(deps.storage, &msg.maci_code_id)?;
+    REGISTRY_CONTRACT_ADDR.save(deps.storage, &msg.registry_contract)?;
 
     Ok(Response::new()
         .add_attribute("action", "instantiate")
@@ -79,10 +80,12 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::UpdateConfig {
-            admin,
-            denom,
-        } => execute_update_config(deps, info, admin, denom),
+        ExecuteMsg::UpdateConfig { admin, denom } => {
+            execute_update_config(deps, info, admin, denom)
+        }
+        ExecuteMsg::UpdateAmaciRegistryContract { registry_contract } => {
+            execute_update_amaci_registry_contract(deps, info, registry_contract)
+        }
         ExecuteMsg::AddOperator { operator } => execute_add_operator(deps, env, info, operator),
         ExecuteMsg::RemoveOperator { operator } => {
             execute_remove_operator(deps, env, info, operator)
@@ -153,6 +156,25 @@ pub fn execute_update_config(
     CONFIG.save(deps.storage, &config)?;
 
     Ok(Response::new().add_attribute("action", "update_config"))
+}
+
+pub fn execute_update_amaci_registry_contract(
+    deps: DepsMut,
+    info: MessageInfo,
+    registry_contract: Addr,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+
+    // Only admin can update config
+    if !config.is_admin(&info.sender) {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    REGISTRY_CONTRACT_ADDR.save(deps.storage, &registry_contract)?;
+
+    Ok(Response::new()
+        .add_attribute("action", "update_amaci_registry_contract")
+        .add_attribute("registry_contract", registry_contract.to_string()))
 }
 
 pub fn execute_add_operator(

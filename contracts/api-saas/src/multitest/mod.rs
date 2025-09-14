@@ -125,10 +125,7 @@ impl SaasContract {
         app.execute_contract(
             sender,
             self.addr(),
-            &ExecuteMsg::UpdateConfig {
-                admin,
-                denom,
-            },
+            &ExecuteMsg::UpdateConfig { admin, denom },
             &[],
         )
     }
@@ -267,7 +264,6 @@ impl SaasContract {
         app.wrap()
             .query_wasm_smart(self.addr(), &QueryMsg::MaciCodeId {})
     }
-
 
     pub fn query_treasury_manager(&self, app: &App) -> StdResult<Addr> {
         app.wrap()

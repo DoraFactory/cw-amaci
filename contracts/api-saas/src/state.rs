@@ -49,6 +49,7 @@ pub const MACI_CONTRACTS_BY_OPERATOR: Map<(&Addr, u64), bool> =
     Map::new("maci_contracts_by_operator");
 
 pub const MACI_CODE_ID: Item<u64> = Item::new("maci_code_id");
+pub const REGISTRY_CONTRACT_ADDR: Item<Addr> = Item::new("registry_contract_addr");
 
 // Treasury manager storage for easier access and migration support
 pub const TREASURY_MANAGER: Item<Addr> = Item::new("treasury_manager");

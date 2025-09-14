@@ -683,7 +683,7 @@ fn test_oracle_maci_round_management() {
         );
     }
 
-    // Note: Fee grant management functionality has been removed as it's 
+    // Note: Fee grant management functionality has been removed as it's
     // handled directly by the Oracle MACI contract
 }
 

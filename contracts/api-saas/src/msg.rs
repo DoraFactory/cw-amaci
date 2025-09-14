@@ -14,7 +14,7 @@ pub struct PubKey {
 pub struct InstantiateMsg {
     pub admin: Addr,
     pub treasury_manager: Addr,
-    pub registry_contract: Option<Addr>,
+    pub registry_contract: Addr,
     pub denom: String,
     pub maci_code_id: u64,
 }
@@ -29,6 +29,9 @@ pub enum ExecuteMsg {
 
     UpdateMaciCodeId {
         code_id: u64,
+    },
+    UpdateAmaciRegistryContract {
+        registry_contract: Addr,
     },
 
     // Operator management

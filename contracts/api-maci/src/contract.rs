@@ -6,7 +6,7 @@ use crate::msg::{
 };
 use crate::plonk_parser::{parse_plonk_proof, parse_plonk_vkey};
 use crate::state::{
-    Admin, FeeGrantOperator, Groth16ProofStr, MessageData, OracleWhitelistConfig,
+    Admin, Groth16ProofStr, MessageData, OracleWhitelistConfig,
     Period, PeriodStatus, PlonkProofStr, PubKey, QuinaryTreeRoot, RoundInfo, StateLeaf,
     VotingPowerConfig, VotingPowerMode, VotingTime, WhitelistConfig, ADMIN, CERTSYSTEM,
     CIRCUITTYPE, COORDINATORHASH, CURRENT_STATE_COMMITMENT, CURRENT_TALLY_COMMITMENT,
@@ -26,17 +26,8 @@ use bellman_ce::plonk::better_cs::cs::PlonkCsWidth4WithNextStepParams;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 
-use cosmos_sdk_proto::cosmos::base::v1beta1::Coin as SdkCoin;
-use cosmos_sdk_proto::cosmos::feegrant::v1beta1::{
-    AllowedMsgAllowance, BasicAllowance, MsgGrantAllowance, MsgRevokeAllowance,
-};
-use cosmos_sdk_proto::prost::Message;
-use cosmos_sdk_proto::traits::TypeUrl;
-use cosmos_sdk_proto::Any;
-use prost_types::Timestamp as SdkTimestamp;
-
 use cosmwasm_std::{
-    attr, coins, to_json_binary, Addr, BankMsg, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
+    attr, coins, to_json_binary, Addr, BankMsg, Binary, Deps, DepsMut, Env, MessageInfo,
     Reply, Response, StdResult, Uint128, Uint256,
 };
 
