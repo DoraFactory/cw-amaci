@@ -309,56 +309,13 @@ fn test_create_api_maci_round_success() {
         .find(|e| e.ty == "instantiate")
         .expect("Should have instantiate event");
 
-    // Calculate expected cost for validation
-    let expected_cost = Uint128::from(10000000000000000000u128)
-        + Uint128::from(max_voters * 1000000000000000000u128);
+    // Note: No fees are deducted anymore as funds logic is removed
 
-    // Note: fee_grant_amount verification removed as feegrant is handled by Oracle MACI contract
-
-    // Verify balance was deducted correctly
+    // Verify balance remains unchanged
     let final_balance = contract.query_balance(&app).unwrap();
-    let expected_remaining = Uint128::from(initial_balance) - expected_cost;
-    assert_eq!(final_balance, expected_remaining);
+    assert_eq!(final_balance, Uint128::from(initial_balance));
 
-    // Verify MACI contract record was created
-    let maci_contracts = contract.query_maci_contracts(&app, None, None).unwrap();
-    assert_eq!(maci_contracts.len(), 1);
-    assert_eq!(maci_contracts[0].round_title, "Test Round");
-    assert_eq!(maci_contracts[0].creator_operator, operator1());
-
-    // Method 2: Query Oracle MACI address through SAAS contract, then query detailed round info
-    if let Some(first_maci) = maci_contracts.first() {
-        println!("========= MACI Contract Info Queried through SAAS ==========");
-        println!("Contract Address: {}", first_maci.contract_address);
-        println!("Creator: {}", first_maci.creator_operator);
-        println!("Round Title: {}", first_maci.round_title);
-        println!("Created At: {}", first_maci.created_at);
-        println!("Code ID: {}", first_maci.code_id);
-        println!("Creation Fee: {}", first_maci.creation_fee);
-
-        // Query detailed round info
-        let round_info_query_msg = serde_json::json!({
-            "get_round_info": {}
-        });
-
-        let round_info_result: Result<OracleMaciRoundInfo, _> = app
-            .wrap()
-            .query_wasm_smart(&first_maci.contract_address, &round_info_query_msg);
-
-        match round_info_result {
-            Ok(round_info) => {
-                println!("======== Detailed Round Info =======");
-                println!("Title: {}", round_info.title);
-                println!("Description: {}", round_info.description);
-                println!("Link: {}", round_info.link);
-                println!("==================================");
-            }
-            Err(e) => {
-                println!("Failed to query detailed round info: {:?}", e);
-            }
-        }
-        println!("================================================");
-    }
+    // Note: MACI tracking functionality removed - contracts are created but not tracked in SaaS contract
 }
 
 #[test]
@@ -419,8 +376,8 @@ fn test_create_api_maci_round_unauthorized() {
 }
 
 #[test]
-fn test_create_api_maci_round_insufficient_funds() {
-    let initial_balance = 10000000000000000000u128; // 10 DORA - not enough
+fn test_create_api_maci_round_with_minimal_funds() {
+    let initial_balance = 10000000000000000000u128; // 10 DORA - previously insufficient, now enough
     let mut app = AppBuilder::default()
         .with_stargate(StargateAccepting)
         .build(|router, _api, storage| {
@@ -445,7 +402,7 @@ fn test_create_api_maci_round_insufficient_funds() {
         )
         .unwrap();
 
-    // Add operator and deposit insufficient funds
+    // Add operator and deposit funds
     contract
         .add_operator(&mut app, admin(), operator1())
         .unwrap();
@@ -458,7 +415,7 @@ fn test_create_api_maci_round_insufficient_funds() {
             x: Uint256::from(1u32),
             y: Uint256::from(2u32),
         },
-        max_voters: 100, // Requires 100 DORA tokens + 10 DORA deployment = 110 DORA total
+        max_voters: 100, // No longer requires any specific token amount
         vote_option_map: vec!["Option 1".to_string()],
         round_info: cw_amaci::state::RoundInfo {
             title: "Test Round".to_string(),
@@ -472,19 +429,14 @@ fn test_create_api_maci_round_insufficient_funds() {
         whitelist_backend_pubkey: "dGVzdA==".to_string(),
     };
 
-    // Should fail with insufficient funds
+    // Should now succeed since no funds checking is done
     let result = app.execute_contract(operator1(), contract.addr(), &create_msg, &[]);
 
-    assert!(result.is_err(), "Should fail with insufficient funds");
+    assert!(result.is_ok(), "Should succeed without funds checking");
 
-    let error = result.unwrap_err();
-    assert_eq!(
-        error.downcast::<ContractError>().unwrap(),
-        ContractError::InsufficientFundsForRound {
-            required: Uint128::from(110000000000000000000u128), // 110 DORA
-            available: Uint128::from(initial_balance),
-        }
-    );
+    // Verify balance remains unchanged
+    let final_balance = contract.query_balance(&app).unwrap();
+    assert_eq!(final_balance, Uint128::from(initial_balance));
 }
 
 #[test]

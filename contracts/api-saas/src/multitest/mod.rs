@@ -250,15 +250,6 @@ impl SaasContract {
             .query_wasm_smart(self.addr(), &QueryMsg::Balance {})
     }
 
-    pub fn query_maci_contracts(
-        &self,
-        app: &App,
-        start_after: Option<u64>,
-        limit: Option<u32>,
-    ) -> StdResult<Vec<crate::state::MaciContractInfo>> {
-        app.wrap()
-            .query_wasm_smart(self.addr(), &QueryMsg::MaciContracts { start_after, limit })
-    }
 
     pub fn query_maci_code_id(&self, app: &App) -> StdResult<u64> {
         app.wrap()

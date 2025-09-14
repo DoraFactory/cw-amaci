@@ -1,4 +1,4 @@
-use cosmwasm_std::{OverflowError, StdError, Uint128};
+use cosmwasm_std::{OverflowError, StdError};
 use cw_utils::PaymentError;
 use thiserror::Error;
 
@@ -25,11 +25,6 @@ pub enum ContractError {
     #[error("Invalid address: {address}")]
     InvalidAddress { address: String },
 
-    #[error("Insufficient funds for creating round. Required: {required}, available: {available}")]
-    InsufficientFundsForRound {
-        required: Uint128,
-        available: Uint128,
-    },
 
     #[error("No registry contract set")]
     NoRegistryContract {},

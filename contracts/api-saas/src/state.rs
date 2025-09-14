@@ -26,27 +26,12 @@ impl OperatorInfo {
     }
 }
 
-// Added: MACI contract information tracking
-#[cw_serde]
-pub struct MaciContractInfo {
-    pub contract_address: Addr,
-    pub creator_operator: Addr,
-    pub round_title: String,
-    pub created_at: Timestamp,
-    pub code_id: u64,
-    pub creation_fee: Uint128,
-}
 
 // Storage items
 pub const CONFIG: Item<Config> = Item::new("config");
 pub const OPERATORS: Map<&Addr, OperatorInfo> = Map::new("operators");
 pub const TOTAL_BALANCE: Item<Uint128> = Item::new("total_balance");
 
-// Added: MACI contract tracking storage
-pub const MACI_CONTRACT_COUNTER: Item<u64> = Item::new("maci_contract_counter");
-pub const MACI_CONTRACTS: Map<u64, MaciContractInfo> = Map::new("maci_contracts");
-pub const MACI_CONTRACTS_BY_OPERATOR: Map<(&Addr, u64), bool> =
-    Map::new("maci_contracts_by_operator");
 
 pub const MACI_CODE_ID: Item<u64> = Item::new("maci_code_id");
 pub const REGISTRY_CONTRACT_ADDR: Item<Addr> = Item::new("registry_contract_addr");

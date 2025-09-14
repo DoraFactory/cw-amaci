@@ -90,21 +90,6 @@ pub enum QueryMsg {
     #[returns(Uint128)]
     Balance {},
 
-    #[returns(Vec<crate::state::MaciContractInfo>)]
-    MaciContracts {
-        start_after: Option<u64>,
-        limit: Option<u32>,
-    },
-
-    #[returns(Vec<crate::state::MaciContractInfo>)]
-    OperatorMaciContracts {
-        operator: Addr,
-        start_after: Option<u64>,
-        limit: Option<u32>,
-    },
-
-    #[returns(Option<crate::state::MaciContractInfo>)]
-    MaciContract { contract_id: u64 },
 
     #[returns(u64)]
     MaciCodeId {},

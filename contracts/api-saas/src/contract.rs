@@ -1,12 +1,11 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    attr, coins, from_json, to_json_binary, Addr, BankMsg, Binary, Coin, CosmosMsg, Deps, DepsMut,
+    attr, from_json, to_json_binary, Addr, BankMsg, Binary, Coin, CosmosMsg, Deps, DepsMut,
     Env, MessageInfo, Order, Reply, Response, StdError, StdResult, SubMsg, SubMsgResponse,
     Timestamp, Uint128, Uint256, WasmMsg,
 };
 use cw2::set_contract_version;
-use cw_storage_plus::Bound;
 use cw_utils::{may_pay, parse_instantiate_response_data};
 
 use cosmos_sdk_proto::cosmos::base::v1beta1::Coin as SdkCoin;
@@ -32,8 +31,7 @@ use cosmos_sdk_proto::traits::TypeUrl;
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, InstantiationData, MigrateMsg, PubKey, QueryMsg};
 use crate::state::{
-    Config, MaciContractInfo, OperatorInfo, CONFIG, MACI_CODE_ID, MACI_CONTRACTS,
-    MACI_CONTRACT_COUNTER, OPERATORS, REGISTRY_CONTRACT_ADDR, TOTAL_BALANCE, TREASURY_MANAGER,
+    Config, OperatorInfo, CONFIG, MACI_CODE_ID, OPERATORS, REGISTRY_CONTRACT_ADDR, TOTAL_BALANCE, TREASURY_MANAGER,
 };
 
 // Version info for migration
@@ -61,7 +59,6 @@ pub fn instantiate(
     // Store treasury manager separately for easier access
     TREASURY_MANAGER.save(deps.storage, &msg.treasury_manager)?;
     TOTAL_BALANCE.save(deps.storage, &Uint128::zero())?;
-    MACI_CONTRACT_COUNTER.save(deps.storage, &0u64)?;
     MACI_CODE_ID.save(deps.storage, &msg.maci_code_id)?;
     REGISTRY_CONTRACT_ADDR.save(deps.storage, &msg.registry_contract)?;
 
@@ -391,27 +388,6 @@ pub fn execute_create_api_maci_round(
         return Err(ContractError::Unauthorized {});
     }
 
-    // Calculate deployment fee - base fee of 10 DORA for contract deployment
-    let base_fee = Uint128::from(10000000000000000000u128); // 10 DORA
-
-    // Calculate required token amount for Oracle MACI (max_voters * 1 DORA)
-    let token_amount = Uint128::from(max_voters as u128 * 1000000000000000000u128); // max_voters * 1 DORA
-
-    // Total required amount = deployment fee + token amount
-    let total_required = base_fee + token_amount;
-
-    // Check if SaaS has sufficient balance
-    let total_balance = TOTAL_BALANCE.load(deps.storage)?;
-    if total_balance < total_required {
-        return Err(ContractError::InsufficientFundsForRound {
-            required: total_required,
-            available: total_balance,
-        });
-    }
-
-    // Update total balance immediately (deduct the total cost)
-    let new_balance = total_balance - total_required;
-    TOTAL_BALANCE.save(deps.storage, &new_balance)?;
 
     // Create Oracle MACI VotingTime using provided start_time and end_time
     let oracle_voting_time = OracleMaciVotingTime {
@@ -458,25 +434,10 @@ pub fn execute_create_api_maci_round(
         admin: Some(env.contract.address.to_string()), // SaaS contract as Oracle MACI admin
         code_id: maci_code_id,
         msg: serialized_msg,
-        funds: coins(total_required.u128(), "peaka"), // Send all fees, include user signup and vote fees
+        funds: vec![], // No funds needed for MACI contract
         label: format!("API Maci Round - {}", round_info.title),
     };
 
-    // Get the next MACI contract counter
-    let mut maci_counter = MACI_CONTRACT_COUNTER.load(deps.storage)?;
-    maci_counter += 1;
-    MACI_CONTRACT_COUNTER.save(deps.storage, &maci_counter)?;
-
-    // Save MACI contract info with temporary address (will be updated in reply)
-    let maci_contract_info = MaciContractInfo {
-        contract_address: Addr::unchecked("pending"), // Temporary address, will be updated in reply
-        creator_operator: info.sender.clone(),
-        round_title: round_info.title.clone(),
-        created_at: env.block.time,
-        code_id: maci_code_id,
-        creation_fee: total_required,
-    };
-    MACI_CONTRACTS.save(deps.storage, maci_counter, &maci_contract_info)?;
 
     // Create SubMsg with reply using registry pattern - this allows getting the real contract address
     let submsg = SubMsg::reply_on_success(instantiate_msg, CREATED_ORACLE_MACI_ROUND_REPLY_ID);
@@ -485,10 +446,7 @@ pub fn execute_create_api_maci_round(
         .add_attribute("action", "create_oracle_maci_round")
         .add_attribute("operator", info.sender.to_string())
         .add_attribute("round_title", round_info.title)
-        .add_attribute("total_cost", total_required.to_string())
-        .add_attribute("new_balance", new_balance.to_string())
-        .add_attribute("max_voters", max_voters.to_string())
-        .add_attribute("maci_counter", maci_counter.to_string()))
+        .add_attribute("max_voters", max_voters.to_string()))
 }
 
 pub fn execute_set_round_info(
@@ -576,22 +534,6 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::Operators {} => to_json_binary(&query_operators(deps)?),
         QueryMsg::IsOperator { address } => to_json_binary(&query_is_operator(deps, address)?),
         QueryMsg::Balance {} => to_json_binary(&TOTAL_BALANCE.load(deps.storage)?),
-        QueryMsg::MaciContracts { start_after, limit } => {
-            to_json_binary(&query_maci_contracts(deps, start_after, limit)?)
-        }
-        QueryMsg::OperatorMaciContracts {
-            operator,
-            start_after,
-            limit,
-        } => to_json_binary(&query_operator_maci_contracts(
-            deps,
-            operator,
-            start_after,
-            limit,
-        )?),
-        QueryMsg::MaciContract { contract_id } => {
-            to_json_binary(&query_maci_contract(deps, contract_id)?)
-        }
         QueryMsg::MaciCodeId {} => to_json_binary(&MACI_CODE_ID.load(deps.storage)?),
         QueryMsg::TreasuryManager {} => to_json_binary(&TREASURY_MANAGER.load(deps.storage)?),
     }
@@ -608,57 +550,6 @@ fn query_is_operator(deps: Deps, address: Addr) -> StdResult<bool> {
     Ok(OPERATORS.has(deps.storage, &address))
 }
 
-fn query_maci_contracts(
-    deps: Deps,
-    start_after: Option<u64>,
-    limit: Option<u32>,
-) -> StdResult<Vec<MaciContractInfo>> {
-    let limit = limit.unwrap_or(30).min(100) as usize;
-    let start = start_after.map(|s| s + 1);
-
-    MACI_CONTRACTS
-        .range(
-            deps.storage,
-            start.map(|s| Bound::exclusive(s)),
-            None,
-            Order::Ascending,
-        )
-        .take(limit)
-        .map(|item| item.map(|(_, info)| info))
-        .collect()
-}
-
-fn query_operator_maci_contracts(
-    deps: Deps,
-    operator: Addr,
-    start_after: Option<u64>,
-    limit: Option<u32>,
-) -> StdResult<Vec<MaciContractInfo>> {
-    let limit = limit.unwrap_or(30).min(100) as usize;
-    let start = start_after.map(|s| s + 1);
-
-    MACI_CONTRACTS
-        .range(
-            deps.storage,
-            start.map(|s| Bound::exclusive(s)),
-            None,
-            Order::Ascending,
-        )
-        .filter(|item| {
-            if let Ok((_, info)) = item {
-                info.creator_operator == operator
-            } else {
-                false
-            }
-        })
-        .take(limit)
-        .map(|item| item.map(|(_, info)| info))
-        .collect()
-}
-
-fn query_maci_contract(deps: Deps, contract_id: u64) -> StdResult<Option<MaciContractInfo>> {
-    MACI_CONTRACTS.may_load(deps.storage, contract_id)
-}
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
@@ -702,14 +593,7 @@ fn reply_created_oracle_maci_round(
     let oracle_maci_return_data: OracleMaciInstantiationData =
         from_json(&parsed_response.data.unwrap())?;
 
-    // Get current MACI contract counter
-    let maci_counter = MACI_CONTRACT_COUNTER.load(deps.storage)?;
-
     let maci_code_id = MACI_CODE_ID.load(deps.storage)?;
-    // Update contract address in MACI contract record (from temporary to real address)
-    let mut maci_contract_info = MACI_CONTRACTS.load(deps.storage, maci_counter)?;
-    maci_contract_info.contract_address = contract_address.clone();
-    MACI_CONTRACTS.save(deps.storage, maci_counter, &maci_contract_info)?;
 
     // Prepare return data - now contains complete oracle maci instantiation data
     let saas_instantiation_data = InstantiationData {
@@ -723,7 +607,6 @@ fn reply_created_oracle_maci_round(
         attr("caller", &oracle_maci_return_data.caller.to_string()),
         attr("admin", &oracle_maci_return_data.caller.to_string()),
         attr("operator", &oracle_maci_return_data.caller.to_string()),
-        attr("maci_counter", maci_counter.to_string()),
     ];
 
     // If successfully parsed Oracle MACI instantiation data, add more detailed information
