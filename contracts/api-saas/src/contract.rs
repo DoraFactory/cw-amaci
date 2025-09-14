@@ -40,7 +40,7 @@ const CONTRACT_NAME: &str = "crates.io:cw-saas";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // Reply IDs
-pub const CREATED_ORACLE_MACI_ROUND_REPLY_ID: u64 = 1;
+pub const CREATED_API_MACI_ROUND_REPLY_ID: u64 = 1;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -439,10 +439,10 @@ pub fn execute_create_api_maci_round(
     };
 
     // Create SubMsg with reply using registry pattern - this allows getting the real contract address
-    let submsg = SubMsg::reply_on_success(instantiate_msg, CREATED_ORACLE_MACI_ROUND_REPLY_ID);
+    let submsg = SubMsg::reply_on_success(instantiate_msg, CREATED_API_MACI_ROUND_REPLY_ID);
     Ok(Response::new()
         .add_submessage(submsg)
-        .add_attribute("action", "create_oracle_maci_round")
+        .add_attribute("action", "create_api_maci_round")
         .add_attribute("operator", info.sender.to_string())
         .add_attribute("round_title", round_info.title)
         .add_attribute("max_voters", max_voters.to_string()))
@@ -552,8 +552,8 @@ fn query_is_operator(deps: Deps, address: Addr) -> StdResult<bool> {
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
     match msg.id {
-        CREATED_ORACLE_MACI_ROUND_REPLY_ID => {
-            reply_created_oracle_maci_round(deps, env, msg.result.into_result())
+        CREATED_API_MACI_ROUND_REPLY_ID => {
+            reply_created_api_maci_round(deps, env, msg.result.into_result())
         }
         id => Err(ContractError::Std(StdError::generic_err(format!(
             "Unknown reply id: {}",
@@ -562,7 +562,7 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
     }
 }
 
-fn reply_created_oracle_maci_round(
+fn reply_created_api_maci_round(
     deps: DepsMut,
     _env: Env,
     result: Result<SubMsgResponse, String>,

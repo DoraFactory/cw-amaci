@@ -6,7 +6,7 @@
 
 import { CosmWasmClient, SigningCosmWasmClient, ExecuteResult } from "@cosmjs/cosmwasm-stargate";
 import { Coin, StdFee } from "@cosmjs/amino";
-import { Addr, InstantiateMsg, ExecuteMsg, Uint128, Uint256, Timestamp, Uint64, PubKey, RoundInfo, QueryMsg, Config, Boolean, NullableMaciContractInfo, MaciContractInfo, ArrayOfMaciContractInfo, ArrayOfOperatorInfo, OperatorInfo } from "./ApiSaas.types";
+import { Addr, InstantiateMsg, ExecuteMsg, Uint128, Uint256, Timestamp, Uint64, PubKey, RoundInfo, QueryMsg, Config, Boolean, ArrayOfOperatorInfo, OperatorInfo } from "./ApiSaas.types";
 export interface ApiSaasReadOnlyInterface {
   contractAddress: string;
   config: () => Promise<Config>;
@@ -17,27 +17,6 @@ export interface ApiSaasReadOnlyInterface {
     address: Addr;
   }) => Promise<Boolean>;
   balance: () => Promise<Uint128>;
-  maciContracts: ({
-    limit,
-    startAfter
-  }: {
-    limit?: number;
-    startAfter?: number;
-  }) => Promise<ArrayOfMaciContractInfo>;
-  operatorMaciContracts: ({
-    limit,
-    operator,
-    startAfter
-  }: {
-    limit?: number;
-    operator: Addr;
-    startAfter?: number;
-  }) => Promise<ArrayOfMaciContractInfo>;
-  maciContract: ({
-    contractId
-  }: {
-    contractId: number;
-  }) => Promise<NullableMaciContractInfo>;
   maciCodeId: () => Promise<Uint64>;
   treasuryManager: () => Promise<Addr>;
 }
@@ -51,9 +30,6 @@ export class ApiSaasQueryClient implements ApiSaasReadOnlyInterface {
     this.operators = this.operators.bind(this);
     this.isOperator = this.isOperator.bind(this);
     this.balance = this.balance.bind(this);
-    this.maciContracts = this.maciContracts.bind(this);
-    this.operatorMaciContracts = this.operatorMaciContracts.bind(this);
-    this.maciContract = this.maciContract.bind(this);
     this.maciCodeId = this.maciCodeId.bind(this);
     this.treasuryManager = this.treasuryManager.bind(this);
   }
@@ -81,48 +57,6 @@ export class ApiSaasQueryClient implements ApiSaasReadOnlyInterface {
   balance = async (): Promise<Uint128> => {
     return this.client.queryContractSmart(this.contractAddress, {
       balance: {}
-    });
-  };
-  maciContracts = async ({
-    limit,
-    startAfter
-  }: {
-    limit?: number;
-    startAfter?: number;
-  }): Promise<ArrayOfMaciContractInfo> => {
-    return this.client.queryContractSmart(this.contractAddress, {
-      maci_contracts: {
-        limit,
-        start_after: startAfter
-      }
-    });
-  };
-  operatorMaciContracts = async ({
-    limit,
-    operator,
-    startAfter
-  }: {
-    limit?: number;
-    operator: Addr;
-    startAfter?: number;
-  }): Promise<ArrayOfMaciContractInfo> => {
-    return this.client.queryContractSmart(this.contractAddress, {
-      operator_maci_contracts: {
-        limit,
-        operator,
-        start_after: startAfter
-      }
-    });
-  };
-  maciContract = async ({
-    contractId
-  }: {
-    contractId: number;
-  }): Promise<NullableMaciContractInfo> => {
-    return this.client.queryContractSmart(this.contractAddress, {
-      maci_contract: {
-        contract_id: contractId
-      }
     });
   };
   maciCodeId = async (): Promise<Uint64> => {

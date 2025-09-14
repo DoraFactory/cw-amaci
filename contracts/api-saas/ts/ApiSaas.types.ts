@@ -87,21 +87,6 @@ export type QueryMsg = {
 } | {
   balance: {};
 } | {
-  maci_contracts: {
-    limit?: number | null;
-    start_after?: number | null;
-  };
-} | {
-  operator_maci_contracts: {
-    limit?: number | null;
-    operator: Addr;
-    start_after?: number | null;
-  };
-} | {
-  maci_contract: {
-    contract_id: number;
-  };
-} | {
   maci_code_id: {};
 } | {
   treasury_manager: {};
@@ -111,16 +96,6 @@ export interface Config {
   denom: string;
 }
 export type Boolean = boolean;
-export type NullableMaciContractInfo = MaciContractInfo | null;
-export interface MaciContractInfo {
-  code_id: number;
-  contract_address: Addr;
-  created_at: Timestamp;
-  creation_fee: Uint128;
-  creator_operator: Addr;
-  round_title: string;
-}
-export type ArrayOfMaciContractInfo = MaciContractInfo[];
 export type ArrayOfOperatorInfo = OperatorInfo[];
 export interface OperatorInfo {
   added_at: Timestamp;
