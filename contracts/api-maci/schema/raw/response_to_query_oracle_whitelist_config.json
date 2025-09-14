@@ -4,9 +4,7 @@
   "type": "object",
   "required": [
     "backend_pubkey",
-    "ecosystem",
     "slope",
-    "snapshot_height",
     "threshold",
     "voting_power_mode"
   ],
@@ -14,13 +12,7 @@
     "backend_pubkey": {
       "$ref": "#/definitions/Binary"
     },
-    "ecosystem": {
-      "type": "string"
-    },
     "slope": {
-      "$ref": "#/definitions/Uint256"
-    },
-    "snapshot_height": {
       "$ref": "#/definitions/Uint256"
     },
     "threshold": {

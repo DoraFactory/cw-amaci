@@ -5,7 +5,9 @@
   "required": [
     "admin",
     "denom",
-    "oracle_maci_code_id"
+    "maci_code_id",
+    "registry_contract",
+    "treasury_manager"
   ],
   "properties": {
     "admin": {
@@ -14,20 +16,16 @@
     "denom": {
       "type": "string"
     },
-    "oracle_maci_code_id": {
+    "maci_code_id": {
       "type": "integer",
       "format": "uint64",
       "minimum": 0.0
     },
     "registry_contract": {
-      "anyOf": [
-        {
-          "$ref": "#/definitions/Addr"
-        },
-        {
-          "type": "null"
-        }
-      ]
+      "$ref": "#/definitions/Addr"
+    },
+    "treasury_manager": {
+      "$ref": "#/definitions/Addr"
     }
   },
   "additionalProperties": false,
