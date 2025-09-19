@@ -597,7 +597,7 @@ pub fn execute_register_sponsor(
 
 pub fn reply_created_round(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     reply: Result<SubMsgResponse, String>,
 ) -> Result<Response, ContractError> {
     let response = reply.map_err(StdError::generic_err)?;
@@ -617,10 +617,61 @@ pub fn reply_created_round(
     let data = InstantiationData { addr: addr.clone() };
     let amaci_return_data: AMaciInstantiationData = from_json(&response.data.unwrap())?;
 
+    let parameters = &amaci_return_data.parameters;
+    let (round_power_label, max_grant_amount) = if parameters.state_tree_depth
+        == Uint256::from_u128(2u128)
+        && parameters.int_state_tree_depth == Uint256::from_u128(1u128)
+        && parameters.vote_option_tree_depth == Uint256::from_u128(1u128)
+        && parameters.message_batch_size == Uint256::from_u128(5u128)
+    {
+        ("2-1-1-5", Uint128::from(10000000000000000000u128)) // 10 DORA
+    } else if parameters.state_tree_depth == Uint256::from_u128(4u128)
+        && parameters.int_state_tree_depth == Uint256::from_u128(2u128)
+        && parameters.vote_option_tree_depth == Uint256::from_u128(2u128)
+        && parameters.message_batch_size == Uint256::from_u128(25u128)
+    {
+        ("4-2-2-25", Uint128::from(20000000000000000000u128)) // 20 DORA
+    } else {
+        return Err(ContractError::NoMatchedSizeCircuit);
+    };
+
+    let denom = "peaka".to_string();
+    let contract_address = addr.to_string();
+    let is_sponsored = true;
+
+    let max_grant_per_user = coins(max_grant_amount.u128(), &denom);
+
+    let proto_coins: Vec<crate::msg::ProtoCoin> = max_grant_per_user
+        .into_iter()
+        .map(|coin| crate::msg::ProtoCoin {
+            denom: coin.denom,
+            amount: coin.amount.to_string(),
+        })
+        .collect();
+
+    let sponsor_msg = cosmwasm_std::CosmosMsg::Stargate {
+        type_url: "/doravota.sponsor.v1.MsgSetSponsor".to_string(),
+        value: {
+            use prost::Message;
+
+            let msg = MsgSetSponsor {
+                creator: env.contract.address.to_string(),
+                contract_address: contract_address.clone(),
+                is_sponsored,
+                max_grant_per_user: proto_coins,
+            };
+
+            msg.encode_to_vec().into()
+        },
+    };
+
     let mut attributes = vec![
         attr("action", "created_round"),
         attr("code_id", amaci_code_id.to_string()),
         attr("round_addr", addr.to_string()),
+        attr("round_scale_power", round_power_label),
+        attr("sponsor_max_grant_per_user", max_grant_amount.to_string()),
+        attr("sponsor_denom", denom.clone()),
         attr("caller", &amaci_return_data.caller.to_string()),
         attr("admin", &amaci_return_data.admin.to_string()),
         attr("operator", &amaci_return_data.operator.to_string()),
@@ -706,6 +757,7 @@ pub fn reply_created_round(
     }
 
     Ok(Response::new()
+        .add_message(sponsor_msg)
         .add_attributes(attributes)
         .set_data(to_json_binary(&data)?))
 }
