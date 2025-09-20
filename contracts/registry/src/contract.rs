@@ -113,20 +113,6 @@ pub fn execute(
         ExecuteMsg::ChangeChargeConfig { config } => {
             execute_change_charge_config(deps, env, info, config)
         }
-        ExecuteMsg::RegisterSponsor {
-            contract_address,
-            is_sponsored,
-            max_grant_amount,
-            denom,
-        } => execute_register_sponsor(
-            deps,
-            env,
-            info,
-            contract_address,
-            is_sponsored,
-            max_grant_amount,
-            denom,
-        ),
     }
 }
 
@@ -545,54 +531,6 @@ pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> Result<Response, Contract
         }
         id => Err(ContractError::UnRecognizedReplyIdErr { id }),
     }
-}
-
-pub fn execute_register_sponsor(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    contract_address: String,
-    is_sponsored: bool,
-    max_grant_amount: Uint128,
-    denom: String,
-) -> Result<Response, ContractError> {
-
-    let max_grant_per_user = coins(max_grant_amount.u128(), &denom);
-
-    // Convert cosmwasm_std::Coin to ProtoCoin for protobuf compatibility
-    let proto_coins: Vec<crate::msg::ProtoCoin> = max_grant_per_user
-        .into_iter()
-        .map(|coin| crate::msg::ProtoCoin {
-            denom: coin.denom,
-            amount: coin.amount.to_string(),
-        })
-        .collect();
-
-    // Create the sponsor module message
-    let sponsor_msg = cosmwasm_std::CosmosMsg::Stargate {
-        type_url: "/doravota.sponsor.v1.MsgSetSponsor".to_string(),
-        value: {
-            use prost::Message;
-
-            let msg = MsgSetSponsor {
-                creator: env.contract.address.to_string(),
-                contract_address: contract_address.clone(),
-                is_sponsored,
-                max_grant_per_user: proto_coins,
-            };
-
-            msg.encode_to_vec().into()
-        },
-    };
-
-    Ok(Response::new()
-        .add_message(sponsor_msg)
-        .add_attribute("action", "register_sponsor")
-        .add_attribute("creator", info.sender.to_string())
-        .add_attribute("contract_address", contract_address)
-        .add_attribute("is_sponsored", is_sponsored.to_string())
-        .add_attribute("max_grant_amount", max_grant_amount.to_string())
-        .add_attribute("denom", denom))
 }
 
 pub fn reply_created_round(

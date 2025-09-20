@@ -85,12 +85,6 @@ pub enum ExecuteMsg {
     ChangeChargeConfig {
         config: CircuitChargeConfig,
     },
-    RegisterSponsor {
-        contract_address: String,
-        is_sponsored: bool,
-        max_grant_amount: Uint128,
-        denom: String,
-    },
 }
 
 #[cw_serde]
