@@ -4,21 +4,42 @@ mod tests;
 use anyhow::Result as AnyResult;
 
 use crate::{
-    contract::{execute, instantiate, migrate, query, reply},
+    contract::{execute, instantiate, query, reply},
     msg::*,
     state::{CircuitChargeConfig, ValidatorSet},
 };
-use cosmwasm_std::{Addr, Coin, StdResult, Timestamp, Uint256};
+use cosmwasm_std::testing::{MockApi, MockStorage};
+use cosmwasm_std::{Addr, Coin, Empty, StdResult, Timestamp, Uint256};
 use cw_amaci::msg::{WhitelistBase, WhitelistBaseConfig};
 
 use cw_amaci::state::{PubKey, RoundInfo, VotingTime};
-use cw_multi_test::{App, AppResponse, ContractWrapper, Executor};
+use cw_multi_test::{
+    no_init, AppBuilder, AppResponse, BankKeeper, ContractWrapper, DistributionKeeper, Executor,
+    FailingModule, GovFailingModule, IbcFailingModule, StakeKeeper, StargateAccepting, WasmKeeper,
+};
 pub const MOCK_CONTRACT_ADDR: &str = "cosmos2contract";
 pub const DORA_DEMON: &str = "peaka";
 pub const DORA_DECIMALS: u8 = 18;
 pub const MIN_DEPOSIT_AMOUNT: u128 = 20u128;
 pub const SLASH_AMOUNT: u128 = 1u128; // only 1, 2 (admin amount is not enough)
 use num_bigint::BigUint;
+
+pub type App<ExecC = Empty, QueryC = Empty> = cw_multi_test::App<
+    BankKeeper,
+    MockApi,
+    MockStorage,
+    FailingModule<ExecC, QueryC, Empty>,
+    WasmKeeper<ExecC, QueryC>,
+    StakeKeeper,
+    DistributionKeeper,
+    IbcFailingModule,
+    GovFailingModule,
+    StargateAccepting,
+>;
+
+pub fn create_app() -> App {
+    AppBuilder::new().with_stargate(StargateAccepting).build(no_init)
+}
 
 pub fn uint256_from_decimal_string(decimal_string: &str) -> Uint256 {
     assert!(

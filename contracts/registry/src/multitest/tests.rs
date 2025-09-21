@@ -1,29 +1,37 @@
 use cosmwasm_std::{coins, from_json, Addr, BlockInfo, Timestamp, Uint128, Uint256};
-use cw_multi_test::App;
+use cw_multi_test::{AppBuilder, Executor, StargateAccepting};
 
-// use crate::error::ContractError;
+use crate::error::ContractError;
 // use crate::msg::ClaimsResponse;
 use crate::{
     multitest::{
-        admin, creator, operator, operator2, operator3, operator_pubkey1, operator_pubkey2,
-        operator_pubkey3, user1, user2, user3, user4, AmaciRegistryCodeId, InstantiationData,
-        DORA_DEMON,
+        admin, creator, operator, operator_pubkey1, user1, user2, user4, AmaciRegistryCodeId,
+        InstantiationData, DORA_DEMON,
     },
+    msg::ExecuteMsg,
     state::ValidatorSet,
 };
-use cw_amaci::multitest::{fee_recipient, owner, MaciCodeId, MaciContract};
+use cw_amaci::multitest::{MaciCodeId, MaciContract};
 use cw_amaci::ContractError as AmaciContractError;
 
 use cw_amaci::msg::Groth16ProofType;
 use cw_amaci::multitest::uint256_from_decimal_string;
 use cw_amaci::state::{
-    DelayRecord, DelayRecords, DelayType, MessageData, Period, PeriodStatus, PubKey,
+    DelayRecord, DelayRecords, DelayType, MessageData, Period, PeriodStatus, PubKey, RoundInfo,
+    VotingTime,
 };
 use cw_multi_test::next_block;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::fs;
 use std::io::Read;
+
+const SMALL_DEPLOYMENT_FEE: u128 = 20000000000000000000; // 20 DORA
+const SMALL_SPONSOR_FEE: u128 = 50000000000000000000; // 50 DORA
+const SMALL_TOTAL_FEE: u128 = SMALL_DEPLOYMENT_FEE + SMALL_SPONSOR_FEE; // 70 DORA
+const MEDIUM_DEPLOYMENT_FEE: u128 = 750000000000000000000; // 750 DORA
+const MEDIUM_SPONSOR_FEE: u128 = 100000000000000000000; // 100 DORA
+const MEDIUM_TOTAL_FEE: u128 = MEDIUM_DEPLOYMENT_FEE + MEDIUM_SPONSOR_FEE; // 850 DORA
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -185,6 +193,217 @@ pub fn next_block_3_hours(block: &mut BlockInfo) {
 pub fn next_block_4_days(block: &mut BlockInfo) {
     block.time = block.time.plus_days(4);
     block.height += 1;
+}
+
+#[test]
+fn create_round_small_scale_fee_split() {
+    let creator_addr = creator();
+    let admin_addr = admin();
+    let validator_addr = user1();
+    let operator_addr = operator();
+    let operator_pubkey_val = operator_pubkey1();
+
+    let mut app = AppBuilder::new()
+        .with_stargate(StargateAccepting)
+        .build(|router, _api, storage| {
+        router
+            .bank
+            .init_balance(
+                storage,
+                &creator_addr,
+                coins(SMALL_TOTAL_FEE * 2, DORA_DEMON),
+            )
+            .unwrap();
+        router
+            .bank
+            .init_balance(
+                storage,
+                &admin_addr,
+                coins(1000000000000000000000u128, DORA_DEMON),
+            )
+            .unwrap();
+    });
+
+    let registry_code_id = AmaciRegistryCodeId::store_code(&mut app);
+    let amaci_code_id = MaciCodeId::store_default_code(&mut app);
+
+    let contract = registry_code_id
+        .instantiate(&mut app, creator_addr.clone(), amaci_code_id.id(), "registry")
+        .unwrap();
+
+    contract
+        .set_validators(&mut app, admin_addr.clone())
+        .unwrap();
+    contract
+        .set_maci_operator(&mut app, validator_addr.clone(), operator_addr.clone())
+        .unwrap();
+    contract
+        .set_maci_operator_pubkey(
+            &mut app,
+            operator_addr.clone(),
+            operator_pubkey_val.clone(),
+        )
+        .unwrap();
+
+    let insufficient_funds = coins(SMALL_SPONSOR_FEE, DORA_DEMON);
+    let err = contract
+        .create_round(
+            &mut app,
+            creator_addr.clone(),
+            operator_addr.clone(),
+            Uint256::from_u128(0u128),
+            Uint256::from_u128(0u128),
+            &insufficient_funds,
+        )
+        .unwrap_err();
+    assert_eq!(
+        ContractError::InsufficientFee {
+            required: Uint128::from(SMALL_TOTAL_FEE),
+            provided: Uint128::from(SMALL_SPONSOR_FEE),
+        },
+        err.downcast().unwrap()
+    );
+
+    let total_funds = coins(SMALL_TOTAL_FEE, DORA_DEMON);
+    let resp = contract
+        .create_round(
+            &mut app,
+            creator_addr.clone(),
+            operator_addr.clone(),
+            Uint256::from_u128(0u128),
+            Uint256::from_u128(0u128),
+            &total_funds,
+        )
+        .unwrap();
+
+    let instantiation: InstantiationData = from_json(&resp.data.unwrap()).unwrap();
+
+    let registry_balance = app
+        .wrap()
+        .query_balance(contract.addr().to_string(), DORA_DEMON.to_string())
+        .unwrap();
+    assert_eq!(Uint128::from(SMALL_SPONSOR_FEE), registry_balance.amount);
+
+    let amaci_balance = app
+        .wrap()
+        .query_balance(instantiation.addr.to_string(), DORA_DEMON.to_string())
+        .unwrap();
+    assert_eq!(Uint128::from(SMALL_DEPLOYMENT_FEE), amaci_balance.amount);
+}
+
+#[test]
+fn create_round_medium_scale_fee_split() {
+    let creator_addr = creator();
+    let admin_addr = admin();
+    let validator_addr = user1();
+    let operator_addr = operator();
+    let operator_pubkey_val = operator_pubkey1();
+
+    let mut app = AppBuilder::new()
+        .with_stargate(StargateAccepting)
+        .build(|router, _api, storage| {
+        router
+            .bank
+            .init_balance(
+                storage,
+                &creator_addr,
+                coins(MEDIUM_TOTAL_FEE * 2, DORA_DEMON),
+            )
+            .unwrap();
+        router
+            .bank
+            .init_balance(
+                storage,
+                &admin_addr,
+                coins(1000000000000000000000u128, DORA_DEMON),
+            )
+            .unwrap();
+    });
+
+    let registry_code_id = AmaciRegistryCodeId::store_code(&mut app);
+    let amaci_code_id = MaciCodeId::store_default_code(&mut app);
+
+    let contract = registry_code_id
+        .instantiate(&mut app, creator_addr.clone(), amaci_code_id.id(), "registry")
+        .unwrap();
+
+    contract
+        .set_validators(&mut app, admin_addr.clone())
+        .unwrap();
+    contract
+        .set_maci_operator(&mut app, validator_addr.clone(), operator_addr.clone())
+        .unwrap();
+    contract
+        .set_maci_operator_pubkey(
+            &mut app,
+            operator_addr.clone(),
+            operator_pubkey_val.clone(),
+        )
+        .unwrap();
+
+    let start_time = Timestamp::from_nanos(1571797424879000000);
+    let end_time = start_time.plus_minutes(21);
+    let round_info = RoundInfo {
+        title: String::from("HackWasm Berlin"),
+        description: String::from("Hack In Berlin"),
+        link: String::from("https://baidu.com"),
+    };
+    let create_msg = ExecuteMsg::CreateRound {
+        operator: operator_addr.clone(),
+        round_info,
+        max_voter: Uint256::from_u128(600u128),
+        max_option: Uint256::from_u128(20u128),
+        voice_credit_amount: Uint256::from_u128(30u128),
+        voting_time: VotingTime {
+            start_time,
+            end_time,
+        },
+        whitelist: None,
+        pre_deactivate_root: Uint256::from_u128(0u128),
+        circuit_type: Uint256::from_u128(0u128),
+        certification_system: Uint256::from_u128(0u128),
+    };
+
+    let insufficient_funds = coins(MEDIUM_DEPLOYMENT_FEE, DORA_DEMON);
+    let err = app
+        .execute_contract(
+            creator_addr.clone(),
+            contract.addr(),
+            &create_msg,
+            &insufficient_funds,
+        )
+        .unwrap_err();
+    assert_eq!(
+        ContractError::InsufficientFee {
+            required: Uint128::from(MEDIUM_TOTAL_FEE),
+            provided: Uint128::from(MEDIUM_DEPLOYMENT_FEE),
+        },
+        err.downcast().unwrap()
+    );
+
+    let total_funds = coins(MEDIUM_TOTAL_FEE, DORA_DEMON);
+    let resp = app
+        .execute_contract(
+            creator_addr.clone(),
+            contract.addr(),
+            &create_msg,
+            &total_funds,
+        )
+        .unwrap();
+
+    let instantiation: InstantiationData = from_json(&resp.data.unwrap()).unwrap();
+
+    let registry_balance = app
+        .wrap()
+        .query_balance(contract.addr().to_string(), DORA_DEMON.to_string())
+        .unwrap();
+    assert_eq!(Uint128::from(MEDIUM_SPONSOR_FEE), registry_balance.amount);
+
+    let amaci_balance = app
+        .wrap()
+        .query_balance(instantiation.addr.to_string(), DORA_DEMON.to_string())
+        .unwrap();
+    assert_eq!(Uint128::from(MEDIUM_DEPLOYMENT_FEE), amaci_balance.amount);
 }
 
 // // #[test]
@@ -414,7 +633,9 @@ fn create_round_with_reward_should_works() {
     let admin_coin_amount = 1000000000000000000000u128; // 1000 DORA (register 500, create round 50)
     let creator_coin_amount = 1000000000000000000000u128; // 1000 DORA
 
-    let mut app = App::new(|router, _api, storage| {
+    let mut app = AppBuilder::new()
+        .with_stargate(StargateAccepting)
+        .build(|router, _api, storage| {
         router
             .bank
             .init_balance(storage, &admin(), coins(admin_coin_amount, DORA_DEMON))
@@ -458,7 +679,7 @@ fn create_round_with_reward_should_works() {
 
     // _ = contract.migrate_v1(&mut app, owner(), amaci_code_id.id()).unwrap();
 
-    let small_base_payamount = 20000000000000000000u128; // 20 DORA
+    let small_base_payamount = SMALL_TOTAL_FEE; // 70 DORA (20 deployment + 50 sponsor)
     let create_round_with_wrong_circuit_type = contract
         .create_round(
             &mut app,
@@ -552,12 +773,12 @@ fn create_round_with_reward_should_works() {
             DORA_DEMON.to_string(),
         )
         .unwrap();
-    let circuit_charge_config = contract.get_circuit_charge_config(&app).unwrap();
-    let total_fee = Uint128::from(small_base_payamount);
-    let operator_fee = total_fee;
 
-    // Verify that contract balance is correct
-    assert_eq!(Uint128::from(operator_fee), amaci_round_balance.amount); // Creating contract will transfer operator fee to the contract
+    // Verify that only deployment fee is forwarded to the AMACI contract
+    assert_eq!(
+        Uint128::from(SMALL_DEPLOYMENT_FEE),
+        amaci_round_balance.amount
+    );
 }
 
 #[test]
@@ -596,10 +817,12 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
     let logs_data: Vec<AMaciLogEntry> =
         serde_json::from_str(&logs_content).expect("Failed to parse JSON");
 
-    let creator_coin_amount = 50000000000000000000u128; // 50 DORA
+    let creator_coin_amount = SMALL_TOTAL_FEE * 2; // Ensure enough funds for deployment + sponsor
     let _operator_coin_amount = 1000000000000000000000u128; // 1000 DORA
 
-    let mut app = App::new(|router, _api, storage| {
+    let mut app = AppBuilder::new()
+        .with_stargate(StargateAccepting)
+        .build(|router, _api, storage| {
         router
             .bank
             .init_balance(storage, &creator(), coins(creator_coin_amount, DORA_DEMON))
@@ -639,15 +862,11 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
 
     // _ = contract.migrate_v1(&mut app, owner(), amaci_code_id.id()).unwrap();
 
-    let small_base_payamount = 20000000000000000000u128; // 20 DORA
+    let small_base_payamount = SMALL_TOTAL_FEE; // 70 DORA (20 deployment + 50 sponsor)
 
     // Record balance before creating round
     let creator_balance_before = contract
         .balance_of(&app, creator().to_string(), DORA_DEMON.to_string())
-        .unwrap();
-
-    let admin_balance_before = contract
-        .balance_of(&app, admin().to_string(), DORA_DEMON.to_string())
         .unwrap();
 
     let resp = contract
@@ -693,12 +912,11 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
             DORA_DEMON.to_string(),
         )
         .unwrap();
-    let circuit_charge_config = contract.get_circuit_charge_config(&app).unwrap();
-    let total_fee = Uint128::from(small_base_payamount);
-    // let admin_fee = circuit_charge_config.fee_rate * total_fee;
-    let operator_fee = total_fee;
 
-    assert_eq!(Uint128::from(operator_fee), amaci_round_balance.amount);
+    assert_eq!(
+        Uint128::from(SMALL_DEPLOYMENT_FEE),
+        amaci_round_balance.amount
+    );
 
     let num_sign_up = maci_contract.amaci_num_sign_up(&app).unwrap();
     assert_eq!(num_sign_up, Uint256::from_u128(0u128));
@@ -1129,6 +1347,7 @@ fn create_round_with_voting_time_qv_amaci_should_works() {
         .unwrap();
     println!("round_balance_after_claim: {:?}", round_balance_after_claim);
 
+    let circuit_charge_config = contract.get_circuit_charge_config(&app).unwrap();
     let total_amount = Uint128::from(round_balance_before_claim.amount);
     let admin_fee = circuit_charge_config.fee_rate * total_amount;
     println!("admin_fee: {:?}", admin_fee);
@@ -1204,10 +1423,12 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
     let logs_data: Vec<AMaciLogEntry> =
         serde_json::from_str(&logs_content).expect("Failed to parse JSON");
 
-    let creator_coin_amount = 50000000000000000000u128; // 50 DORA
+    let creator_coin_amount = SMALL_TOTAL_FEE * 2; // Ensure enough funds for deployment + sponsor
     let _operator_coin_amount = 1000000000000000000000u128; // 1000 DORA
 
-    let mut app = App::new(|router, _api, storage| {
+    let mut app = AppBuilder::new()
+        .with_stargate(StargateAccepting)
+        .build(|router, _api, storage| {
         router
             .bank
             .init_balance(storage, &creator(), coins(creator_coin_amount, DORA_DEMON))
@@ -1247,7 +1468,7 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
 
     // _ = contract.migrate_v1(&mut app, owner(), amaci_code_id.id()).unwrap();
 
-    let small_base_payamount = 20000000000000000000u128; // 20 DORA
+    let small_base_payamount = SMALL_TOTAL_FEE; // 70 DORA (20 deployment + 50 sponsor)
 
     // Record balance before creating the round
     let creator_balance_before = contract
@@ -1297,11 +1518,11 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
             DORA_DEMON.to_string(),
         )
         .unwrap();
-    let circuit_charge_config = contract.get_circuit_charge_config(&app).unwrap();
-    let total_fee = Uint128::from(small_base_payamount);
-    let operator_fee = total_fee;
 
-    assert_eq!(Uint128::from(operator_fee), amaci_round_balance.amount);
+    assert_eq!(
+        Uint128::from(SMALL_DEPLOYMENT_FEE),
+        amaci_round_balance.amount
+    );
 
     let num_sign_up = maci_contract.amaci_num_sign_up(&app).unwrap();
     assert_eq!(num_sign_up, Uint256::from_u128(0u128));
@@ -1737,7 +1958,6 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
     let admin_fee = Uint128::from(0u128);
     let claim_amount = total_amount;
     println!("claim_amount: {:?}", claim_amount);
-    let operator_reward = claim_amount.multiply_ratio(100u128 - (50u128 + 5u128 * 1), 100u128);
     let operator_reward = Uint128::from(0u128); // after 4 days, operator reward is 0, all funds are returned to creator
     let penalty_amount = claim_amount - operator_reward;
     println!("operator_reward: {:?}", operator_reward);

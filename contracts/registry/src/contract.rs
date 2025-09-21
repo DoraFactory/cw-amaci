@@ -152,7 +152,8 @@ pub fn execute_create_round(
     validate_dora_address(operator.as_str())?;
 
     let maci_parameters: MaciParameters;
-    let required_fee: Uint128;
+    let deployment_fee: Uint128;
+    let sponsor_fee: Uint128;
 
     if max_voter <= Uint256::from_u128(25u128) && max_option <= Uint256::from_u128(5u128) {
         // state_tree_depth: 2
@@ -164,8 +165,8 @@ pub fn execute_create_round(
             vote_option_tree_depth: Uint256::from_u128(1u128),
             message_batch_size: Uint256::from_u128(5u128),
         };
-        required_fee = Uint128::from(20000000000000000000u128);
-        // required_fee = Uint128::from(50000000000000000000u128);
+        deployment_fee = Uint128::from(20000000000000000000u128);
+        sponsor_fee = Uint128::from(50000000000000000000u128);
     } else if max_voter <= Uint256::from_u128(625u128) && max_option <= Uint256::from_u128(25u128) {
         // state_tree_depth: 4
         // vote_option_tree_depth: 2
@@ -176,8 +177,8 @@ pub fn execute_create_round(
             vote_option_tree_depth: Uint256::from_u128(2u128),
             message_batch_size: Uint256::from_u128(25u128),
         };
-        required_fee = Uint128::from(750000000000000000000u128);
-        // required_fee = Uint128::from(100000000000000000000u128);
+        deployment_fee = Uint128::from(750000000000000000000u128);
+        sponsor_fee = Uint128::from(100000000000000000000u128);
     } else {
         return Err(ContractError::NoMatchedSizeCircuit {});
     }
@@ -190,10 +191,14 @@ pub fn execute_create_round(
         }
     });
 
+    let total_required_fee = deployment_fee
+        .checked_add(sponsor_fee)
+        .map_err(StdError::overflow)?;
+
     // check user's payment
-    if amount < required_fee {
+    if amount < total_required_fee {
         return Err(ContractError::InsufficientFee {
-            required: required_fee,
+            required: total_required_fee,
             provided: amount,
         });
     }
@@ -203,11 +208,9 @@ pub fn execute_create_round(
     }
     let operator_pubkey = MACI_OPERATOR_PUBKEY.load(deps.storage, &operator)?;
 
-    let total_fee = required_fee;
     let admin = ADMIN.load(deps.storage)?.admin;
 
-    // No longer send admin_fee directly to admin, instead send all fees to amaci contract
-    // Add admin_fee information in the instantiate message for potential refunds in the future
+    // Keep sponsor fee inside registry and forward deployment fee to the instantiated round
 
     let init_msg = AMaciInstantiateMsg {
         parameters: maci_parameters,
@@ -220,9 +223,9 @@ pub fn execute_create_round(
         round_info,
         voting_time,
         whitelist,
-        pre_deactivate_root,
-        circuit_type,
-        certification_system,
+            pre_deactivate_root,
+            circuit_type,
+            certification_system,
     };
     let amaci_code_id = AMACI_CODE_ID.load(deps.storage)?;
     let instantiate_msg = SubMsg::reply_on_success(
@@ -230,7 +233,7 @@ pub fn execute_create_round(
             admin: Some(env.contract.address.to_string()),
             code_id: amaci_code_id,
             msg: to_json_binary(&init_msg)?,
-            funds: coins(total_fee.u128(), "peaka"), // Send all fees, including admin_fee
+            funds: coins(deployment_fee.u128(), &denom),
             label: "AMACI".to_string(),
         },
         CREATED_GROTH16_ROUND_REPLY_ID,
@@ -240,7 +243,9 @@ pub fn execute_create_round(
         .add_submessage(instantiate_msg)
         .add_attribute("action", "create_round")
         .add_attribute("amaci_code_id", &amaci_code_id.to_string())
-        .add_attribute("total_fee", total_fee.to_string())
+        .add_attribute("deployment_fee", deployment_fee.to_string())
+        .add_attribute("sponsor_fee", sponsor_fee.to_string())
+        .add_attribute("total_required_fee", total_required_fee.to_string())
         .add_attribute("fee_recipient", admin.to_string());
 
     Ok(resp)
