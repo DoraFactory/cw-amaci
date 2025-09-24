@@ -14,7 +14,6 @@ use crate::{
 
 use cosmwasm_std::testing::{MockApi, MockStorage};
 use cosmwasm_std::{Addr, Empty, StdResult, Timestamp, Uint128, Uint256};
-use cw_multi_test::App as DefaultApp;
 use cw_multi_test::{
     no_init, AppBuilder, AppResponse, BankKeeper, ContractWrapper, DistributionKeeper, Executor,
     FailingModule, GovFailingModule, IbcFailingModule, StakeKeeper, StargateAccepting, WasmKeeper,
@@ -51,6 +50,8 @@ pub type App<ExecC = Empty, QueryC = Empty> = cw_multi_test::App<
     GovFailingModule,
     StargateAccepting,
 >;
+
+pub type DefaultApp = App;
 
 pub fn create_app() -> App {
     AppBuilder::new()

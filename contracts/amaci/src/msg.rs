@@ -217,10 +217,7 @@ pub enum QueryMsg {
     GetTallyDelay {},
 
     #[returns(CheckPolicyResponse)]
-    CheckPolicy {
-        sender: Addr,
-        msg_data: String,
-    },
+    CheckPolicy { sender: Addr, msg_data: String },
 }
 
 #[cw_serde]

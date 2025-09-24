@@ -1062,7 +1062,7 @@ mod test {
                     let new_tally_commitment =
                         uint256_from_decimal_string(&data.new_tally_commitment);
 
-                        let tally_proof = Groth16ProofType {
+                    let tally_proof = Groth16ProofType {
                             a: "24eefd06494531734508ae412053ed5688072c5fb4cf71fc3c8ec0d31f7d563f093e8b9a311e0caa1ba02de27e75c143f958248b5f486190edd8817f636f0ce8".to_string(),
                             b: "1fc5e9cdc59c37c88c2a148ac2418659d6eea3448698b57d35c78c7c08b4c52921aa37dca6de3851abe0843338440de8024a6ece04d284e8abf2061a70be713f295339ddce483a56315c3feec141938028a544e62e38bb5bf050dd19146d9ab72b32fe75e87e6bd44ce0476177ebf796fc7eba01bcbf175ccbbd10e2f04a90f0".to_string(),
                             c: "0ba9c3647f448b9ba9fcf39900c380dff4c9f0328529795f4013912b25a45b9f18f6ca48d63751f67800108105b7b34f88ddda72234ff7eda5c63de7bb90da48".to_string()

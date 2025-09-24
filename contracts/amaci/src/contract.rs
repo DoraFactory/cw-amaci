@@ -2132,10 +2132,9 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 .map_err(|e| cosmwasm_std::StdError::generic_err(e.to_string()))?;
             to_json_binary(&delay_info)
         }
-        QueryMsg::CheckPolicy {
-            sender,
-            msg_data,
-        } => to_json_binary(&query_check_policy(deps, env, sender, msg_data)?),
+        QueryMsg::CheckPolicy { sender, msg_data } => {
+            to_json_binary(&query_check_policy(deps, env, sender, msg_data)?)
+        }
     }
 }
 
@@ -2146,12 +2145,11 @@ pub fn query_check_policy(
     msg_data: String,
 ) -> StdResult<CheckPolicyResponse> {
     let _cfg = WHITELIST.load(deps.storage)?;
-    
+
     // Parse the ExecuteMsg directly from msg_data
     let exec_msg: Result<ExecuteMsg, _> = cosmwasm_std::from_json(msg_data.as_bytes());
     let (eligible, reason) = match exec_msg {
         Ok(ExecuteMsg::SignUp { pubkey }) => {
-
             // 1. Check voting time
             let voting_time = VOTINGTIME.load(deps.storage)?;
             let current_time = env.block.time;
@@ -2188,8 +2186,10 @@ pub fn query_check_policy(
                 }
             }
         }
-        Ok(ExecuteMsg::PublishMessage { message, enc_pub_key }) => {
-
+        Ok(ExecuteMsg::PublishMessage {
+            message,
+            enc_pub_key,
+        }) => {
             // 1. Check voting time
             let voting_time = VOTINGTIME.load(deps.storage)?;
             let current_time = env.block.time;
@@ -2236,8 +2236,10 @@ pub fn query_check_policy(
                 }
             }
         }
-        Ok(ExecuteMsg::PublishDeactivateMessage { message, enc_pub_key }) => {
-
+        Ok(ExecuteMsg::PublishDeactivateMessage {
+            message,
+            enc_pub_key,
+        }) => {
             // 1. Check voting time
             let voting_time = VOTINGTIME.load(deps.storage)?;
             let current_time = env.block.time;
@@ -2309,8 +2311,12 @@ pub fn query_check_policy(
                 }
             }
         }
-        Ok(ExecuteMsg::AddNewKey { pubkey, nullifier, d, groth16_proof }) => {
-
+        Ok(ExecuteMsg::AddNewKey {
+            pubkey,
+            nullifier,
+            d,
+            groth16_proof,
+        }) => {
             let voting_time = VOTINGTIME.load(deps.storage)?;
             let current_time = env.block.time;
             // Check if the current time is within the voting time range
@@ -2334,41 +2340,72 @@ pub fn query_check_policy(
                     } else {
                         // Prepare input for proof verification
                         let mut input: [Uint256; 7] = [Uint256::zero(); 7];
-                        input[0] = DNODES.load(deps.storage, Uint256::from_u128(0u128).to_be_bytes().to_vec())?;
+                        input[0] = DNODES.load(
+                            deps.storage,
+                            Uint256::from_u128(0u128).to_be_bytes().to_vec(),
+                        )?;
                         input[1] = COORDINATORHASH.load(deps.storage)?;
                         input[2] = nullifier;
                         input[3] = d[0];
                         input[4] = d[1];
                         input[5] = d[2];
                         input[6] = d[3];
-                        
+
                         // Compute the hash of the input values
-                        let input_hash = uint256_from_hex_string(&hash_256_uint256_list(&input)) % snark_scalar_field;
-                        
+                        let input_hash = uint256_from_hex_string(&hash_256_uint256_list(&input))
+                            % snark_scalar_field;
+
                         // Load the process verification keys and verify proof
                         match GROTH16_NEWKEY_VKEYS.load(deps.storage) {
                             Ok(process_vkeys_str) => {
                                 // Parse the SNARK proof
-                                match (hex::decode(&groth16_proof.a), hex::decode(&groth16_proof.b), hex::decode(&groth16_proof.c)) {
+                                match (
+                                    hex::decode(&groth16_proof.a),
+                                    hex::decode(&groth16_proof.b),
+                                    hex::decode(&groth16_proof.c),
+                                ) {
                                     (Ok(pi_a), Ok(pi_b), Ok(pi_c)) => {
                                         let proof_str = Groth16ProofStr { pi_a, pi_b, pi_c };
                                         // Parse the verification key and proof
-                                        match (parse_groth16_vkey::<Bn256>(process_vkeys_str), parse_groth16_proof::<Bn256>(proof_str)) {
+                                        match (
+                                            parse_groth16_vkey::<Bn256>(process_vkeys_str),
+                                            parse_groth16_proof::<Bn256>(proof_str),
+                                        ) {
                                             (Ok(vkey), Ok(pof)) => {
                                                 let pvk = prepare_verifying_key(&vkey);
                                                 // Verify the SNARK proof
-                                                match groth16_verify(&pvk, &pof, &[Fr::from_str(&input_hash.to_string()).unwrap()]) {
+                                                match groth16_verify(
+                                                    &pvk,
+                                                    &pof,
+                                                    &[Fr::from_str(&input_hash.to_string())
+                                                        .unwrap()],
+                                                ) {
                                                     Ok(is_passed) => {
                                                         if is_passed {
-                                                            (true, "add_new_key check policy passed".to_string())
+                                                            (
+                                                                true,
+                                                                "add_new_key check policy passed"
+                                                                    .to_string(),
+                                                            )
                                                         } else {
-                                                            (false, "proof verification failed".to_string())
+                                                            (
+                                                                false,
+                                                                "proof verification failed"
+                                                                    .to_string(),
+                                                            )
                                                         }
                                                     }
-                                                    Err(_) => (false, "proof verification error".to_string()),
+                                                    Err(_) => (
+                                                        false,
+                                                        "proof verification error".to_string(),
+                                                    ),
                                                 }
                                             }
-                                            _ => (false, "failed to parse verification key or proof".to_string()),
+                                            _ => (
+                                                false,
+                                                "failed to parse verification key or proof"
+                                                    .to_string(),
+                                            ),
                                         }
                                     }
                                     _ => (false, "failed to decode proof hex".to_string()),
