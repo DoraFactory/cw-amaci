@@ -17,8 +17,8 @@ use crate::state::{
     MSG_HASHES, NODES, NULLIFIERS, NUMSIGNUPS, PENALTY_RATE, PERIOD, PRE_DEACTIVATE_ROOT,
     PROCESSED_DMSG_COUNT, PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO,
     SIGNUPED, STATEIDXINC, STATE_ROOT_BY_DMSG, TALLY_DELAY_MAX_HOURS, TALLY_TIMEOUT, TOTAL_RESULT,
-    VOICECREDITBALANCE, VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS,
-    ZEROS_H10,
+    USED_ENC_PUB_KEYS, VOICECREDITBALANCE, VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP, VOTINGTIME, WHITELIST, 
+    ZEROS, ZEROS_H10,
 };
 use cosmwasm_schema::cw_serde;
 #[cfg(not(feature = "library"))]
@@ -701,6 +701,15 @@ pub fn execute_publish_message(
         && enc_pub_key.x < snark_scalar_field
         && enc_pub_key.y < snark_scalar_field
     {
+        // Check if enc_pub_key has already been used
+        let pubkey_storage_key = generate_pubkey_storage_key(&enc_pub_key);
+        if USED_ENC_PUB_KEYS.has(deps.storage, pubkey_storage_key.clone()) {
+            return Err(ContractError::EncPubKeyAlreadyUsed {});
+        }
+
+        // Mark this enc_pub_key as used
+        USED_ENC_PUB_KEYS.save(deps.storage, pubkey_storage_key, &true)?;
+        
         let mut msg_chain_length = MSG_CHAIN_LENGTH.load(deps.storage)?;
         let old_msg_hashes =
             MSG_HASHES.load(deps.storage, msg_chain_length.to_be_bytes().to_vec())?;
@@ -2013,6 +2022,14 @@ pub fn hash_message_and_enc_pub_key(
     let n_hash = hash5(n);
     let m_n_hash = hash2([m_hash, n_hash]);
     return m_n_hash;
+}
+
+// Generate storage key for PubKey
+fn generate_pubkey_storage_key(pubkey: &PubKey) -> Vec<u8> {
+    let mut key = Vec::new();
+    key.extend_from_slice(&pubkey.x.to_be_bytes());
+    key.extend_from_slice(&pubkey.y.to_be_bytes());
+    key
 }
 
 // Only admin can execute

@@ -119,4 +119,7 @@ pub enum ContractError {
 
     #[error("Circuit parameters do not match any supported configuration")]
     NotMatchCircuitSize {},
+
+    #[error("Encrypted public key already used")]
+    EncPubKeyAlreadyUsed {},
 }

@@ -128,4 +128,7 @@ pub enum ContractError {
 
     #[error("Maximum number of deactivate messages ({max_deactivate_messages}) has been reached")]
     MaxDeactivateMessagesReached { max_deactivate_messages: Uint256 },
+
+    #[error("Encrypted public key already used")]
+    EncPubKeyAlreadyUsed {},
 }

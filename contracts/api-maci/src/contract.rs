@@ -13,8 +13,8 @@ use crate::state::{
     GROTH16_TALLY_VKEYS, LEAF_IDX_0, MACIPARAMETERS, MAX_LEAVES_COUNT, MAX_VOTE_OPTIONS,
     MAX_WHITELIST_NUM, MSG_CHAIN_LENGTH, MSG_HASHES, NODES, NUMSIGNUPS, ORACLE_WHITELIST_CONFIG,
     PERIOD, PLONK_PROCESS_VKEYS, PLONK_TALLY_VKEYS, PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT,
-    QTR_LIB, RESULT, ROUNDINFO, STATEIDXINC, TOTAL_RESULT, VOICECREDITBALANCE, VOTEOPTIONMAP,
-    VOTINGTIME, WHITELIST, ZEROS,
+    QTR_LIB, RESULT, ROUNDINFO, STATEIDXINC, TOTAL_RESULT, USED_ENC_PUB_KEYS, VOICECREDITBALANCE, 
+    VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS,
 };
 use sha2::{Digest as ShaDigest, Sha256};
 
@@ -645,6 +645,14 @@ pub fn execute_publish_message(
         && enc_pub_key.x < snark_scalar_field
         && enc_pub_key.y < snark_scalar_field
     {
+        // Check if enc_pub_key has already been used
+        let pubkey_storage_key = generate_pubkey_storage_key(&enc_pub_key);
+        if USED_ENC_PUB_KEYS.has(deps.storage, pubkey_storage_key.clone()) {
+            return Err(ContractError::EncPubKeyAlreadyUsed {});
+        }
+
+        // Mark this enc_pub_key as used
+        USED_ENC_PUB_KEYS.save(deps.storage, pubkey_storage_key, &true)?;
         let mut msg_chain_length = MSG_CHAIN_LENGTH.load(deps.storage)?;
         let old_msg_hashes =
             MSG_HASHES.load(deps.storage, msg_chain_length.to_be_bytes().to_vec())?;
@@ -1543,6 +1551,14 @@ pub fn hash_message_and_enc_pub_key(
     let n_hash = hash5(n);
     let m_n_hash = hash2([m_hash, n_hash]);
     return m_n_hash;
+}
+
+// Generate storage key for PubKey
+fn generate_pubkey_storage_key(pubkey: &PubKey) -> Vec<u8> {
+    let mut key = Vec::new();
+    key.extend_from_slice(&pubkey.x.to_be_bytes());
+    key.extend_from_slice(&pubkey.y.to_be_bytes());
+    key
 }
 
 // Only admin can execute

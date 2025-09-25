@@ -123,6 +123,9 @@ pub const MSG_CHAIN_LENGTH: Item<Uint256> = Item::new("msg_chain_length");
 pub const PROCESSED_MSG_COUNT: Item<Uint256> = Item::new("processed_msg_count");
 pub const PROCESSED_USER_COUNT: Item<Uint256> = Item::new("processed_user_count");
 
+// Storage for tracking used enc_pub_keys to ensure uniqueness
+pub const USED_ENC_PUB_KEYS: Map<Vec<u8>, bool> = Map::new("used_enc_pub_keys");
+
 #[cw_serde]
 pub struct Groth16ProofStr {
     pub pi_a: Vec<u8>,

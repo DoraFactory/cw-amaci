@@ -147,6 +147,9 @@ pub const MSG_CHAIN_LENGTH: Item<Uint256> = Item::new("msg_chain_length");
 pub const PROCESSED_MSG_COUNT: Item<Uint256> = Item::new("processed_msg_count");
 pub const PROCESSED_USER_COUNT: Item<Uint256> = Item::new("processed_user_count");
 
+// Storage for tracking used enc_pub_keys to ensure uniqueness
+pub const USED_ENC_PUB_KEYS: Map<Vec<u8>, bool> = Map::new("used_enc_pub_keys");
+
 pub const DMSG_CHAIN_LENGTH: Item<Uint256> = Item::new("dmsg_chain_length");
 pub const DMSG_HASHES: Map<Vec<u8>, Uint256> = Map::new("dmsg_hashes");
 pub const STATE_ROOT_BY_DMSG: Map<Vec<u8>, Uint256> = Map::new("state_root_by_dmsg");
