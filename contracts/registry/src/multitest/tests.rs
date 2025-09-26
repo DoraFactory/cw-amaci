@@ -1956,6 +1956,20 @@ fn create_round_with_qv_oracle_mode_amaci_should_works() {
         100u128, // voice_credit_amount
     );
 
+    // Test Oracle signup with invalid certificate
+    let signup_result_invalid = maci_contract
+        .amaci_sign_up_oracle(
+            &mut app,
+            user1(),
+            pubkey0.clone(),
+            "9N+0uBmu7b2Sr2ibC0ViOQ00z7LZwrTJDZmoGit8TScDDzbjXUmOkB4hLKSnLEORX7ITYbeG9409VL3OLCZdag==".to_string(),
+        )
+        .unwrap_err();
+    assert_eq!(
+        AmaciContractError::InvalidSignature {},
+        signup_result_invalid.downcast().unwrap()
+    );
+
     // Test Oracle signup for two users
     let signup_result1 =
         maci_contract.amaci_sign_up_oracle(&mut app, user1(), pubkey0.clone(), cert1);
