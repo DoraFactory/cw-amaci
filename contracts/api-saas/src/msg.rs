@@ -1,6 +1,7 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128, Uint256};
-use cw_amaci::state::RoundInfo;
+use cw_amaci::state::{RoundInfo, VotingTime};
+use cw_amaci::msg::WhitelistBase;
 
 use crate::state::{Config, OperatorInfo};
 
@@ -62,6 +63,21 @@ pub enum ExecuteMsg {
         whitelist_backend_pubkey: String,
         // The following parameters are hardcoded in the contract:
         // whitelist_voting_power_args: slope mode (one person one vote)
+    },
+
+    // Create AMACI round via registry
+    CreateAmaciRound {
+        operator: Addr,
+        max_voter: Uint256,
+        max_option: Uint256,
+        voice_credit_amount: Uint256,
+        round_info: RoundInfo,
+        voting_time: VotingTime,
+        whitelist: Option<WhitelistBase>,
+        pre_deactivate_root: Uint256,
+        circuit_type: Uint256,
+        certification_system: Uint256,
+        oracle_whitelist_pubkey: Option<String>,
     },
 
     // API MACI management

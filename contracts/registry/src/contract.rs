@@ -83,6 +83,7 @@ pub fn execute(
             pre_deactivate_root,
             circuit_type,
             certification_system,
+            oracle_whitelist_pubkey,
         } => execute_create_round(
             deps,
             env,
@@ -97,6 +98,7 @@ pub fn execute(
             pre_deactivate_root,
             circuit_type,
             certification_system,
+            oracle_whitelist_pubkey,
         ),
         ExecuteMsg::SetValidators { addresses } => {
             execute_set_validators(deps, env, info, addresses)
@@ -146,6 +148,7 @@ pub fn execute_create_round(
     pre_deactivate_root: Uint256,
     circuit_type: Uint256,
     certification_system: Uint256,
+    oracle_whitelist_pubkey: Option<String>,
 ) -> Result<Response, ContractError> {
     validate_dora_address(operator.as_str())?;
 
@@ -221,6 +224,7 @@ pub fn execute_create_round(
         pre_deactivate_root,
         circuit_type,
         certification_system,
+        oracle_whitelist_pubkey,
     };
     let amaci_code_id = AMACI_CODE_ID.load(deps.storage)?;
     let instantiate_msg = SubMsg::reply_on_success(

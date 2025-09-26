@@ -361,12 +361,12 @@ pub fn execute_start_voting_period(
         let voting_time = VOTINGTIME.load(deps.storage)?;
 
         if let Some(_) = voting_time.start_time {
-            // if start_time exist，admin can't start round with this command.
+            // if start_time exist, admin can't start round with this command.
             return Err(ContractError::AlreadySetVotingTime {
                 time_name: String::from("start_time"),
             });
         } else {
-            // if start_time isn't exist，admin need start round with this command. (in Pending period can execute)
+            // if start_time isn't exist, admin need start round with this command. (in Pending period can execute)
             if period.status != PeriodStatus::Pending {
                 return Err(ContractError::PeriodError {});
             }

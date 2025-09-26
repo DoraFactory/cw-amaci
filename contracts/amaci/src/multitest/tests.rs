@@ -4,7 +4,9 @@ mod test {
     use crate::msg::Groth16ProofType;
     use crate::multitest::{
         create_app, owner, uint256_from_decimal_string, user1, user2, user3, MaciCodeId,
+        test_pubkey1, test_pubkey2, test_oracle_pubkey, MaciContract,
     };
+    use crate::multitest::certificate_generator::generate_certificate_for_pubkey;
     use crate::state::{
         DelayRecord, DelayRecords, DelayType, MessageData, Period, PeriodStatus, PubKey,
     };
@@ -306,7 +308,7 @@ mod test {
         //     )
         //     .unwrap_err();
         // assert_eq!(
-        //     // 注册之后不能再进行注册
+        //     // Cannot register again after registration
         //     ContractError::Unauthorized {},
         //     sign_up_after_voting_end_error.downcast().unwrap()
         // );
@@ -590,7 +592,7 @@ mod test {
         //     )
         //     .unwrap_err();
         // assert_eq!(
-        //     // 注册之后不能再进行注册
+        //     // Cannot register again after registration
         //     ContractError::Unauthorized {},
         //     sign_up_after_voting_end_error.downcast().unwrap()
         // );
@@ -1780,6 +1782,212 @@ mod test {
                     delay_type: DelayType::DeactivateDelay,
                 }]
             }
+        );
+    }
+
+    #[test]
+    fn test_oracle_signup() {
+        let mut app = create_app();
+        let code_id = MaciCodeId::store_code(&mut app);
+        let label = "Oracle Test";
+
+        // Create voting time period
+        let voting_time = crate::state::VotingTime {
+            start_time: Timestamp::from_seconds(1577836800), // 2020-01-01
+            end_time: Timestamp::from_seconds(1577836800 + 11 * 60), // 2020-01-01 + 11 minutes
+        };
+
+        let round_info = crate::state::RoundInfo {
+            title: "Oracle Test Round".to_string(),
+            description: "Testing oracle signup functionality".to_string(),
+            link: "https://example.com".to_string(),
+        };
+
+        // Create contract with oracle configuration
+        let oracle_pubkey = test_oracle_pubkey();
+        let contract = MaciContract::instantiate_with_oracle(
+            &mut app,
+            code_id,
+            owner(),
+            round_info,
+            None, // No traditional whitelist
+            voting_time,
+            Uint256::from_u128(0u128), // 1p1v
+            Uint256::from_u128(0u128), // groth16
+            oracle_pubkey,
+            label,
+        )
+        .unwrap();
+
+        // Set block time to be within voting period
+        app.update_block(|block| {
+            block.time = Timestamp::from_seconds(1577836800 + 5 * 60); // 5 minutes after start
+        });
+
+        // Test pubkeys and contract address for certificate generation
+        let pubkey1 = test_pubkey1();
+        let pubkey2 = test_pubkey2();
+        let contract_addr = contract.addr().to_string();
+
+        // Generate certificates for both test users
+        let cert1 = generate_certificate_for_pubkey(
+            &contract_addr,
+            &pubkey1.x.to_string(),
+            &pubkey1.y.to_string(),
+            100u128, // amount = 100 (voice_credit_amount)
+        );
+
+        let cert2 = generate_certificate_for_pubkey(
+            &contract_addr,
+            &pubkey2.x.to_string(),
+            &pubkey2.y.to_string(),
+            100u128, // amount = 100 (voice_credit_amount)
+        );
+
+        // Test oracle signup for user1
+        let response1 = contract.sign_up_oracle(&mut app, user1(), pubkey1.clone(), cert1).unwrap();
+        assert!(response1.events.iter().any(|e| {
+            e.attributes.iter().any(|attr| {
+                attr.key == "action" && attr.value == "sign_up"
+            })
+        }));
+        assert!(response1.events.iter().any(|e| {
+            e.attributes.iter().any(|attr| {
+                attr.key == "mode" && attr.value == "oracle"
+            })
+        }));
+
+        // Test oracle signup for user2
+        let response2 = contract.sign_up_oracle(&mut app, user2(), pubkey2.clone(), cert2).unwrap();
+        assert!(response2.events.iter().any(|e| {
+            e.attributes.iter().any(|attr| {
+                attr.key == "action" && attr.value == "sign_up"
+            })
+        }));
+
+        // Verify signup count
+        let num_signups = contract.num_sign_up(&app).unwrap();
+        assert_eq!(num_signups, Uint256::from_u128(2u128));
+
+        // Test duplicate signup should fail
+        let cert1_duplicate = generate_certificate_for_pubkey(
+            &contract_addr,
+            &pubkey1.x.to_string(),
+            &pubkey1.y.to_string(),
+            100u128,
+        );
+
+        let duplicate_signup_error = contract
+            .sign_up_oracle(&mut app, user1(), pubkey1, cert1_duplicate)
+            .unwrap_err();
+        assert_eq!(
+            ContractError::AlreadySignedUp {},
+            duplicate_signup_error.downcast().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_oracle_signup_invalid_certificate() {
+        let mut app = create_app();
+        let code_id = MaciCodeId::store_code(&mut app);
+        let label = "Oracle Invalid Cert Test";
+
+        // Create voting time period
+        let voting_time = crate::state::VotingTime {
+            start_time: Timestamp::from_seconds(1577836800),
+            end_time: Timestamp::from_seconds(1577836800 + 11 * 60), // +11 minutes
+        };
+
+        let round_info = crate::state::RoundInfo {
+            title: "Oracle Invalid Cert Test".to_string(),
+            description: "Testing invalid certificate".to_string(),
+            link: "https://example.com".to_string(),
+        };
+
+        // Create contract with oracle configuration
+        let oracle_pubkey = test_oracle_pubkey();
+        let contract = MaciContract::instantiate_with_oracle(
+            &mut app,
+            code_id,
+            owner(),
+            round_info,
+            None,
+            voting_time,
+            Uint256::from_u128(0u128),
+            Uint256::from_u128(0u128),
+            oracle_pubkey,
+            label,
+        )
+        .unwrap();
+
+        // Set block time to be within voting period
+        app.update_block(|block| {
+            block.time = Timestamp::from_seconds(1577836800 + 5 * 60); // 5 minutes after start
+        });
+
+        let pubkey1 = test_pubkey1();
+        
+        // Try signup with invalid certificate
+        let invalid_cert = "invalid_base64_certificate";
+        let invalid_cert_error = contract
+            .sign_up_oracle(&mut app, user1(), pubkey1, invalid_cert.to_string())
+            .unwrap_err();
+        
+        // Should fail with InvalidBase64 or InvalidSignature error
+        let error = invalid_cert_error.downcast::<ContractError>().unwrap();
+        assert!(matches!(error, ContractError::InvalidBase64 {} | ContractError::InvalidSignature {}));
+
+        
+        
+    }
+
+    #[test]
+    fn test_oracle_without_config() {
+        let mut app = create_app();
+        let code_id = MaciCodeId::store_code(&mut app);
+        let label = "Oracle No Config Test";
+
+        let voting_time = crate::state::VotingTime {
+            start_time: Timestamp::from_seconds(1577836800),
+            end_time: Timestamp::from_seconds(1577836800 + 11 * 60), // +11 minutes
+        };
+
+        let round_info = crate::state::RoundInfo {
+            title: "Oracle No Config Test".to_string(),
+            description: "Testing oracle without config".to_string(),
+            link: "https://example.com".to_string(),
+        };
+
+        // Create contract WITHOUT oracle configuration
+        let contract = MaciContract::instantiate(
+            &mut app,
+            code_id,
+            owner(),
+            round_info,
+            None,
+            voting_time,
+            Uint256::from_u128(0u128),
+            Uint256::from_u128(0u128),
+            label,
+        )
+        .unwrap();
+
+        // Set block time to be within voting period
+        app.update_block(|block| {
+            block.time = Timestamp::from_seconds(1577836800 + 5 * 60); // 5 minutes after start
+        });
+
+        let pubkey1 = test_pubkey1();
+        let fake_cert = "fake_certificate";
+        
+        // Try oracle signup without oracle config
+        let no_config_error = contract
+            .sign_up_oracle(&mut app, user1(), pubkey1, fake_cert.to_string())
+            .unwrap_err();
+        
+        assert_eq!(
+            ContractError::OracleWhitelistNotConfigured {},
+            no_config_error.downcast().unwrap()
         );
     }
 }

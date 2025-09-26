@@ -16,7 +16,8 @@ use cosmos_sdk_proto::Any;
 use prost::Message;
 
 // External contract types with aliases to avoid path conflicts
-use cw_amaci::state::RoundInfo;
+use cw_amaci::state::{RoundInfo, VotingTime};
+use cw_amaci::msg::WhitelistBase;
 use cw_api_maci::msg::{
     InstantiateMsg as OracleMaciInstantiateMsg, InstantiationData as OracleMaciInstantiationData,
     VotingPowerArgs,
@@ -41,6 +42,7 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // Reply IDs
 pub const CREATED_API_MACI_ROUND_REPLY_ID: u64 = 1;
+pub const CREATED_AMACI_ROUND_REPLY_ID: u64 = 2;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -128,6 +130,34 @@ pub fn execute(
             contract_addr,
             vote_option_map,
         } => execute_set_vote_options_map(deps, env, info, contract_addr, vote_option_map),
+        ExecuteMsg::CreateAmaciRound {
+            operator,
+            max_voter,
+            max_option,
+            voice_credit_amount,
+            round_info,
+            voting_time,
+            whitelist,
+            pre_deactivate_root,
+            circuit_type,
+            certification_system,
+            oracle_whitelist_pubkey,
+        } => execute_create_amaci_round(
+            deps,
+            env,
+            info,
+            operator,
+            max_voter,
+            max_option,
+            voice_credit_amount,
+            round_info,
+            voting_time,
+            whitelist,
+            pre_deactivate_root,
+            circuit_type,
+            certification_system,
+            oracle_whitelist_pubkey,
+        ),
     }
 }
 
@@ -526,6 +556,68 @@ pub fn execute_set_vote_options_map(
         .add_attribute("vote_option_map", format!("{:?}", vote_option_map)))
 }
 
+pub fn execute_create_amaci_round(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    operator: Addr,
+    max_voter: Uint256,
+    max_option: Uint256,
+    voice_credit_amount: Uint256,
+    round_info: RoundInfo,
+    voting_time: VotingTime,
+    whitelist: Option<WhitelistBase>,
+    pre_deactivate_root: Uint256,
+    circuit_type: Uint256,
+    certification_system: Uint256,
+    oracle_whitelist_pubkey: Option<String>,
+) -> Result<Response, ContractError> {
+    // Only operators can create AMACI rounds via registry
+    if !OPERATORS.has(deps.storage, &info.sender) {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    // Load registry contract address
+    let registry_contract = REGISTRY_CONTRACT_ADDR.load(deps.storage)?;
+
+    // Create the registry CreateRound message
+    let registry_msg = serde_json::json!({
+        "create_round": {
+            "operator": operator,
+            "max_voter": max_voter,
+            "max_option": max_option,
+            "voice_credit_amount": voice_credit_amount,
+            "round_info": round_info,
+            "voting_time": voting_time,
+            "whitelist": whitelist,
+            "pre_deactivate_root": pre_deactivate_root,
+            "circuit_type": circuit_type,
+            "certification_system": certification_system,
+            "oracle_whitelist_pubkey": oracle_whitelist_pubkey
+        }
+    });
+
+    // Execute the contract call to registry with the required fee
+    // The fee structure is handled by registry contract
+    let execute_msg = WasmMsg::Execute {
+        contract_addr: registry_contract.to_string(),
+        msg: to_json_binary(&registry_msg)?,
+        funds: info.funds, // Forward all funds to registry for fee payment
+    };
+
+    // Use SubMsg with reply to get the created contract address
+    let submsg = SubMsg::reply_on_success(execute_msg, CREATED_AMACI_ROUND_REPLY_ID);
+
+    Ok(Response::new()
+        .add_submessage(submsg)
+        .add_attribute("action", "create_amaci_round_via_registry")
+        .add_attribute("operator", info.sender.to_string())
+        .add_attribute("registry_contract", registry_contract.to_string())
+        .add_attribute("round_title", round_info.title)
+        .add_attribute("max_voter", max_voter.to_string())
+        .add_attribute("max_option", max_option.to_string()))
+}
+
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
@@ -554,6 +646,9 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
     match msg.id {
         CREATED_API_MACI_ROUND_REPLY_ID => {
             reply_created_api_maci_round(deps, env, msg.result.into_result())
+        }
+        CREATED_AMACI_ROUND_REPLY_ID => {
+            reply_created_amaci_round(deps, env, msg.result.into_result())
         }
         id => Err(ContractError::Std(StdError::generic_err(format!(
             "Unknown reply id: {}",
@@ -691,6 +786,70 @@ fn reply_created_api_maci_round(
 
     Ok(Response::new()
         .add_attributes(response_attrs)
+        .set_data(to_json_binary(&saas_instantiation_data)?))
+}
+
+fn reply_created_amaci_round(
+    _deps: DepsMut,
+    _env: Env,
+    result: Result<SubMsgResponse, String>,
+) -> Result<Response, ContractError> {
+    // Parse SubMsg response from registry
+    let response = result.map_err(StdError::generic_err)?;
+
+    // Debug: Print all attributes to see what Registry actually returns
+    for event in &response.events {
+        for _attr in &event.attributes {
+            // This helps us debug what the Registry actually returns
+        }
+    }
+
+    // Parse response data using the same method as in api-maci
+    let data = response
+        .data
+        .ok_or(ContractError::Std(StdError::generic_err(
+            "Data missing from response",
+        )))?;
+    
+    // Try to parse the instantiation data from Registry response
+    let parsed_response = match parse_instantiate_response_data(&data) {
+        Ok(data) => data,
+        Err(err) => {
+            return Err(ContractError::Std(StdError::generic_err(format!(
+                "Failed to parse instantiate response: {}",
+                err
+            ))))
+        }
+    };
+
+    let amaci_contract_addr = Addr::unchecked(parsed_response.contract_address.clone());
+
+    // Extract additional information from response attributes  
+    let mut round_title = String::new();
+    let mut operator = String::new();
+
+    for event in response.events {
+        for attr in event.attributes {
+            match attr.key.as_str() {
+                "round_title" => round_title = attr.value,
+                "operator" => operator = attr.value,
+                _ => {}
+            }
+        }
+    }
+
+    // Prepare return data with the AMACI contract address
+    let saas_instantiation_data = InstantiationData {
+        addr: amaci_contract_addr.clone(),
+    };
+
+    Ok(Response::new()
+        .add_attributes(vec![
+            attr("action", "created_amaci_round_via_registry"),
+            attr("amaci_contract_addr", &amaci_contract_addr.to_string()),
+            attr("round_title", &round_title),
+            attr("operator", &operator),
+        ])
         .set_data(to_json_binary(&saas_instantiation_data)?))
 }
 

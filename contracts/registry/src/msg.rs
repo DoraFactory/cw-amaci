@@ -48,6 +48,7 @@ pub enum ExecuteMsg {
         pre_deactivate_root: Uint256,
         circuit_type: Uint256,
         certification_system: Uint256,
+        oracle_whitelist_pubkey: Option<String>,
     },
     SetValidators {
         addresses: ValidatorSet,

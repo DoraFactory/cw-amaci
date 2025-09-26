@@ -349,6 +349,28 @@ pub struct DelayRecords {
 
 pub const DELAY_RECORDS: Item<DelayRecords> = Item::new("delay_records");
 
+// Oracle whitelist backend pubkey
+pub const ORACLE_WHITELIST_PUBKEY: Item<String> = Item::new("oracle_whitelist_pubkey");
+
+// Oracle whitelist storage per user
+#[cw_serde]
+pub struct OracleWhitelistUser {
+    pub balance: Uint256,
+    pub is_register: bool,
+}
+
+impl OracleWhitelistUser {
+    pub fn register(&mut self) {
+        self.is_register = true;
+    }
+
+    pub fn balance_of(&self) -> Uint256 {
+        return self.balance;
+    }
+}
+
+pub const ORACLE_WHITELIST: Map<&(Vec<u8>, Vec<u8>), OracleWhitelistUser> = Map::new("oracle_whitelist");
+
 #[cfg(test)]
 mod tests {
     use super::*;

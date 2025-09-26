@@ -414,7 +414,7 @@ impl MaciContract {
             code_id.0,
             Addr::unchecked(sender),
             &init_msg,
-            &[cosmwasm_std::coin(1000000u128, "peaka")], // 添加funds作为fee_grant_amount
+            &[cosmwasm_std::coin(1000000u128, "peaka")], // Add funds as fee_grant_amount
             label,
             None,
         )
@@ -468,7 +468,7 @@ impl MaciContract {
             code_id.0,
             Addr::unchecked(sender),
             &init_msg,
-            &[cosmwasm_std::coin(1000000u128, "peaka")], // 添加funds作为fee_grant_amount
+            &[cosmwasm_std::coin(1000000u128, "peaka")], // Add funds as fee_grant_amount
             label,
             None,
         )

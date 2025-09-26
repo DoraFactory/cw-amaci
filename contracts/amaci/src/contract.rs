@@ -7,18 +7,19 @@ use crate::msg::{
 };
 use crate::state::{
     Admin, DelayRecord, DelayRecords, DelayType, Groth16ProofStr, MaciParameters, MessageData,
-    Period, PeriodStatus, PubKey, QuinaryTreeRoot, RoundInfo, StateLeaf, VotingTime, Whitelist,
+    OracleWhitelistUser, Period, PeriodStatus, PubKey, QuinaryTreeRoot, 
+    RoundInfo, StateLeaf, VotingTime, Whitelist,
     WhitelistConfig, ADMIN, CERTSYSTEM, CIRCUITTYPE, COORDINATORHASH, CREATE_ROUND_WINDOW,
     CURRENT_DEACTIVATE_COMMITMENT, CURRENT_STATE_COMMITMENT, CURRENT_TALLY_COMMITMENT,
     DEACTIVATE_COUNT, DEACTIVATE_DELAY, DELAY_RECORDS, DMSG_CHAIN_LENGTH, DMSG_HASHES, DNODES,
     FEEGRANTS, FEE_RECIPIENT, FIRST_DMSG_TIMESTAMP, GROTH16_DEACTIVATE_VKEYS, GROTH16_NEWKEY_VKEYS,
     GROTH16_PROCESS_VKEYS, GROTH16_TALLY_VKEYS, LEAF_IDX_0, MACIPARAMETERS,
     MACI_DEACTIVATE_MESSAGE, MACI_OPERATOR, MAX_LEAVES_COUNT, MAX_VOTE_OPTIONS, MSG_CHAIN_LENGTH,
-    MSG_HASHES, NODES, NULLIFIERS, NUMSIGNUPS, PENALTY_RATE, PERIOD, PRE_DEACTIVATE_ROOT,
-    PROCESSED_DMSG_COUNT, PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO,
-    SIGNUPED, STATEIDXINC, STATE_ROOT_BY_DMSG, TALLY_DELAY_MAX_HOURS, TALLY_TIMEOUT, TOTAL_RESULT,
-    USED_ENC_PUB_KEYS, VOICECREDITBALANCE, VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP, VOTINGTIME, WHITELIST, 
-    ZEROS, ZEROS_H10,
+    MSG_HASHES, NODES, NULLIFIERS, NUMSIGNUPS, ORACLE_WHITELIST, ORACLE_WHITELIST_PUBKEY, 
+    PENALTY_RATE, PERIOD, PRE_DEACTIVATE_ROOT, PROCESSED_DMSG_COUNT, PROCESSED_MSG_COUNT, 
+    PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO, SIGNUPED, STATEIDXINC, STATE_ROOT_BY_DMSG, 
+    TALLY_DELAY_MAX_HOURS, TALLY_TIMEOUT, TOTAL_RESULT, USED_ENC_PUB_KEYS, VOICECREDITBALANCE, 
+    VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS, ZEROS_H10,
 };
 use cosmwasm_schema::cw_serde;
 #[cfg(not(feature = "library"))]
@@ -33,11 +34,36 @@ use cosmwasm_std::{
     MessageInfo, Response, StdResult, Timestamp, Uint128, Uint256,
 };
 
+use sha2::{Digest, Sha256};
+
 use bellman_ce_verifier::{prepare_verifying_key, verify_proof as groth16_verify};
 
 use ff_ce::PrimeField as Fr;
 
 use hex;
+
+/// Convert a contract address to Uint256 format
+/// This function takes the address bytes and converts them to a Uint256
+fn address_to_uint256(address: &Addr) -> Uint256 {
+    let address_bytes = address.as_bytes();
+
+    // Use SHA256 hash to convert the address to a fixed-length 32-byte format
+    let mut hasher = Sha256::new();
+    hasher.update(address_bytes);
+    let hash_result = hasher.finalize();
+
+    // Convert the hash bytes to Uint256
+    let mut bytes = [0u8; 32];
+    bytes.copy_from_slice(&hash_result[..]);
+
+    // Convert bytes to Uint256 (big-endian)
+    let mut uint256_bytes = [0u8; 32];
+    for (i, &byte) in bytes.iter().enumerate() {
+        uint256_bytes[31 - i] = byte; // Reverse for little-endian to big-endian conversion
+    }
+
+    Uint256::from_be_bytes(uint256_bytes)
+}
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:cw-amaci";
@@ -120,6 +146,11 @@ pub fn instantiate(
             WHITELIST.save(deps.storage, &whitelists)?;
         }
         None => {}
+    }
+    
+    // Save oracle whitelist pubkey if provided
+    if let Some(oracle_pubkey) = msg.oracle_whitelist_pubkey {
+        ORACLE_WHITELIST_PUBKEY.save(deps.storage, &oracle_pubkey)?;
     }
 
     // Save the MACI parameters to storage
@@ -424,7 +455,9 @@ pub fn execute(
             execute_set_vote_options_map(deps, env, info, vote_option_map)
         }
         // ExecuteMsg::StartVotingPeriod {} => execute_start_voting_period(deps, env, info),
-        ExecuteMsg::SignUp { pubkey } => execute_sign_up(deps, env, info, pubkey),
+        ExecuteMsg::SignUp { pubkey, certificate } => {
+            execute_sign_up(deps, env, info, pubkey, certificate)
+        }
         // ExecuteMsg::StopVotingPeriod {} => execute_stop_voting_period(deps, env, info),
         ExecuteMsg::PublishDeactivateMessage {
             message,
@@ -597,38 +630,94 @@ pub fn execute_set_vote_options_map(
     }
 }
 
-// in voting
+// in voting - unified signup for both traditional and oracle modes
 pub fn execute_sign_up(
     mut deps: DepsMut,
     env: Env,
     info: MessageInfo,
     pubkey: PubKey,
+    certificate: Option<String>,
 ) -> Result<Response, ContractError> {
     let voting_time = VOTINGTIME.load(deps.storage)?;
-    check_voting_time(env, voting_time)?;
-    if !is_whitelist(deps.as_ref(), &info.sender)? {
-        return Err(ContractError::Unauthorized {});
-    }
+    check_voting_time(env.clone(), voting_time)?;
 
-    if is_register(deps.as_ref(), &info.sender)? {
-        return Err(ContractError::UserAlreadyRegistered {});
-    }
-    // let user_balance = user_balance_of(deps.as_ref(), info.sender.as_ref())?;
-    // if user_balance == Uint256::from_u128(0u128) {
-    //     return Err(ContractError::Unauthorized {});
-    // }
+    // Determine which mode to use based on certificate parameter
+    let is_oracle_mode = certificate.is_some();
+    
+    // Load voice credit amount (unified for both modes)
     let voice_credit_amount = VOICE_CREDIT_AMOUNT.load(deps.storage)?;
+    
+    if is_oracle_mode {
+        // Oracle mode: verify signature using voice_credit_amount
+        let certificate = certificate.unwrap();
+
+        // Check if oracle whitelist pubkey exists
+        let oracle_whitelist_pubkey = ORACLE_WHITELIST_PUBKEY.may_load(deps.storage)?;
+        if oracle_whitelist_pubkey.is_none() {
+            return Err(ContractError::OracleWhitelistNotConfigured {});
+        }
+        let oracle_pubkey_str = oracle_whitelist_pubkey.unwrap();
+
+        // Verify oracle signature using voice_credit_amount as the standard amount
+        // Convert contract address to uint256 format to match api-maci
+        let contract_address_uint256 = address_to_uint256(&env.contract.address);
+        
+        let payload = serde_json::json!({
+            "amount": voice_credit_amount.to_string(),
+            "contract_address": contract_address_uint256.to_string(),
+            "pubkey_x": pubkey.x.to_string(),
+            "pubkey_y": pubkey.y.to_string(),
+        });
+
+        let msg = payload.to_string().into_bytes();
+        let hash = Sha256::digest(&msg);
+
+        let certificate_binary =
+            Binary::from_base64(&certificate).map_err(|_| ContractError::InvalidBase64 {})?;
+        let oracle_pubkey_binary = Binary::from_base64(&oracle_pubkey_str)
+            .map_err(|_| ContractError::InvalidBase64 {})?;
+        let verify_result = deps
+            .api
+            .secp256k1_verify(
+                hash.as_ref(),
+                certificate_binary.as_slice(),
+                oracle_pubkey_binary.as_slice(),
+            )
+            .map_err(|_| ContractError::VerificationFailed {})?;
+        if !verify_result {
+            return Err(ContractError::InvalidSignature {});
+        }
+
+        // Check if user already signed up in oracle mode - use pubkey instead of sender
+        if ORACLE_WHITELIST.has(
+            deps.storage,
+            &(
+                pubkey.x.to_be_bytes().to_vec(),
+                pubkey.y.to_be_bytes().to_vec(),
+            ),
+        ) {
+            return Err(ContractError::AlreadySignedUp {});
+        }
+
+        // Oracle verification passed - user is qualified
+        // In amaci, all verified users get the same voice_credit_amount
+    } else {
+        // Traditional mode: check whitelist
+        if !is_whitelist(deps.as_ref(), &info.sender)? {
+            return Err(ContractError::Unauthorized {});
+        }
+
+        if is_register(deps.as_ref(), &info.sender)? {
+            return Err(ContractError::UserAlreadyRegistered {});
+        }
+    }
 
     let mut num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
-
     let max_leaves_count = MAX_LEAVES_COUNT.load(deps.storage)?;
 
-    // // Load the scalar field value
+    // Load the scalar field value
     let snark_scalar_field =
         uint256_from_hex_string("30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001");
-    // let snark_scalar_field = uint256_from_decimal_string(
-    // "21888242871839275222246405745257275088548364400416034343698204186575808495617",
-    // );
 
     // Check if the number of sign-ups is less than the maximum number of leaves
     assert!(num_sign_ups < max_leaves_count, "full");
@@ -638,7 +727,7 @@ pub fn execute_sign_up(
         "MACI: pubkey values should be less than the snark scalar field"
     );
 
-    // Create a state leaf with the provided pubkey and amount
+    // Create a state leaf with the provided pubkey and voice credit amount
     let state_leaf = StateLeaf {
         pub_key: pubkey.clone(),
         voice_credit_balance: voice_credit_amount,
@@ -652,22 +741,35 @@ pub fn execute_sign_up(
     state_enqueue(&mut deps, state_leaf)?;
     num_sign_ups += Uint256::from_u128(1u128);
 
-    // Save the updated state index, voice credit balance, and number of sign-ups
-    // STATEIDXINC.save(deps.storage, &info.sender, &num_sign_ups)?;
-    // VOICECREDITBALANCE.save(
-    //     deps.storage,
-    //     state_index.to_be_bytes().to_vec(),
-    //     &voice_credit_amount,
-    // )?;
+    // Save the updated state index and number of sign-ups
     NUMSIGNUPS.save(deps.storage, &num_sign_ups)?;
     SIGNUPED.save(deps.storage, pubkey.x.to_be_bytes().to_vec(), &num_sign_ups)?;
 
-    let mut whitelist = WHITELIST.load(deps.storage)?;
-    whitelist.register(&info.sender);
-    WHITELIST.save(deps.storage, &whitelist)?;
+    // Update storage based on mode
+    if is_oracle_mode {
+        // Save oracle whitelist user - use pubkey instead of sender
+        let oracle_user = OracleWhitelistUser {
+            balance: voice_credit_amount,
+            is_register: true,
+        };
+        ORACLE_WHITELIST.save(
+            deps.storage,
+            &(
+                pubkey.x.to_be_bytes().to_vec(),
+                pubkey.y.to_be_bytes().to_vec(),
+            ),
+            &oracle_user,
+        )?;
+    } else {
+        // Update traditional whitelist
+        let mut whitelist = WHITELIST.load(deps.storage)?;
+        whitelist.register(&info.sender);
+        WHITELIST.save(deps.storage, &whitelist)?;
+    }
 
     Ok(Response::new()
         .add_attribute("action", "sign_up")
+        .add_attribute("mode", if is_oracle_mode { "oracle" } else { "traditional" })
         .add_attribute("state_idx", state_index.to_string())
         .add_attribute(
             "pubkey",
@@ -2149,6 +2251,18 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 .map_err(|e| cosmwasm_std::StdError::generic_err(e.to_string()))?;
             to_json_binary(&delay_info)
         }
+        QueryMsg::QueryOracleWhitelistConfig {} => {
+            let pubkey = ORACLE_WHITELIST_PUBKEY.may_load(deps.storage)?;
+            to_json_binary(&pubkey)
+        }
+        QueryMsg::CanSignUpWithOracle { pubkey, certificate } => {
+            let can_signup = can_sign_up_with_oracle(deps, _env, pubkey, certificate)?;
+            to_json_binary(&can_signup)
+        }
+        QueryMsg::WhiteBalanceOf { pubkey, certificate } => {
+            let balance = user_balance_of_oracle(deps, _env, pubkey, certificate)?;
+            to_json_binary(&balance)
+        }
     }
 }
 
@@ -2287,4 +2401,109 @@ pub fn calculate_tally_delay(deps: Deps) -> Result<TallyDelayInfo, ContractError
         msg_chain_length,
         calculated_hours,
     })
+}
+
+
+// Check if user can sign up with oracle
+fn can_sign_up_with_oracle(
+    deps: Deps,
+    env: Env,
+    pubkey: PubKey,
+    certificate: String,
+) -> StdResult<bool> {
+    // Check if oracle whitelist pubkey exists
+    let oracle_whitelist_pubkey = ORACLE_WHITELIST_PUBKEY.may_load(deps.storage)?;
+    if oracle_whitelist_pubkey.is_none() {
+        return Ok(false);
+    }
+    let oracle_pubkey_str = oracle_whitelist_pubkey.unwrap();
+
+    // Use the contract's voice_credit_amount for verification
+    let voice_credit_amount = VOICE_CREDIT_AMOUNT.load(deps.storage)?;
+
+    // Convert contract address to uint256 format to match api-maci
+    let contract_address_uint256 = address_to_uint256(&env.contract.address);
+
+    let payload = serde_json::json!({
+        "amount": voice_credit_amount.to_string(),
+        "contract_address": contract_address_uint256.to_string(),
+        "pubkey_x": pubkey.x.to_string(),
+        "pubkey_y": pubkey.y.to_string(),
+    });
+
+    let msg = payload.to_string().into_bytes();
+    let hash = Sha256::digest(&msg);
+
+    let certificate_binary = Binary::from_base64(&certificate)?;
+    let oracle_pubkey_binary = Binary::from_base64(&oracle_pubkey_str)?;
+    let verify_result = deps.api.secp256k1_verify(
+        hash.as_ref(),
+        certificate_binary.as_slice(),
+        oracle_pubkey_binary.as_slice(),
+    )?;
+
+    Ok(verify_result)
+}
+
+// Get user balance with oracle verification
+fn user_balance_of_oracle(
+    deps: Deps,
+    env: Env,
+    pubkey: PubKey,
+    certificate: String,
+) -> StdResult<Uint256> {
+    // Check if user already registered (by pubkey)
+    if ORACLE_WHITELIST.has(
+        deps.storage,
+        &(
+            pubkey.x.to_be_bytes().to_vec(),
+            pubkey.y.to_be_bytes().to_vec(),
+        ),
+    ) {
+        let cfg = ORACLE_WHITELIST.load(
+            deps.storage,
+            &(
+                pubkey.x.to_be_bytes().to_vec(),
+                pubkey.y.to_be_bytes().to_vec(),
+            ),
+        )?;
+        return Ok(cfg.balance_of());
+    }
+
+    // Check if oracle whitelist pubkey exists
+    let oracle_whitelist_pubkey = ORACLE_WHITELIST_PUBKEY.may_load(deps.storage)?;
+    if oracle_whitelist_pubkey.is_none() {
+        return Ok(Uint256::zero());
+    }
+    let oracle_pubkey_str = oracle_whitelist_pubkey.unwrap();
+
+    // Use the contract's voice_credit_amount for verification
+    let voice_credit_amount = VOICE_CREDIT_AMOUNT.load(deps.storage)?;
+
+    // Convert contract address to uint256 format to match api-maci
+    let contract_address_uint256 = address_to_uint256(&env.contract.address);
+
+    let payload = serde_json::json!({
+        "amount": voice_credit_amount.to_string(),
+        "contract_address": contract_address_uint256.to_string(),
+        "pubkey_x": pubkey.x.to_string(),
+        "pubkey_y": pubkey.y.to_string(),
+    });
+
+    let msg = payload.to_string().into_bytes();
+    let hash = Sha256::digest(&msg);
+
+    let certificate_binary = Binary::from_base64(&certificate)?;
+    let oracle_pubkey_binary = Binary::from_base64(&oracle_pubkey_str)?;
+    let verify_result = deps.api.secp256k1_verify(
+        hash.as_ref(),
+        certificate_binary.as_slice(),
+        oracle_pubkey_binary.as_slice(),
+    )?;
+    
+    if verify_result {
+        // Always return voice_credit_amount if verification passes
+        return Ok(voice_credit_amount);
+    }
+    Ok(Uint256::zero())
 }

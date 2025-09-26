@@ -122,7 +122,7 @@ pub fn instantiate(
     let fee_grant_amount = info
         .funds
         .iter()
-        .find(|coin| coin.denom == "peaka") // 或者使用适当的代币名称
+        .find(|coin| coin.denom == "peaka") // Or use appropriate token name
         .map(|coin| coin.amount)
         .unwrap_or_else(|| Uint128::zero());
 
@@ -1821,6 +1821,6 @@ mod tests {}
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(_deps: DepsMut, _env: Env, _msg: Reply) -> Result<Response, ContractError> {
-    // Oracle MACI合约本身不需要处理任何reply，但需要这个函数来支持multitest
+    // Oracle MACI contract itself does not need to handle any reply, but needs this function to support multitest
     Ok(Response::default())
 }

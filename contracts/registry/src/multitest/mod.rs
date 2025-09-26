@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests;
 
+pub mod certificate_generator;
+
 use anyhow::Result as AnyResult;
 
 use crate::{
@@ -198,6 +200,7 @@ impl AmaciRegistryContract {
             pre_deactivate_root: Uint256::from_u128(0u128),
             circuit_type,
             certification_system,
+            oracle_whitelist_pubkey: None,
         };
 
         app.execute_contract(sender, self.addr(), &msg, send_funds)
@@ -244,6 +247,48 @@ impl AmaciRegistryContract {
             pre_deactivate_root: Uint256::from_u128(0u128),
             circuit_type,
             certification_system,
+            oracle_whitelist_pubkey: None,
+        };
+
+        app.execute_contract(sender, self.addr(), &msg, send_funds)
+    }
+
+    #[track_caller]
+    pub fn create_round_with_oracle(
+        &self,
+        app: &mut App,
+        sender: Addr,
+        operator: Addr,
+        circuit_type: Uint256,
+        certification_system: Uint256,
+        oracle_whitelist_pubkey: String,
+        send_funds: &[Coin],
+    ) -> AnyResult<AppResponse> {
+        let round_info = RoundInfo {
+            title: String::from("Oracle MACI Test"),
+            description: String::from("Testing Oracle MACI mode"),
+            link: String::from("https://test.com"),
+        };
+
+        let start_time = Timestamp::from_nanos(1571797424879000000);
+        let end_time = start_time.plus_minutes(21);
+
+
+        let msg = ExecuteMsg::CreateRound {
+            operator,
+            round_info,
+            max_voter: Uint256::from_u128(5u128),
+            max_option: Uint256::from_u128(5u128),
+            voice_credit_amount: Uint256::from_u128(100u128),
+            voting_time: VotingTime {
+                start_time,
+                end_time,
+            },
+            whitelist: None,
+            pre_deactivate_root: Uint256::from_u128(0u128),
+            circuit_type,
+            certification_system,
+                oracle_whitelist_pubkey: Some(oracle_whitelist_pubkey),
         };
 
         app.execute_contract(sender, self.addr(), &msg, send_funds)

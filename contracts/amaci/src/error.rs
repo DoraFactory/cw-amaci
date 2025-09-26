@@ -131,4 +131,26 @@ pub enum ContractError {
 
     #[error("Encrypted public key already used")]
     EncPubKeyAlreadyUsed {},
+
+    // Oracle whitelist related errors
+    #[error("Amount is zero")]
+    AmountIsZero {},
+
+    #[error("Oracle whitelist not configured")]
+    OracleWhitelistNotConfigured {},
+
+    #[error("Invalid base64 encoding")]
+    InvalidBase64 {},
+
+    #[error("Verification failed")]
+    VerificationFailed {},
+
+    #[error("Invalid signature")]
+    InvalidSignature {},
+
+    #[error("Already signed up")]
+    AlreadySignedUp {},
+
+    #[error("Voting power is zero")]
+    VotingPowerIsZero {},
 }

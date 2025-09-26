@@ -229,6 +229,44 @@ impl SaasContract {
         )
     }
 
+    #[track_caller]
+    pub fn create_amaci_round(
+        &self,
+        app: &mut App,
+        sender: Addr,
+        operator: Addr,
+        max_voter: cosmwasm_std::Uint256,
+        max_option: cosmwasm_std::Uint256,
+        voice_credit_amount: cosmwasm_std::Uint256,
+        round_info: RoundInfo,
+        voting_time: cw_amaci::state::VotingTime,
+        whitelist: Option<cw_amaci::msg::WhitelistBase>,
+        pre_deactivate_root: cosmwasm_std::Uint256,
+        circuit_type: cosmwasm_std::Uint256,
+        certification_system: cosmwasm_std::Uint256,
+        oracle_whitelist_pubkey: Option<String>,
+        funds: &[Coin],
+    ) -> AnyResult<AppResponse> {
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::CreateAmaciRound {
+                operator,
+                max_voter,
+                max_option,
+                voice_credit_amount,
+                round_info,
+                voting_time,
+                whitelist,
+                pre_deactivate_root,
+                circuit_type,
+                certification_system,
+                oracle_whitelist_pubkey,
+            },
+            funds,
+        )
+    }
+
     // Query methods
     pub fn query_config(&self, app: &App) -> StdResult<Config> {
         app.wrap()
