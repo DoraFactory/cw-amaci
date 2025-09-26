@@ -1,12 +1,12 @@
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 mod certificate_generator;
+#[cfg(test)]
+mod tests;
 
 use anyhow::Result as AnyResult;
 
 use crate::state::{
-    DelayRecords, MaciParameters, MessageData, Period, PubKey, RoundInfo, VotingTime
+    DelayRecords, MaciParameters, MessageData, Period, PubKey, RoundInfo, VotingTime,
 };
 use crate::utils::uint256_from_hex_string;
 use crate::{
@@ -408,12 +408,34 @@ impl MaciContract {
 
     #[track_caller]
     pub fn sign_up(&self, app: &mut App, sender: Addr, pubkey: PubKey) -> AnyResult<AppResponse> {
-        app.execute_contract(sender, self.addr(), &ExecuteMsg::SignUp { pubkey, certificate: None }, &[])
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::SignUp {
+                pubkey,
+                certificate: None,
+            },
+            &[],
+        )
     }
 
     #[track_caller]
-    pub fn sign_up_oracle(&self, app: &mut App, sender: Addr, pubkey: PubKey, certificate: String) -> AnyResult<AppResponse> {
-        app.execute_contract(sender, self.addr(), &ExecuteMsg::SignUp { pubkey, certificate: Some(certificate) }, &[])
+    pub fn sign_up_oracle(
+        &self,
+        app: &mut App,
+        sender: Addr,
+        pubkey: PubKey,
+        certificate: String,
+    ) -> AnyResult<AppResponse> {
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::SignUp {
+                pubkey,
+                certificate: Some(certificate),
+            },
+            &[],
+        )
     }
 
     #[track_caller]
@@ -746,7 +768,15 @@ impl MaciContract {
         sender: Addr,
         pubkey: PubKey,
     ) -> AnyResult<AppResponse> {
-        app.execute_contract(sender, self.addr(), &ExecuteMsg::SignUp { pubkey, certificate: None }, &[])
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::SignUp {
+                pubkey,
+                certificate: None,
+            },
+            &[],
+        )
     }
 
     #[track_caller]
@@ -757,9 +787,16 @@ impl MaciContract {
         pubkey: PubKey,
         certificate: String,
     ) -> AnyResult<AppResponse> {
-        app.execute_contract(sender, self.addr(), &ExecuteMsg::SignUp { pubkey, certificate: Some(certificate) }, &[])
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::SignUp {
+                pubkey,
+                certificate: Some(certificate),
+            },
+            &[],
+        )
     }
-
 
     #[track_caller]
     pub fn amaci_publish_message(
@@ -1202,15 +1239,23 @@ pub fn operator() -> Addr {
 // Test data for oracle mode
 pub fn test_pubkey1() -> PubKey {
     PubKey {
-        x: uint256_from_decimal_string("3557592161792765812904087712812111121909518311142005886657252371904276697771"),
-        y: uint256_from_decimal_string("4363822302427519764561660537570341277214758164895027920046745209970137856681"),
+        x: uint256_from_decimal_string(
+            "3557592161792765812904087712812111121909518311142005886657252371904276697771",
+        ),
+        y: uint256_from_decimal_string(
+            "4363822302427519764561660537570341277214758164895027920046745209970137856681",
+        ),
     }
 }
 
 pub fn test_pubkey2() -> PubKey {
     PubKey {
-        x: uint256_from_decimal_string("1234567890123456789012345678901234567890123456789012345678901234567890123456"),
-        y: uint256_from_decimal_string("9876543210987654321098765432109876543210987654321098765432109876543210987654"),
+        x: uint256_from_decimal_string(
+            "1234567890123456789012345678901234567890123456789012345678901234567890123456",
+        ),
+        y: uint256_from_decimal_string(
+            "9876543210987654321098765432109876543210987654321098765432109876543210987654",
+        ),
     }
 }
 

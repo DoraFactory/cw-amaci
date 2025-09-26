@@ -2,11 +2,11 @@
 mod test {
     use crate::error::ContractError;
     use crate::msg::Groth16ProofType;
-    use crate::multitest::{
-        create_app, owner, uint256_from_decimal_string, user1, user2, user3, MaciCodeId,
-        test_pubkey1, test_pubkey2, test_oracle_pubkey, MaciContract,
-    };
     use crate::multitest::certificate_generator::generate_certificate_for_pubkey;
+    use crate::multitest::{
+        create_app, owner, test_oracle_pubkey, test_pubkey1, test_pubkey2,
+        uint256_from_decimal_string, user1, user2, user3, MaciCodeId, MaciContract,
+    };
     use crate::state::{
         DelayRecord, DelayRecords, DelayType, MessageData, Period, PeriodStatus, PubKey,
     };
@@ -1845,24 +1845,28 @@ mod test {
         );
 
         // Test oracle signup for user1
-        let response1 = contract.sign_up_oracle(&mut app, user1(), pubkey1.clone(), cert1).unwrap();
+        let response1 = contract
+            .sign_up_oracle(&mut app, user1(), pubkey1.clone(), cert1)
+            .unwrap();
         assert!(response1.events.iter().any(|e| {
-            e.attributes.iter().any(|attr| {
-                attr.key == "action" && attr.value == "sign_up"
-            })
+            e.attributes
+                .iter()
+                .any(|attr| attr.key == "action" && attr.value == "sign_up")
         }));
         assert!(response1.events.iter().any(|e| {
-            e.attributes.iter().any(|attr| {
-                attr.key == "mode" && attr.value == "oracle"
-            })
+            e.attributes
+                .iter()
+                .any(|attr| attr.key == "mode" && attr.value == "oracle")
         }));
 
         // Test oracle signup for user2
-        let response2 = contract.sign_up_oracle(&mut app, user2(), pubkey2.clone(), cert2).unwrap();
+        let response2 = contract
+            .sign_up_oracle(&mut app, user2(), pubkey2.clone(), cert2)
+            .unwrap();
         assert!(response2.events.iter().any(|e| {
-            e.attributes.iter().any(|attr| {
-                attr.key == "action" && attr.value == "sign_up"
-            })
+            e.attributes
+                .iter()
+                .any(|attr| attr.key == "action" && attr.value == "sign_up")
         }));
 
         // Verify signup count
@@ -1926,19 +1930,19 @@ mod test {
         });
 
         let pubkey1 = test_pubkey1();
-        
+
         // Try signup with invalid certificate
         let invalid_cert = "invalid_base64_certificate";
         let invalid_cert_error = contract
             .sign_up_oracle(&mut app, user1(), pubkey1, invalid_cert.to_string())
             .unwrap_err();
-        
+
         // Should fail with InvalidBase64 or InvalidSignature error
         let error = invalid_cert_error.downcast::<ContractError>().unwrap();
-        assert!(matches!(error, ContractError::InvalidBase64 {} | ContractError::InvalidSignature {}));
-
-        
-        
+        assert!(matches!(
+            error,
+            ContractError::InvalidBase64 {} | ContractError::InvalidSignature {}
+        ));
     }
 
     #[test]
@@ -1979,12 +1983,12 @@ mod test {
 
         let pubkey1 = test_pubkey1();
         let fake_cert = "fake_certificate";
-        
+
         // Try oracle signup without oracle config
         let no_config_error = contract
             .sign_up_oracle(&mut app, user1(), pubkey1, fake_cert.to_string())
             .unwrap_err();
-        
+
         assert_eq!(
             ContractError::OracleWhitelistNotConfigured {},
             no_config_error.downcast().unwrap()

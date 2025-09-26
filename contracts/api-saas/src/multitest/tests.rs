@@ -4,8 +4,8 @@ use cw_multi_test::{AppBuilder, Contract, ContractWrapper, Executor, StargateAcc
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, PubKey};
 use crate::multitest::{
-    admin, create_app, creator, operator1, operator2, treasury_manager,
-    user1, user2, SaasCodeId, DORA_DEMON,
+    admin, create_app, creator, operator1, operator2, treasury_manager, user1, user2, SaasCodeId,
+    DORA_DEMON,
 };
 use cw_amaci::multitest::uint256_from_decimal_string;
 use cw_api_maci;
@@ -1071,7 +1071,7 @@ fn test_create_amaci_round_success_real() {
     )
     .unwrap();
 
-    // Set maci operator (validator can do this) 
+    // Set maci operator (validator can do this)
     let dora_operator = Addr::unchecked("dora1eu7mhp4ggxd6utnz8uzurw395natgs6jskl4ug");
     app.execute_contract(
         admin(), // admin as validator
@@ -1111,7 +1111,9 @@ fn test_create_amaci_round_success_real() {
         .unwrap();
 
     // Add operator to SaaS contract
-    contract.add_operator(&mut app, admin(), operator1()).unwrap();
+    contract
+        .add_operator(&mut app, admin(), operator1())
+        .unwrap();
 
     // Create AMACI round parameters
     let dora_operator = Addr::unchecked("dora1eu7mhp4ggxd6utnz8uzurw395natgs6jskl4ug"); // Use valid dora address
@@ -1127,34 +1129,41 @@ fn test_create_amaci_round_success_real() {
     // Create AMACI round via SaaS contract
     let result = contract.create_amaci_round(
         &mut app,
-        operator1(), // sender (must be operator in SaaS)
+        operator1(),   // sender (must be operator in SaaS)
         dora_operator, // operator parameter (must be operator in registry)
         max_voter,
         max_option,
         voice_credit_amount,
         round_info.clone(),
         voting_time,
-        None, // no whitelist
+        None,            // no whitelist
         Uint256::zero(), // pre_deactivate_root
         circuit_type,
         certification_system,
-        None, // oracle_whitelist_pubkey
+        None,                             // oracle_whitelist_pubkey
         &coins(required_fee, DORA_DEMON), // send required fee
     );
 
     // Should succeed
-    assert!(result.is_ok(), "AMACI round creation should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "AMACI round creation should succeed: {:?}",
+        result.err()
+    );
 
     let response = result.unwrap();
 
     // Verify response attributes
     let attrs: Vec<_> = response.events.iter().flat_map(|e| &e.attributes).collect();
-    
+
     // Check SaaS contract attributes
     let action_attr = attrs.iter().find(|attr| attr.key == "action").unwrap();
     assert_eq!(action_attr.value, "create_amaci_round_via_registry");
 
-    let registry_attr = attrs.iter().find(|attr| attr.key == "registry_contract").unwrap();
+    let registry_attr = attrs
+        .iter()
+        .find(|attr| attr.key == "registry_contract")
+        .unwrap();
     assert_eq!(registry_attr.value, registry_addr.to_string());
 
     let round_title_attr = attrs.iter().find(|attr| attr.key == "round_title").unwrap();
@@ -1162,9 +1171,12 @@ fn test_create_amaci_round_success_real() {
 
     // Check that a real AMACI contract was created (we should get a real contract address)
     let amaci_addr_attr = attrs.iter().find(|attr| attr.key == "amaci_contract_addr");
-    assert!(amaci_addr_attr.is_some(), "Should have amaci_contract_addr attribute");
+    assert!(
+        amaci_addr_attr.is_some(),
+        "Should have amaci_contract_addr attribute"
+    );
     let amaci_contract_addr_raw = amaci_addr_attr.unwrap().value.clone();
-    // Parse the JSON format {"addr":"contract2"} 
+    // Parse the JSON format {"addr":"contract2"}
     let amaci_contract_addr = if amaci_contract_addr_raw.starts_with("{") {
         // It's in JSON format, parse it
         let parsed: serde_json::Value = serde_json::from_str(&amaci_contract_addr_raw).unwrap();
@@ -1172,18 +1184,24 @@ fn test_create_amaci_round_success_real() {
     } else {
         amaci_contract_addr_raw
     };
-    
+
     // The AMACI contract address should be a valid contract address, not our mock value
     assert_ne!(amaci_contract_addr, "contract42");
     println!("Got AMACI contract address: {}", amaci_contract_addr);
-    assert!(!amaci_contract_addr.is_empty(), "AMACI contract address should not be empty");
+    assert!(
+        !amaci_contract_addr.is_empty(),
+        "AMACI contract address should not be empty"
+    );
 
     // Verify the AMACI contract exists by querying its round info
     let round_info_query: cw_amaci::state::RoundInfo = app
         .wrap()
-        .query_wasm_smart(amaci_contract_addr, &cw_amaci::msg::QueryMsg::GetRoundInfo {})
+        .query_wasm_smart(
+            amaci_contract_addr,
+            &cw_amaci::msg::QueryMsg::GetRoundInfo {},
+        )
         .unwrap();
-    
+
     assert_eq!(round_info_query.title, round_info.title);
     assert_eq!(round_info_query.description, round_info.description);
     assert_eq!(round_info_query.link, round_info.link);
@@ -1233,24 +1251,27 @@ fn test_create_amaci_round_unauthorized_real() {
     // Try to create AMACI round as non-operator
     let result = contract.create_amaci_round(
         &mut app,
-        user1(), // sender (not an operator in SaaS)
-        admin(), // operator parameter
-        Uint256::from(25u128), // max_voter
-        Uint256::from(5u128), // max_option
+        user1(),                // sender (not an operator in SaaS)
+        admin(),                // operator parameter
+        Uint256::from(25u128),  // max_voter
+        Uint256::from(5u128),   // max_option
         Uint256::from(100u128), // voice_credit_amount
         crate::multitest::test_round_info(),
         crate::multitest::test_voting_time(),
-        None, // no whitelist
+        None,            // no whitelist
         Uint256::zero(), // pre_deactivate_root
         Uint256::zero(), // circuit_type
         Uint256::zero(), // certification_system
-        None, // oracle_whitelist_pubkey
-        &[], // no fee (will fail before fee checking)
+        None,            // oracle_whitelist_pubkey
+        &[],             // no fee (will fail before fee checking)
     );
 
     // Should fail with Unauthorized
-    assert!(result.is_err(), "Non-operator should not be able to create AMACI round");
-    
+    assert!(
+        result.is_err(),
+        "Non-operator should not be able to create AMACI round"
+    );
+
     let error = result.unwrap_err();
     assert_eq!(
         error.downcast::<ContractError>().unwrap(),

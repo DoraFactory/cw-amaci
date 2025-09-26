@@ -7,18 +7,17 @@ use crate::msg::{
 };
 use crate::state::{
     Admin, DelayRecord, DelayRecords, DelayType, Groth16ProofStr, MaciParameters, MessageData,
-    OracleWhitelistUser, Period, PeriodStatus, PubKey, QuinaryTreeRoot, 
-    RoundInfo, StateLeaf, VotingTime, Whitelist,
-    WhitelistConfig, ADMIN, CERTSYSTEM, CIRCUITTYPE, COORDINATORHASH, CREATE_ROUND_WINDOW,
-    CURRENT_DEACTIVATE_COMMITMENT, CURRENT_STATE_COMMITMENT, CURRENT_TALLY_COMMITMENT,
-    DEACTIVATE_COUNT, DEACTIVATE_DELAY, DELAY_RECORDS, DMSG_CHAIN_LENGTH, DMSG_HASHES, DNODES,
-    FEEGRANTS, FEE_RECIPIENT, FIRST_DMSG_TIMESTAMP, GROTH16_DEACTIVATE_VKEYS, GROTH16_NEWKEY_VKEYS,
-    GROTH16_PROCESS_VKEYS, GROTH16_TALLY_VKEYS, LEAF_IDX_0, MACIPARAMETERS,
+    OracleWhitelistUser, Period, PeriodStatus, PubKey, QuinaryTreeRoot, RoundInfo, StateLeaf,
+    VotingTime, Whitelist, WhitelistConfig, ADMIN, CERTSYSTEM, CIRCUITTYPE, COORDINATORHASH,
+    CREATE_ROUND_WINDOW, CURRENT_DEACTIVATE_COMMITMENT, CURRENT_STATE_COMMITMENT,
+    CURRENT_TALLY_COMMITMENT, DEACTIVATE_COUNT, DEACTIVATE_DELAY, DELAY_RECORDS, DMSG_CHAIN_LENGTH,
+    DMSG_HASHES, DNODES, FEEGRANTS, FEE_RECIPIENT, FIRST_DMSG_TIMESTAMP, GROTH16_DEACTIVATE_VKEYS,
+    GROTH16_NEWKEY_VKEYS, GROTH16_PROCESS_VKEYS, GROTH16_TALLY_VKEYS, LEAF_IDX_0, MACIPARAMETERS,
     MACI_DEACTIVATE_MESSAGE, MACI_OPERATOR, MAX_LEAVES_COUNT, MAX_VOTE_OPTIONS, MSG_CHAIN_LENGTH,
-    MSG_HASHES, NODES, NULLIFIERS, NUMSIGNUPS, ORACLE_WHITELIST, ORACLE_WHITELIST_PUBKEY, 
-    PENALTY_RATE, PERIOD, PRE_DEACTIVATE_ROOT, PROCESSED_DMSG_COUNT, PROCESSED_MSG_COUNT, 
-    PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO, SIGNUPED, STATEIDXINC, STATE_ROOT_BY_DMSG, 
-    TALLY_DELAY_MAX_HOURS, TALLY_TIMEOUT, TOTAL_RESULT, USED_ENC_PUB_KEYS, VOICECREDITBALANCE, 
+    MSG_HASHES, NODES, NULLIFIERS, NUMSIGNUPS, ORACLE_WHITELIST, ORACLE_WHITELIST_PUBKEY,
+    PENALTY_RATE, PERIOD, PRE_DEACTIVATE_ROOT, PROCESSED_DMSG_COUNT, PROCESSED_MSG_COUNT,
+    PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO, SIGNUPED, STATEIDXINC, STATE_ROOT_BY_DMSG,
+    TALLY_DELAY_MAX_HOURS, TALLY_TIMEOUT, TOTAL_RESULT, USED_ENC_PUB_KEYS, VOICECREDITBALANCE,
     VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS, ZEROS_H10,
 };
 use cosmwasm_schema::cw_serde;
@@ -147,7 +146,7 @@ pub fn instantiate(
         }
         None => {}
     }
-    
+
     // Save oracle whitelist pubkey if provided
     if let Some(oracle_pubkey) = msg.oracle_whitelist_pubkey {
         ORACLE_WHITELIST_PUBKEY.save(deps.storage, &oracle_pubkey)?;
@@ -455,9 +454,10 @@ pub fn execute(
             execute_set_vote_options_map(deps, env, info, vote_option_map)
         }
         // ExecuteMsg::StartVotingPeriod {} => execute_start_voting_period(deps, env, info),
-        ExecuteMsg::SignUp { pubkey, certificate } => {
-            execute_sign_up(deps, env, info, pubkey, certificate)
-        }
+        ExecuteMsg::SignUp {
+            pubkey,
+            certificate,
+        } => execute_sign_up(deps, env, info, pubkey, certificate),
         // ExecuteMsg::StopVotingPeriod {} => execute_stop_voting_period(deps, env, info),
         ExecuteMsg::PublishDeactivateMessage {
             message,
@@ -643,10 +643,10 @@ pub fn execute_sign_up(
 
     // Determine which mode to use based on certificate parameter
     let is_oracle_mode = certificate.is_some();
-    
+
     // Load voice credit amount (unified for both modes)
     let voice_credit_amount = VOICE_CREDIT_AMOUNT.load(deps.storage)?;
-    
+
     if is_oracle_mode {
         // Oracle mode: verify signature using voice_credit_amount
         let certificate = certificate.unwrap();
@@ -661,7 +661,7 @@ pub fn execute_sign_up(
         // Verify oracle signature using voice_credit_amount as the standard amount
         // Convert contract address to uint256 format to match api-maci
         let contract_address_uint256 = address_to_uint256(&env.contract.address);
-        
+
         let payload = serde_json::json!({
             "amount": voice_credit_amount.to_string(),
             "contract_address": contract_address_uint256.to_string(),
@@ -674,8 +674,8 @@ pub fn execute_sign_up(
 
         let certificate_binary =
             Binary::from_base64(&certificate).map_err(|_| ContractError::InvalidBase64 {})?;
-        let oracle_pubkey_binary = Binary::from_base64(&oracle_pubkey_str)
-            .map_err(|_| ContractError::InvalidBase64 {})?;
+        let oracle_pubkey_binary =
+            Binary::from_base64(&oracle_pubkey_str).map_err(|_| ContractError::InvalidBase64 {})?;
         let verify_result = deps
             .api
             .secp256k1_verify(
@@ -769,7 +769,14 @@ pub fn execute_sign_up(
 
     Ok(Response::new()
         .add_attribute("action", "sign_up")
-        .add_attribute("mode", if is_oracle_mode { "oracle" } else { "traditional" })
+        .add_attribute(
+            "mode",
+            if is_oracle_mode {
+                "oracle"
+            } else {
+                "traditional"
+            },
+        )
         .add_attribute("state_idx", state_index.to_string())
         .add_attribute(
             "pubkey",
@@ -811,7 +818,7 @@ pub fn execute_publish_message(
 
         // Mark this enc_pub_key as used
         USED_ENC_PUB_KEYS.save(deps.storage, pubkey_storage_key, &true)?;
-        
+
         let mut msg_chain_length = MSG_CHAIN_LENGTH.load(deps.storage)?;
         let old_msg_hashes =
             MSG_HASHES.load(deps.storage, msg_chain_length.to_be_bytes().to_vec())?;
@@ -2255,11 +2262,17 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             let pubkey = ORACLE_WHITELIST_PUBKEY.may_load(deps.storage)?;
             to_json_binary(&pubkey)
         }
-        QueryMsg::CanSignUpWithOracle { pubkey, certificate } => {
+        QueryMsg::CanSignUpWithOracle {
+            pubkey,
+            certificate,
+        } => {
             let can_signup = can_sign_up_with_oracle(deps, _env, pubkey, certificate)?;
             to_json_binary(&can_signup)
         }
-        QueryMsg::WhiteBalanceOf { pubkey, certificate } => {
+        QueryMsg::WhiteBalanceOf {
+            pubkey,
+            certificate,
+        } => {
             let balance = user_balance_of_oracle(deps, _env, pubkey, certificate)?;
             to_json_binary(&balance)
         }
@@ -2403,7 +2416,6 @@ pub fn calculate_tally_delay(deps: Deps) -> Result<TallyDelayInfo, ContractError
     })
 }
 
-
 // Check if user can sign up with oracle
 fn can_sign_up_with_oracle(
     deps: Deps,
@@ -2500,7 +2512,7 @@ fn user_balance_of_oracle(
         certificate_binary.as_slice(),
         oracle_pubkey_binary.as_slice(),
     )?;
-    
+
     if verify_result {
         // Always return voice_credit_amount if verification passes
         return Ok(voice_credit_amount);

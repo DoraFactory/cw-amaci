@@ -1,7 +1,7 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128, Uint256};
-use cw_amaci::state::{RoundInfo, VotingTime};
 use cw_amaci::msg::WhitelistBase;
+use cw_amaci::state::{RoundInfo, VotingTime};
 
 use crate::state::{Config, OperatorInfo};
 

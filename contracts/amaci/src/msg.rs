@@ -1,6 +1,6 @@
 use crate::state::{
-    DelayRecords, MaciParameters, MessageData, PeriodStatus, PubKey, 
-    RoundInfo, VotingTime, Whitelist,
+    DelayRecords, MaciParameters, MessageData, PeriodStatus, PubKey, RoundInfo, VotingTime,
+    Whitelist,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Timestamp, Uint128, Uint256};
@@ -28,7 +28,7 @@ pub struct InstantiateMsg {
 
     pub circuit_type: Uint256,         // <0: 1p1v | 1: pv>
     pub certification_system: Uint256, // <0: groth16 | 1: plonk>
-    
+
     // Oracle whitelist pubkey (optional)
     pub oracle_whitelist_pubkey: Option<String>,
 }
@@ -42,7 +42,6 @@ pub struct WhitelistBaseConfig {
 pub struct WhitelistBase {
     pub users: Vec<WhitelistBaseConfig>,
 }
-
 
 #[cw_serde]
 pub struct Groth16VKeyType {
@@ -226,16 +225,10 @@ pub enum QueryMsg {
     QueryOracleWhitelistConfig {},
 
     #[returns(bool)]
-    CanSignUpWithOracle { 
-        pubkey: PubKey,
-        certificate: String,
-    },
+    CanSignUpWithOracle { pubkey: PubKey, certificate: String },
 
     #[returns(Uint256)]
-    WhiteBalanceOf { 
-        pubkey: PubKey,
-        certificate: String,
-    },
+    WhiteBalanceOf { pubkey: PubKey, certificate: String },
 }
 
 #[cw_serde]

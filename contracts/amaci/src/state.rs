@@ -369,7 +369,8 @@ impl OracleWhitelistUser {
     }
 }
 
-pub const ORACLE_WHITELIST: Map<&(Vec<u8>, Vec<u8>), OracleWhitelistUser> = Map::new("oracle_whitelist");
+pub const ORACLE_WHITELIST: Map<&(Vec<u8>, Vec<u8>), OracleWhitelistUser> =
+    Map::new("oracle_whitelist");
 
 #[cfg(test)]
 mod tests {

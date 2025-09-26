@@ -1,8 +1,8 @@
-use base64::{Engine as _, engine::general_purpose};
+use base64::{engine::general_purpose, Engine as _};
+use cosmwasm_std::{Addr, Uint256};
 use secp256k1::{Message, PublicKey, Secp256k1, SecretKey};
 use serde_json;
 use sha2::{Digest, Sha256};
-use cosmwasm_std::{Addr, Uint256};
 
 // Private key (hex format) - Keep consistent with api-maci
 const PRIVATE_KEY_HEX: &str = "84d85037a14db4a7a1424084cca70211685ad65f7325c4d26aca93edfb2995df";
@@ -43,7 +43,7 @@ pub fn generate_certificate_for_pubkey(
     // Convert contract address to Uint256 format to match amaci logic
     let addr = Addr::unchecked(contract_address);
     let contract_address_uint256 = address_to_uint256(&addr);
-    
+
     // Create payload matching the amaci oracle format
     let payload = serde_json::json!({
         "amount": amount.to_string(),
@@ -88,7 +88,9 @@ pub fn verify_keypair() -> bool {
 
     // Expected public key (base64)
     let expected_pubkey_b64 = PUBKEY_B64;
-    let expected_pubkey_bytes = general_purpose::STANDARD.decode(expected_pubkey_b64).expect("Invalid base64");
+    let expected_pubkey_bytes = general_purpose::STANDARD
+        .decode(expected_pubkey_b64)
+        .expect("Invalid base64");
 
     // Compare public keys
     public_key.serialize().to_vec() == expected_pubkey_bytes
@@ -105,8 +107,10 @@ mod tests {
 
     #[test]
     fn test_certificate_generation_for_pubkey() {
-        let pubkey_x = "3557592161792765812904087712812111121909518311142005886657252371904276697771";
-        let pubkey_y = "4363822302427519764561660537570341277214758164895027920046745209970137856681";
+        let pubkey_x =
+            "3557592161792765812904087712812111121909518311142005886657252371904276697771";
+        let pubkey_y =
+            "4363822302427519764561660537570341277214758164895027920046745209970137856681";
         let certificate = generate_certificate_for_pubkey("contract0", pubkey_x, pubkey_y, 100u128);
 
         // Ensure certificate is not empty
@@ -120,11 +124,15 @@ mod tests {
 
     #[test]
     fn test_different_pubkeys() {
-        let pubkey0_x = "3557592161792765812904087712812111121909518311142005886657252371904276697771";
-        let pubkey0_y = "4363822302427519764561660537570341277214758164895027920046745209970137856681";
-        let pubkey1_x = "1234567890123456789012345678901234567890123456789012345678901234567890123456";
-        let pubkey1_y = "9876543210987654321098765432109876543210987654321098765432109876543210987654";
-        
+        let pubkey0_x =
+            "3557592161792765812904087712812111121909518311142005886657252371904276697771";
+        let pubkey0_y =
+            "4363822302427519764561660537570341277214758164895027920046745209970137856681";
+        let pubkey1_x =
+            "1234567890123456789012345678901234567890123456789012345678901234567890123456";
+        let pubkey1_y =
+            "9876543210987654321098765432109876543210987654321098765432109876543210987654";
+
         let cert0 = generate_certificate_for_pubkey("contract0", pubkey0_x, pubkey0_y, 100u128);
         let cert1 = generate_certificate_for_pubkey("contract0", pubkey1_x, pubkey1_y, 100u128);
 
@@ -139,14 +147,17 @@ mod tests {
     fn test_registry_specific_functionality() {
         // Test registry-specific use cases
         let registry_contract = "registry-contract-addr";
-        let pubkey_x = "3557592161792765812904087712812111121909518311142005886657252371904276697771";
-        let pubkey_y = "4363822302427519764561660537570341277214758164895027920046745209970137856681";
-        
-        let certificate = generate_certificate_for_pubkey(registry_contract, pubkey_x, pubkey_y, 50u128);
-        
+        let pubkey_x =
+            "3557592161792765812904087712812111121909518311142005886657252371904276697771";
+        let pubkey_y =
+            "4363822302427519764561660537570341277214758164895027920046745209970137856681";
+
+        let certificate =
+            generate_certificate_for_pubkey(registry_contract, pubkey_x, pubkey_y, 50u128);
+
         // Ensure certificate is not empty
         assert!(!certificate.is_empty());
-        
+
         // Ensure certificate is valid base64
         assert!(general_purpose::STANDARD.decode(&certificate).is_ok());
 

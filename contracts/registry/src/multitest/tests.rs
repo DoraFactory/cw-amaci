@@ -3,6 +3,7 @@ use cw_multi_test::App;
 
 // use crate::error::ContractError;
 // use crate::msg::ClaimsResponse;
+use crate::multitest::certificate_generator::generate_certificate_for_pubkey;
 use crate::{
     multitest::{
         admin, creator, operator, operator2, operator3, operator_pubkey1, operator_pubkey2,
@@ -12,7 +13,6 @@ use crate::{
     state::ValidatorSet,
 };
 use cw_amaci::multitest::{fee_recipient, owner, MaciCodeId, MaciContract};
-use crate::multitest::certificate_generator::generate_certificate_for_pubkey;
 // Oracle whitelist config no longer needed - using simple pubkey string
 use cosmwasm_std::Binary;
 use cw_amaci::ContractError as AmaciContractError;
@@ -1775,7 +1775,6 @@ fn create_round_with_voting_time_qv_amaci_after_4_days_with_no_operator_reward_s
     println!("tally_delay: {:?}", tally_delay);
 }
 
-
 #[test]
 fn create_round_with_qv_oracle_mode_amaci_should_works() {
     let msg_file_path = "./src/test/qv_test/msg.json";
@@ -1788,7 +1787,6 @@ fn create_round_with_qv_oracle_mode_amaci_should_works() {
         .expect("Failed to read file");
 
     let data: MsgData = serde_json::from_str(&msg_content).expect("Failed to parse JSON");
-
 
     let logs_file_path = "./src/test/amaci_test/logs.json";
 
@@ -1889,7 +1887,7 @@ fn create_round_with_qv_oracle_mode_amaci_should_works() {
     let amaci_contract_addr: InstantiationData = from_json(&resp.data.unwrap()).unwrap();
     println!("Oracle AMACI Contract Address: {:?}", amaci_contract_addr);
     let maci_contract = MaciContract::new(amaci_contract_addr.addr.clone());
-    
+
     let amaci_admin = maci_contract.amaci_query_admin(&app).unwrap();
     assert_eq!(creator(), amaci_admin);
 
@@ -1910,7 +1908,7 @@ fn create_round_with_qv_oracle_mode_amaci_should_works() {
     let max_vote_options = maci_contract.amaci_max_vote_options(&app).unwrap();
     assert_eq!(vote_option_map, vec!["", "", "", "", ""]);
     assert_eq!(max_vote_options, Uint256::from_u128(5u128));
-    
+
     _ = maci_contract.amaci_set_vote_option_map(&mut app, creator());
     let new_vote_option_map = maci_contract.amaci_vote_option_map(&app).unwrap();
     assert_eq!(
@@ -1937,7 +1935,6 @@ fn create_round_with_qv_oracle_mode_amaci_should_works() {
         y: uint256_from_decimal_string(&pubkey_data.pubkeys[1][1]),
     };
 
-
     let test_pubkey = PubKey {
         x: uint256_from_decimal_string(&data.current_state_leaves[0][0]),
         y: uint256_from_decimal_string(&data.current_state_leaves[0][1]),
@@ -1960,11 +1957,21 @@ fn create_round_with_qv_oracle_mode_amaci_should_works() {
     );
 
     // Test Oracle signup for two users
-    let signup_result1 = maci_contract.amaci_sign_up_oracle(&mut app, user1(), pubkey0.clone(), cert1);
-    assert!(signup_result1.is_ok(), "Oracle signup 1 should succeed: {:?}", signup_result1.err());
+    let signup_result1 =
+        maci_contract.amaci_sign_up_oracle(&mut app, user1(), pubkey0.clone(), cert1);
+    assert!(
+        signup_result1.is_ok(),
+        "Oracle signup 1 should succeed: {:?}",
+        signup_result1.err()
+    );
 
-    let signup_result2 = maci_contract.amaci_sign_up_oracle(&mut app, user2(), pubkey1.clone(), cert2);
-    assert!(signup_result2.is_ok(), "Oracle signup 2 should succeed: {:?}", signup_result2.err());
+    let signup_result2 =
+        maci_contract.amaci_sign_up_oracle(&mut app, user2(), pubkey1.clone(), cert2);
+    assert!(
+        signup_result2.is_ok(),
+        "Oracle signup 2 should succeed: {:?}",
+        signup_result2.err()
+    );
 
     // Verify signup count
     let num_sign_up_after = maci_contract.amaci_num_sign_up(&app).unwrap();
@@ -1979,7 +1986,7 @@ fn create_round_with_qv_oracle_mode_amaci_should_works() {
         maci_contract.amaci_signuped(&app, pubkey1.x).unwrap(),
         Uint256::from_u128(2u128)
     );
-    
+
     for entry in &logs_data {
         match entry.log_type.as_str() {
             "publishDeactivateMessage" => {

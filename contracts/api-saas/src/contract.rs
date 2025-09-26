@@ -16,8 +16,8 @@ use cosmos_sdk_proto::Any;
 use prost::Message;
 
 // External contract types with aliases to avoid path conflicts
-use cw_amaci::state::{RoundInfo, VotingTime};
 use cw_amaci::msg::WhitelistBase;
+use cw_amaci::state::{RoundInfo, VotingTime};
 use cw_api_maci::msg::{
     InstantiateMsg as OracleMaciInstantiateMsg, InstantiationData as OracleMaciInstantiationData,
     VotingPowerArgs,
@@ -810,7 +810,7 @@ fn reply_created_amaci_round(
         .ok_or(ContractError::Std(StdError::generic_err(
             "Data missing from response",
         )))?;
-    
+
     // Try to parse the instantiation data from Registry response
     let parsed_response = match parse_instantiate_response_data(&data) {
         Ok(data) => data,
@@ -824,7 +824,7 @@ fn reply_created_amaci_round(
 
     let amaci_contract_addr = Addr::unchecked(parsed_response.contract_address.clone());
 
-    // Extract additional information from response attributes  
+    // Extract additional information from response attributes
     let mut round_title = String::new();
     let mut operator = String::new();
 

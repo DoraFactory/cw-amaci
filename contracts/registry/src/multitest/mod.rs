@@ -273,7 +273,6 @@ impl AmaciRegistryContract {
         let start_time = Timestamp::from_nanos(1571797424879000000);
         let end_time = start_time.plus_minutes(21);
 
-
         let msg = ExecuteMsg::CreateRound {
             operator,
             round_info,
@@ -288,7 +287,7 @@ impl AmaciRegistryContract {
             pre_deactivate_root: Uint256::from_u128(0u128),
             circuit_type,
             certification_system,
-                oracle_whitelist_pubkey: Some(oracle_whitelist_pubkey),
+            oracle_whitelist_pubkey: Some(oracle_whitelist_pubkey),
         };
 
         app.execute_contract(sender, self.addr(), &msg, send_funds)
