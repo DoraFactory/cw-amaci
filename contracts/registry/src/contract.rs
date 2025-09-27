@@ -75,8 +75,8 @@ pub fn execute(
         ExecuteMsg::CreateRound {
             operator,
             max_voter,
-            max_option,
             voice_credit_amount,
+            vote_option_map,
             round_info,
             voting_time,
             whitelist,
@@ -90,8 +90,8 @@ pub fn execute(
             info,
             operator,
             max_voter,
-            max_option,
             voice_credit_amount,
+            vote_option_map,
             round_info,
             voting_time,
             whitelist,
@@ -140,8 +140,8 @@ pub fn execute_create_round(
     info: MessageInfo,
     operator: Addr,
     max_voter: Uint256,
-    max_option: Uint256,
     voice_credit_amount: Uint256,
+    vote_option_map: Vec<String>,
     round_info: RoundInfo,
     voting_time: VotingTime,
     whitelist: Option<WhitelistBase>,
@@ -155,6 +155,7 @@ pub fn execute_create_round(
     let maci_parameters: MaciParameters;
     let required_fee: Uint128;
 
+    let max_option = Uint256::from_u128(vote_option_map.len() as u128);
     if max_voter <= Uint256::from_u128(25u128) && max_option <= Uint256::from_u128(5u128) {
         // state_tree_depth: 2
         // vote_option_tree_depth: 1
@@ -191,12 +192,19 @@ pub fn execute_create_round(
         }
     });
 
-    // check user's payment
-    if amount < required_fee {
-        return Err(ContractError::InsufficientFee {
-            required: required_fee,
-            provided: amount,
-        });
+    // check user's payment - require exact fee amount
+    if amount != required_fee {
+        if amount < required_fee {
+            return Err(ContractError::InsufficientFee {
+                required: required_fee,
+                provided: amount,
+            });
+        } else {
+            return Err(ContractError::ExactFeeRequired {
+                required: required_fee,
+                provided: amount,
+            });
+        }
     }
 
     if !MACI_OPERATOR_PUBKEY.has(deps.storage, &operator) {
@@ -216,8 +224,8 @@ pub fn execute_create_round(
         operator,
         admin: info.sender.clone(),
         fee_recipient: admin.clone(),
-        max_vote_options: max_option,
         voice_credit_amount,
+        vote_option_map,
         round_info,
         voting_time,
         whitelist,
@@ -585,8 +593,8 @@ pub fn reply_created_round(
             &amaci_return_data.coordinator.y.to_string(),
         ),
         attr(
-            "max_vote_options",
-            &amaci_return_data.max_vote_options.to_string(),
+            "vote_option_map",
+            format!("{:?}", amaci_return_data.vote_option_map),
         ),
         attr(
             "voice_credit_amount",

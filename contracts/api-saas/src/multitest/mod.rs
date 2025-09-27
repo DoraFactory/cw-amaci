@@ -3,7 +3,7 @@ mod tests;
 
 use anyhow::Result as AnyResult;
 use cosmwasm_std::testing::{MockApi, MockStorage};
-use cosmwasm_std::{Addr, Coin, Empty, StdResult, Timestamp, Uint128};
+use cosmwasm_std::{Addr, Coin, Empty, StdResult, Timestamp, Uint128, Uint256};
 use cw_amaci::state::RoundInfo;
 use cw_multi_test::{
     no_init, AppBuilder, AppResponse, BankKeeper, ContractWrapper, DistributionKeeper, Executor,
@@ -214,7 +214,7 @@ impl SaasContract {
         app.execute_contract(
             sender,
             self.addr(),
-            &ExecuteMsg::CreateApiMaciRound {
+            &ExecuteMsg::CreateMaciRound {
                 coordinator,
                 max_voters,
                 vote_option_map,
@@ -235,15 +235,15 @@ impl SaasContract {
         app: &mut App,
         sender: Addr,
         operator: Addr,
-        max_voter: cosmwasm_std::Uint256,
-        max_option: cosmwasm_std::Uint256,
-        voice_credit_amount: cosmwasm_std::Uint256,
+        max_voter: Uint256,
+        voice_credit_amount: Uint256,
+        vote_option_map: Vec<String>,
         round_info: RoundInfo,
         voting_time: cw_amaci::state::VotingTime,
         whitelist: Option<cw_amaci::msg::WhitelistBase>,
-        pre_deactivate_root: cosmwasm_std::Uint256,
-        circuit_type: cosmwasm_std::Uint256,
-        certification_system: cosmwasm_std::Uint256,
+        pre_deactivate_root: Uint256,
+        circuit_type: Uint256,
+        certification_system: Uint256,
         oracle_whitelist_pubkey: Option<String>,
         funds: &[Coin],
     ) -> AnyResult<AppResponse> {
@@ -253,8 +253,8 @@ impl SaasContract {
             &ExecuteMsg::CreateAmaciRound {
                 operator,
                 max_voter,
-                max_option,
                 voice_credit_amount,
+                vote_option_map,
                 round_info,
                 voting_time,
                 whitelist,

@@ -273,7 +273,7 @@ fn test_create_api_maci_round_success() {
 
     // Create Oracle MACI round
     let max_voters = 5u128;
-    let create_msg = ExecuteMsg::CreateApiMaciRound {
+    let create_msg = ExecuteMsg::CreateMaciRound {
         coordinator: PubKey {
             x: Uint256::from(1u32),
             y: Uint256::from(2u32),
@@ -341,7 +341,7 @@ fn test_create_api_maci_round_unauthorized() {
         )
         .unwrap();
 
-    let create_msg = ExecuteMsg::CreateApiMaciRound {
+    let create_msg = ExecuteMsg::CreateMaciRound {
         coordinator: PubKey {
             x: uint256_from_decimal_string(
                 "3557592161792765812904087712812111121909518311142005886657252371904276697771",
@@ -418,7 +418,7 @@ fn test_create_api_maci_round_with_minimal_funds() {
         .deposit(&mut app, user1(), &coins(initial_balance, DORA_DEMON))
         .unwrap();
 
-    let create_msg = ExecuteMsg::CreateApiMaciRound {
+    let create_msg = ExecuteMsg::CreateMaciRound {
         coordinator: PubKey {
             x: Uint256::from(1u32),
             y: Uint256::from(2u32),
@@ -487,7 +487,7 @@ fn test_oracle_maci_round_management() {
         .unwrap();
 
     // Create Oracle MACI round first
-    let create_msg = ExecuteMsg::CreateApiMaciRound {
+    let create_msg = ExecuteMsg::CreateMaciRound {
         coordinator: PubKey {
             x: uint256_from_decimal_string(
                 "3557592161792765812904087712812111121909518311142005886657252371904276697771",
@@ -1118,7 +1118,6 @@ fn test_create_amaci_round_success_real() {
     // Create AMACI round parameters
     let dora_operator = Addr::unchecked("dora1eu7mhp4ggxd6utnz8uzurw395natgs6jskl4ug"); // Use valid dora address
     let max_voter = Uint256::from(25u128);
-    let max_option = Uint256::from(5u128);
     let voice_credit_amount = Uint256::from(100u128);
     let round_info = crate::multitest::test_round_info();
     let voting_time = crate::multitest::test_voting_time();
@@ -1132,8 +1131,14 @@ fn test_create_amaci_round_success_real() {
         operator1(),   // sender (must be operator in SaaS)
         dora_operator, // operator parameter (must be operator in registry)
         max_voter,
-        max_option,
         voice_credit_amount,
+        vec![
+            "Candidate A".to_string(),
+            "Candidate B".to_string(),
+            "Candidate C".to_string(),
+            "Candidate D".to_string(),
+            "Candidate E".to_string(),
+        ], // vote_option_map
         round_info.clone(),
         voting_time,
         None,            // no whitelist
@@ -1153,12 +1158,23 @@ fn test_create_amaci_round_success_real() {
 
     let response = result.unwrap();
 
+    // Print all events and attributes for verification
+    println!("=== AMACI Round Creation Events ===");
+    for (event_idx, event) in response.events.iter().enumerate() {
+        println!("Event {}: {}", event_idx, event.ty);
+        for attr in &event.attributes {
+            println!("  {}: {}", attr.key, attr.value);
+        }
+        println!();
+    }
+    println!("=== End Events ===");
+
     // Verify response attributes
     let attrs: Vec<_> = response.events.iter().flat_map(|e| &e.attributes).collect();
 
     // Check SaaS contract attributes
     let action_attr = attrs.iter().find(|attr| attr.key == "action").unwrap();
-    assert_eq!(action_attr.value, "create_amaci_round_via_registry");
+    assert_eq!(action_attr.value, "create_amaci_round");
 
     let registry_attr = attrs
         .iter()
@@ -1254,8 +1270,14 @@ fn test_create_amaci_round_unauthorized_real() {
         user1(),                // sender (not an operator in SaaS)
         admin(),                // operator parameter
         Uint256::from(25u128),  // max_voter
-        Uint256::from(5u128),   // max_option
         Uint256::from(100u128), // voice_credit_amount
+        vec![
+            "Test Option 1".to_string(),
+            "Test Option 2".to_string(),
+            "Test Option 3".to_string(),
+            "Test Option 4".to_string(),
+            "Test Option 5".to_string(),
+        ], // vote_option_map
         crate::multitest::test_round_info(),
         crate::multitest::test_voting_time(),
         None,            // no whitelist

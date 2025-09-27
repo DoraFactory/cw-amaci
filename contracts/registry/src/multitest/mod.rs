@@ -190,8 +190,14 @@ impl AmaciRegistryContract {
             operator,
             round_info,
             max_voter: Uint256::from_u128(5u128),
-            max_option: Uint256::from_u128(5u128),
             voice_credit_amount: Uint256::from_u128(30u128),
+            vote_option_map: vec![
+                "".to_string(),
+                "".to_string(),
+                "".to_string(),
+                "".to_string(),
+                "".to_string(),
+            ],
             voting_time: VotingTime {
                 start_time,
                 end_time,
@@ -237,8 +243,14 @@ impl AmaciRegistryContract {
             operator,
             round_info,
             max_voter: Uint256::from_u128(3u128),
-            max_option: Uint256::from_u128(5u128),
             voice_credit_amount: Uint256::from_u128(100u128),
+            vote_option_map: vec![
+                "".to_string(),
+                "".to_string(),
+                "".to_string(),
+                "".to_string(),
+                "".to_string(),
+            ],
             voting_time: VotingTime {
                 start_time,
                 end_time,
@@ -277,8 +289,14 @@ impl AmaciRegistryContract {
             operator,
             round_info,
             max_voter: Uint256::from_u128(5u128),
-            max_option: Uint256::from_u128(5u128),
             voice_credit_amount: Uint256::from_u128(100u128),
+            vote_option_map: vec![
+                "".to_string(),
+                "".to_string(),
+                "".to_string(),
+                "".to_string(),
+                "".to_string(),
+            ],
             voting_time: VotingTime {
                 start_time,
                 end_time,

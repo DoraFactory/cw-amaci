@@ -94,4 +94,10 @@ pub enum ContractError {
 
     #[error("Invalid address prefix. Expected: {expected}, Actual: {actual}")]
     InvalidAddressPrefix { expected: String, actual: String },
+
+    #[error("Exact fee required. Expected: {required}, provided: {provided}")]
+    ExactFeeRequired {
+        required: Uint128,
+        provided: Uint128,
+    },
 }

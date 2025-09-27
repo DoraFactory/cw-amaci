@@ -51,7 +51,7 @@ pub enum ExecuteMsg {
     },
 
     // Create API MACI round
-    CreateApiMaciRound {
+    CreateMaciRound {
         coordinator: PubKey,
         max_voters: u128,
         vote_option_map: Vec<String>,
@@ -69,8 +69,8 @@ pub enum ExecuteMsg {
     CreateAmaciRound {
         operator: Addr,
         max_voter: Uint256,
-        max_option: Uint256,
         voice_credit_amount: Uint256,
+        vote_option_map: Vec<String>,
         round_info: RoundInfo,
         voting_time: VotingTime,
         whitelist: Option<WhitelistBase>,

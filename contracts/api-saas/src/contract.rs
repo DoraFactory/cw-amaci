@@ -18,6 +18,7 @@ use prost::Message;
 // External contract types with aliases to avoid path conflicts
 use cw_amaci::msg::WhitelistBase;
 use cw_amaci::state::{RoundInfo, VotingTime};
+
 use cw_api_maci::msg::{
     InstantiateMsg as OracleMaciInstantiateMsg, InstantiationData as OracleMaciInstantiationData,
     VotingPowerArgs,
@@ -98,7 +99,7 @@ pub fn execute(
         ExecuteMsg::UpdateMaciCodeId { code_id } => {
             execute_update_maci_code_id(deps, env, info, code_id)
         }
-        ExecuteMsg::CreateApiMaciRound {
+        ExecuteMsg::CreateMaciRound {
             coordinator,
             max_voters,
             vote_option_map,
@@ -108,7 +109,7 @@ pub fn execute(
             circuit_type,
             certification_system,
             whitelist_backend_pubkey,
-        } => execute_create_api_maci_round(
+        } => execute_create_maci_round(
             deps,
             env,
             info,
@@ -133,8 +134,8 @@ pub fn execute(
         ExecuteMsg::CreateAmaciRound {
             operator,
             max_voter,
-            max_option,
             voice_credit_amount,
+            vote_option_map,
             round_info,
             voting_time,
             whitelist,
@@ -148,8 +149,8 @@ pub fn execute(
             info,
             operator,
             max_voter,
-            max_option,
             voice_credit_amount,
+            vote_option_map,
             round_info,
             voting_time,
             whitelist,
@@ -400,7 +401,7 @@ pub fn execute_withdraw(
         .add_attribute("new_balance", new_balance.to_string()))
 }
 
-pub fn execute_create_api_maci_round(
+pub fn execute_create_maci_round(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
@@ -562,8 +563,8 @@ pub fn execute_create_amaci_round(
     info: MessageInfo,
     operator: Addr,
     max_voter: Uint256,
-    max_option: Uint256,
     voice_credit_amount: Uint256,
+    vote_option_map: Vec<String>,
     round_info: RoundInfo,
     voting_time: VotingTime,
     whitelist: Option<WhitelistBase>,
@@ -585,8 +586,8 @@ pub fn execute_create_amaci_round(
         "create_round": {
             "operator": operator,
             "max_voter": max_voter,
-            "max_option": max_option,
             "voice_credit_amount": voice_credit_amount,
+            "vote_option_map": vote_option_map,
             "round_info": round_info,
             "voting_time": voting_time,
             "whitelist": whitelist,
@@ -610,12 +611,12 @@ pub fn execute_create_amaci_round(
 
     Ok(Response::new()
         .add_submessage(submsg)
-        .add_attribute("action", "create_amaci_round_via_registry")
+        .add_attribute("action", "create_amaci_round")
         .add_attribute("operator", info.sender.to_string())
         .add_attribute("registry_contract", registry_contract.to_string())
         .add_attribute("round_title", round_info.title)
         .add_attribute("max_voter", max_voter.to_string())
-        .add_attribute("max_option", max_option.to_string()))
+        .add_attribute("max_option", vote_option_map.len().to_string()))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -645,7 +646,7 @@ fn query_is_operator(deps: Deps, address: Addr) -> StdResult<bool> {
 pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
     match msg.id {
         CREATED_API_MACI_ROUND_REPLY_ID => {
-            reply_created_api_maci_round(deps, env, msg.result.into_result())
+            reply_created_maci_round(deps, env, msg.result.into_result())
         }
         CREATED_AMACI_ROUND_REPLY_ID => {
             reply_created_amaci_round(deps, env, msg.result.into_result())
@@ -657,7 +658,7 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
     }
 }
 
-fn reply_created_api_maci_round(
+fn reply_created_maci_round(
     deps: DepsMut,
     _env: Env,
     result: Result<SubMsgResponse, String>,
@@ -694,7 +695,7 @@ fn reply_created_api_maci_round(
     };
 
     let mut response_attrs = vec![
-        attr("action", "created_api_maci_round"),
+        attr("action", "created_maci_round"),
         attr("round_addr", &contract_address.to_string()),
         attr("code_id", &maci_code_id.to_string()),
         attr("caller", &oracle_maci_return_data.caller.to_string()),
@@ -797,13 +798,6 @@ fn reply_created_amaci_round(
     // Parse SubMsg response from registry
     let response = result.map_err(StdError::generic_err)?;
 
-    // Debug: Print all attributes to see what Registry actually returns
-    for event in &response.events {
-        for _attr in &event.attributes {
-            // This helps us debug what the Registry actually returns
-        }
-    }
-
     // Parse response data using the same method as in api-maci
     let data = response
         .data
@@ -825,14 +819,44 @@ fn reply_created_amaci_round(
     let amaci_contract_addr = Addr::unchecked(parsed_response.contract_address.clone());
 
     // Extract additional information from response attributes
-    let mut round_title = String::new();
-    let mut operator = String::new();
+    let mut amaci_code_id = String::new();
+
+    // Extract information from response events for indexer
+    let mut event_attrs = std::collections::HashMap::new();
 
     for event in response.events {
         for attr in event.attributes {
             match attr.key.as_str() {
-                "round_title" => round_title = attr.value,
-                "operator" => operator = attr.value,
+                // Store all AMACI-related attributes for indexer
+                "code_id"
+                | "operator"
+                | "vote_option_map"
+                | "voice_credit_amount"
+                | "pre_deactivate_root"
+                | "state_tree_depth"
+                | "int_state_tree_depth"
+                | "vote_option_tree_depth"
+                | "message_batch_size"
+                | "circuit_type"
+                | "certification_system"
+                | "penalty_rate"
+                | "deactivate_timeout"
+                | "tally_timeout"
+                | "voting_start"
+                | "voting_end"
+                | "round_title"
+                | "round_description"
+                | "round_link"
+                | "coordinator_pubkey_x"
+                | "coordinator_pubkey_y"
+                | "caller"
+                | "admin" => {
+                    // Special handling for code_id
+                    if attr.key == "code_id" {
+                        amaci_code_id = attr.value.clone();
+                    }
+                    event_attrs.insert(attr.key.clone(), attr.value.clone());
+                }
                 _ => {}
             }
         }
@@ -843,13 +867,23 @@ fn reply_created_amaci_round(
         addr: amaci_contract_addr.clone(),
     };
 
+    // Create a minimal AMACI instantiation data structure
+    // We don't have all the data that the original AMACI contract returned,
+    // but we have enough to continue with the response
+
+    let mut attributes = vec![
+        attr("action", "created_amaci_round"),
+        attr("code_id", amaci_code_id.to_string()),
+        attr("amaci_contract_addr", amaci_contract_addr.to_string()),
+    ];
+
+    // Add all extracted event attributes for indexer
+    for (key, value) in event_attrs {
+        attributes.push(attr(&key, &value));
+    }
+
     Ok(Response::new()
-        .add_attributes(vec![
-            attr("action", "created_amaci_round_via_registry"),
-            attr("amaci_contract_addr", &amaci_contract_addr.to_string()),
-            attr("round_title", &round_title),
-            attr("operator", &operator),
-        ])
+        .add_attributes(attributes)
         .set_data(to_json_binary(&saas_instantiation_data)?))
 }
 

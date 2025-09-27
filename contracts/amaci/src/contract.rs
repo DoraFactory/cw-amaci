@@ -82,7 +82,6 @@ pub fn instantiate(
     };
     ADMIN.save(deps.storage, &admin)?;
 
-    // An error will be thrown if the number of vote options exceeds the circuit's capacity.
     let vote_option_max_amount = Uint256::from_u128(
         5u128.pow(
             msg.parameters
@@ -92,9 +91,10 @@ pub fn instantiate(
                 .unwrap(),
         ),
     );
-    if msg.max_vote_options > vote_option_max_amount {
+    let actual_vote_options = Uint256::from_u128(msg.vote_option_map.len() as u128);
+    if actual_vote_options > vote_option_max_amount {
         return Err(ContractError::MaxVoteOptionsExceeded {
-            current: msg.max_vote_options,
+            current: actual_vote_options,
             max_allowed: vote_option_max_amount,
         });
     }
@@ -269,7 +269,10 @@ pub fn instantiate(
     CURRENT_TALLY_COMMITMENT.save(deps.storage, &Uint256::from_u128(0u128))?;
     PROCESSED_USER_COUNT.save(deps.storage, &Uint256::from_u128(0u128))?;
     NUMSIGNUPS.save(deps.storage, &Uint256::from_u128(0u128))?;
-    MAX_VOTE_OPTIONS.save(deps.storage, &msg.max_vote_options)?;
+    MAX_VOTE_OPTIONS.save(
+        deps.storage,
+        &Uint256::from_u128(msg.vote_option_map.len() as u128),
+    )?;
     VOICE_CREDIT_AMOUNT.save(deps.storage, &msg.voice_credit_amount)?;
 
     PROCESSED_DMSG_COUNT.save(deps.storage, &Uint256::from_u128(0u128))?;
@@ -305,11 +308,7 @@ pub fn instantiate(
         &Uint256::from_u128(0u128),
     )?;
 
-    let mut vote_option_map: Vec<String> = Vec::new();
-    for _ in 0..msg.max_vote_options.to_string().parse().unwrap() {
-        vote_option_map.push(String::new());
-    }
-    VOTEOPTIONMAP.save(deps.storage, &vote_option_map)?;
+    VOTEOPTIONMAP.save(deps.storage, &msg.vote_option_map)?;
     ROUNDINFO.save(deps.storage, &msg.round_info)?;
 
     VOTINGTIME.save(deps.storage, &msg.voting_time)?;
@@ -366,7 +365,8 @@ pub fn instantiate(
         coordinator: msg.coordinator.clone(),
         admin: msg.admin.clone(),
         operator: msg.operator.clone(),
-        max_vote_options: msg.max_vote_options.clone(),
+        vote_option_map: msg.vote_option_map.clone(),
+        // max_vote_options: Uint256::from_u128(msg.vote_option_map.len() as u128),
         voice_credit_amount: msg.voice_credit_amount.clone(),
         round_info: msg.round_info.clone(),
         voting_time: msg.voting_time.clone(),
@@ -391,7 +391,7 @@ pub fn instantiate(
         attr("round_title", &msg.round_info.title.to_string()),
         attr("coordinator_pubkey_x", &msg.coordinator.x.to_string()),
         attr("coordinator_pubkey_y", &msg.coordinator.y.to_string()),
-        attr("max_vote_options", &msg.max_vote_options.to_string()),
+        attr("max_vote_options", &msg.vote_option_map.len().to_string()),
         attr("voice_credit_amount", &msg.voice_credit_amount.to_string()),
         attr("pre_deactivate_root", &msg.pre_deactivate_root.to_string()),
         attr(
