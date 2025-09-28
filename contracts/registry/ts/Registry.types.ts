@@ -7,53 +7,23 @@
 export type Addr = string;
 export interface InstantiateMsg {
   admin: Addr;
-  denom: string;
-  maci_code_id: number;
-  registry_contract: Addr;
-  treasury_manager: Addr;
+  amaci_code_id: number;
+  operator: Addr;
 }
 export type ExecuteMsg = {
-  update_config: {
-    admin?: Addr | null;
-    denom?: string | null;
-  };
-} | {
-  update_maci_code_id: {
-    code_id: number;
-  };
-} | {
-  update_amaci_registry_contract: {
-    registry_contract: Addr;
-  };
-} | {
-  add_operator: {
+  set_maci_operator: {
     operator: Addr;
   };
 } | {
-  remove_operator: {
-    operator: Addr;
+  set_maci_operator_pubkey: {
+    pubkey: PubKey;
   };
 } | {
-  deposit: {};
-} | {
-  withdraw: {
-    amount: Uint128;
-    recipient?: Addr | null;
+  set_maci_operator_identity: {
+    identity: string;
   };
 } | {
-  create_maci_round: {
-    certification_system: Uint256;
-    circuit_type: Uint256;
-    coordinator: PubKey;
-    end_time: Timestamp;
-    max_voters: number;
-    round_info: RoundInfo;
-    start_time: Timestamp;
-    vote_option_map: string[];
-    whitelist_backend_pubkey: string;
-  };
-} | {
-  create_amaci_round: {
+  create_round: {
     certification_system: Uint256;
     circuit_type: Uint256;
     max_voter: Uint256;
@@ -67,20 +37,30 @@ export type ExecuteMsg = {
     whitelist?: WhitelistBase | null;
   };
 } | {
-  set_round_info: {
-    contract_addr: string;
-    round_info: RoundInfo;
+  set_validators: {
+    addresses: ValidatorSet;
   };
 } | {
-  set_vote_options_map: {
-    contract_addr: string;
-    vote_option_map: string[];
+  remove_validator: {
+    address: Addr;
+  };
+} | {
+  update_amaci_code_id: {
+    amaci_code_id: number;
+  };
+} | {
+  change_operator: {
+    address: Addr;
+  };
+} | {
+  change_charge_config: {
+    config: CircuitChargeConfig;
   };
 };
-export type Uint128 = string;
 export type Uint256 = string;
 export type Timestamp = Uint64;
 export type Uint64 = string;
+export type Decimal = string;
 export interface PubKey {
   x: Uint256;
   y: Uint256;
@@ -100,28 +80,43 @@ export interface WhitelistBase {
 export interface WhitelistBaseConfig {
   addr: Addr;
 }
+export interface ValidatorSet {
+  addresses: Addr[];
+}
+export interface CircuitChargeConfig {
+  fee_rate: Decimal;
+}
 export type QueryMsg = {
-  config: {};
+  admin: {};
 } | {
-  operators: {};
+  operator: {};
 } | {
-  is_operator: {
+  is_maci_operator: {
     address: Addr;
   };
 } | {
-  balance: {};
+  is_validator: {
+    address: Addr;
+  };
 } | {
-  maci_code_id: {};
+  get_validators: {};
 } | {
-  treasury_manager: {};
+  get_validator_operator: {
+    address: Addr;
+  };
+} | {
+  get_maci_operator_pubkey: {
+    address: Addr;
+  };
+} | {
+  get_maci_operator_identity: {
+    address: Addr;
+  };
+} | {
+  get_circuit_charge_config: {};
 };
-export interface Config {
+export interface AdminResponse {
   admin: Addr;
-  denom: string;
 }
+export type String = string;
 export type Boolean = boolean;
-export type ArrayOfOperatorInfo = OperatorInfo[];
-export interface OperatorInfo {
-  added_at: Timestamp;
-  address: Addr;
-}

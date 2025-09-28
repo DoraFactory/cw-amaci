@@ -1025,6 +1025,14 @@ fn test_create_amaci_round_success_real() {
                 .bank
                 .init_balance(storage, &admin(), coins(initial_balance, DORA_DEMON))
                 .unwrap();
+            router
+                .bank
+                .init_balance(
+                    storage,
+                    &treasury_manager(),
+                    coins(initial_balance, DORA_DEMON),
+                )
+                .unwrap();
             // Give dora operator some funds for gas
             router
                 .bank
@@ -1115,6 +1123,16 @@ fn test_create_amaci_round_success_real() {
         .add_operator(&mut app, admin(), operator1())
         .unwrap();
 
+    // Deposit funds to SaaS contract to pay for the round creation
+    let required_fee = 20000000000000000000u128; // 20 DORA
+    contract
+        .deposit(
+            &mut app,
+            treasury_manager(),
+            &coins(required_fee, DORA_DEMON),
+        )
+        .unwrap();
+
     // Create AMACI round parameters
     let dora_operator = Addr::unchecked("dora1eu7mhp4ggxd6utnz8uzurw395natgs6jskl4ug"); // Use valid dora address
     let max_voter = Uint256::from(25u128);
@@ -1123,9 +1141,8 @@ fn test_create_amaci_round_success_real() {
     let voting_time = crate::multitest::test_voting_time();
     let circuit_type = Uint256::zero();
     let certification_system = Uint256::zero();
-    let required_fee = 20000000000000000000u128; // 20 DORA
 
-    // Create AMACI round via SaaS contract
+    // Create AMACI round via SaaS contract (no funds sent, uses SaaS balance)
     let result = contract.create_amaci_round(
         &mut app,
         operator1(),   // sender (must be operator in SaaS)
@@ -1145,8 +1162,8 @@ fn test_create_amaci_round_success_real() {
         Uint256::zero(), // pre_deactivate_root
         circuit_type,
         certification_system,
-        None,                             // oracle_whitelist_pubkey
-        &coins(required_fee, DORA_DEMON), // send required fee
+        None, // oracle_whitelist_pubkey
+        &[],  // No funds sent - using SaaS contract balance
     );
 
     // Should succeed
@@ -1186,20 +1203,12 @@ fn test_create_amaci_round_success_real() {
     assert_eq!(round_title_attr.value, round_info.title);
 
     // Check that a real AMACI contract was created (we should get a real contract address)
-    let amaci_addr_attr = attrs.iter().find(|attr| attr.key == "amaci_contract_addr");
+    let round_addr_attr = attrs.iter().find(|attr| attr.key == "round_addr");
     assert!(
-        amaci_addr_attr.is_some(),
-        "Should have amaci_contract_addr attribute"
+        round_addr_attr.is_some(),
+        "Should have round_addr attribute"
     );
-    let amaci_contract_addr_raw = amaci_addr_attr.unwrap().value.clone();
-    // Parse the JSON format {"addr":"contract2"}
-    let amaci_contract_addr = if amaci_contract_addr_raw.starts_with("{") {
-        // It's in JSON format, parse it
-        let parsed: serde_json::Value = serde_json::from_str(&amaci_contract_addr_raw).unwrap();
-        parsed["addr"].as_str().unwrap().to_string()
-    } else {
-        amaci_contract_addr_raw
-    };
+    let amaci_contract_addr = round_addr_attr.unwrap().value.clone();
 
     // The AMACI contract address should be a valid contract address, not our mock value
     assert_ne!(amaci_contract_addr, "contract42");

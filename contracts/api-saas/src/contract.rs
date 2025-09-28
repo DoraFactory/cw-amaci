@@ -578,8 +578,26 @@ pub fn execute_create_amaci_round(
         return Err(ContractError::Unauthorized {});
     }
 
-    // Load registry contract address
+    // Load registry contract address and config
     let registry_contract = REGISTRY_CONTRACT_ADDR.load(deps.storage)?;
+    let config = CONFIG.load(deps.storage)?;
+
+    // Calculate required fee using registry's centralized calculation logic
+    let max_option = Uint256::from_u128(vote_option_map.len() as u128);
+    let required_fee = cw_amaci_registry::utils::calculate_round_fee(max_voter, max_option)
+        .map_err(|_| ContractError::InvalidOracleMaciParameters {
+            reason: "No matched size circuit".to_string(),
+        })?;
+
+    // Check if SaaS contract has sufficient balance
+    let total_balance = TOTAL_BALANCE.load(deps.storage)?;
+    if total_balance < required_fee {
+        return Err(ContractError::InsufficientBalance {});
+    }
+
+    // Deduct fee from SaaS contract balance
+    let new_balance = total_balance - required_fee;
+    TOTAL_BALANCE.save(deps.storage, &new_balance)?;
 
     // Create the registry CreateRound message
     let registry_msg = serde_json::json!({
@@ -598,12 +616,14 @@ pub fn execute_create_amaci_round(
         }
     });
 
-    // Execute the contract call to registry with the required fee
-    // The fee structure is handled by registry contract
+    // Execute the contract call to registry with the required fee from SaaS balance
     let execute_msg = WasmMsg::Execute {
         contract_addr: registry_contract.to_string(),
         msg: to_json_binary(&registry_msg)?,
-        funds: info.funds, // Forward all funds to registry for fee payment
+        funds: vec![Coin {
+            denom: config.denom,
+            amount: required_fee,
+        }], // Use SaaS contract's balance to pay the fee
     };
 
     // Use SubMsg with reply to get the created contract address
@@ -616,7 +636,9 @@ pub fn execute_create_amaci_round(
         .add_attribute("registry_contract", registry_contract.to_string())
         .add_attribute("round_title", round_info.title)
         .add_attribute("max_voter", max_voter.to_string())
-        .add_attribute("max_option", vote_option_map.len().to_string()))
+        .add_attribute("max_option", vote_option_map.len().to_string())
+        .add_attribute("fee_paid", required_fee.to_string())
+        .add_attribute("saas_balance_after", new_balance.to_string()))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -818,9 +840,6 @@ fn reply_created_amaci_round(
 
     let amaci_contract_addr = Addr::unchecked(parsed_response.contract_address.clone());
 
-    // Extract additional information from response attributes
-    let mut amaci_code_id = String::new();
-
     // Extract information from response events for indexer
     let mut event_attrs = std::collections::HashMap::new();
 
@@ -829,6 +848,7 @@ fn reply_created_amaci_round(
             match attr.key.as_str() {
                 // Store all AMACI-related attributes for indexer
                 "code_id"
+                | "round_addr"
                 | "operator"
                 | "vote_option_map"
                 | "voice_credit_amount"
@@ -851,10 +871,6 @@ fn reply_created_amaci_round(
                 | "coordinator_pubkey_y"
                 | "caller"
                 | "admin" => {
-                    // Special handling for code_id
-                    if attr.key == "code_id" {
-                        amaci_code_id = attr.value.clone();
-                    }
                     event_attrs.insert(attr.key.clone(), attr.value.clone());
                 }
                 _ => {}
@@ -871,11 +887,7 @@ fn reply_created_amaci_round(
     // We don't have all the data that the original AMACI contract returned,
     // but we have enough to continue with the response
 
-    let mut attributes = vec![
-        attr("action", "created_amaci_round"),
-        attr("code_id", amaci_code_id.to_string()),
-        attr("amaci_contract_addr", amaci_contract_addr.to_string()),
-    ];
+    let mut attributes = vec![attr("action", "created_amaci_round")];
 
     // Add all extracted event attributes for indexer
     for (key, value) in event_attrs {
