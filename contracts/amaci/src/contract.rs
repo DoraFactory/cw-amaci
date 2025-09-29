@@ -18,7 +18,7 @@ use crate::state::{
     PROCESSED_DMSG_COUNT, PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO,
     SIGNUPED, STATEIDXINC, STATE_ROOT_BY_DMSG, TALLY_DELAY_MAX_HOURS, TALLY_TIMEOUT, TOTAL_RESULT,
     VOICECREDITBALANCE, VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS,
-    ZEROS_H10,
+    ZEROS_H10, REGISTRY,
 };
 use cosmwasm_schema::cw_serde;
 #[cfg(not(feature = "library"))]
@@ -400,6 +400,9 @@ pub fn instantiate(
     if msg.round_info.link != "" {
         attributes.push(attr("round_link", msg.round_info.link))
     }
+
+    // Record the registry contract address (the instantiator)
+    REGISTRY.save(deps.storage, &info.sender)?;
 
     Ok(Response::new()
         .add_attributes(attributes)
@@ -1781,7 +1784,13 @@ fn execute_stop_tallying_period(
         .add_attributes(attributes))
 }
 
-fn execute_claim(deps: DepsMut, env: Env, _info: MessageInfo) -> Result<Response, ContractError> {
+fn execute_claim(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
+    // Only the registry contract that instantiated this round can claim
+    let registry = REGISTRY.load(deps.storage)?;
+    if info.sender != registry {
+        return Err(ContractError::UnauthorizedRegisty { sender: info.sender.into_string(), expected: registry.into_string() });
+    }
+
     let period = PERIOD.load(deps.storage)?;
     let voting_time: VotingTime = VOTINGTIME.load(deps.storage)?;
     let current_time = env.block.time;
@@ -2186,114 +2195,50 @@ pub fn query_check_policy(
                 }
             }
         }
-        Ok(ExecuteMsg::PublishMessage {
-            message,
-            enc_pub_key,
-        }) => {
-            // 1. Check voting time
+        Ok(ExecuteMsg::PublishMessage { message: _, enc_pub_key }) => {
+            // Align exactly with execute_publish_message: only time window and enc_pub_key constraints
             let voting_time = VOTINGTIME.load(deps.storage)?;
             let current_time = env.block.time;
-
-            // Check if the current time is within the voting time range (inclusive of start and end time)
             if current_time < voting_time.start_time || current_time > voting_time.end_time {
                 (false, "voting time not in range".to_string())
             } else {
-                // 2. Load the scalar field value for validation
                 let snark_scalar_field = uint256_from_hex_string(
                     "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
                 );
-
-                // 3. Validate message data structure (should have 7 Uint256 elements)
-                if message.data.len() != 7 {
-                    (
-                        false,
-                        "message data must contain exactly 7 elements".to_string(),
-                    )
-                }
-                // 4. Validate each message data element is within scalar field
-                else if message.data.iter().any(|&x| x >= snark_scalar_field) {
-                    (
-                        false,
-                        "message data elements must be less than snark scalar field".to_string(),
-                    )
-                }
-                // 5. Validate encrypted public key
-                else if enc_pub_key.x == Uint256::from_u128(0u128)
-                    && enc_pub_key.y == Uint256::from_u128(1u128)
+                if enc_pub_key.x != Uint256::from_u128(0u128)
+                    && enc_pub_key.y != Uint256::from_u128(1u128)
+                    && enc_pub_key.x < snark_scalar_field
+                    && enc_pub_key.y < snark_scalar_field
                 {
-                    (false, "encrypted public key cannot be (0, 1)".to_string())
-                }
-                // 6. Check if encrypted public key values are within scalar field bounds
-                else if enc_pub_key.x >= snark_scalar_field || enc_pub_key.y >= snark_scalar_field
-                {
-                    (
-                        false,
-                        "encrypted public key values must be less than snark scalar field"
-                            .to_string(),
-                    )
-                } else {
                     (true, "publish_message check policy passed".to_string())
+                } else {
+                    (false, "invalid encrypted public key".to_string())
                 }
             }
         }
-        Ok(ExecuteMsg::PublishDeactivateMessage {
-            message,
-            enc_pub_key,
-        }) => {
-            // 1. Check voting time
+        Ok(ExecuteMsg::PublishDeactivateMessage { message: _, enc_pub_key }) => {
+            // Align with execute_publish_deactivate_message: time, enc_pub_key, and max dmsg count
             let voting_time = VOTINGTIME.load(deps.storage)?;
             let current_time = env.block.time;
-
-            // Check if the current time is within the voting time range (inclusive of start and end time)
             if current_time < voting_time.start_time || current_time > voting_time.end_time {
                 (false, "voting time not in range".to_string())
             } else {
-                // 2. Load the scalar field value for validation
                 let snark_scalar_field = uint256_from_hex_string(
                     "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
                 );
-
-                // 3. Validate message data structure (should have 7 Uint256 elements)
-                if message.data.len() != 7 {
-                    (
-                        false,
-                        "message data must contain exactly 7 elements".to_string(),
-                    )
-                }
-                // 4. Validate each message data element is within scalar field
-                else if message.data.iter().any(|&x| x >= snark_scalar_field) {
-                    (
-                        false,
-                        "message data elements must be less than snark scalar field".to_string(),
-                    )
-                }
-                // 5. Validate encrypted public key (must not be (0, 1) and must be within scalar field bounds)
-                else if enc_pub_key.x == Uint256::from_u128(0u128)
-                    && enc_pub_key.y == Uint256::from_u128(1u128)
+                if enc_pub_key.x != Uint256::from_u128(0u128)
+                    && enc_pub_key.y != Uint256::from_u128(1u128)
+                    && enc_pub_key.x < snark_scalar_field
+                    && enc_pub_key.y < snark_scalar_field
                 {
-                    (false, "encrypted public key cannot be (0, 1)".to_string())
-                }
-                // 6. Check if encrypted public key values are within scalar field bounds
-                else if enc_pub_key.x >= snark_scalar_field || enc_pub_key.y >= snark_scalar_field
-                {
-                    (
-                        false,
-                        "encrypted public key values must be less than snark scalar field"
-                            .to_string(),
-                    )
-                } else {
-                    // 7. Check maximum deactivate messages limit
                     let dmsg_chain_length = DMSG_CHAIN_LENGTH.load(deps.storage)?;
                     let maci_parameters = MACIPARAMETERS.load(deps.storage)?;
-
-                    // Calculate maximum allowed deactivate messages: 5^(state_tree_depth+2)-1
                     let max_deactivate_messages = Uint256::from_u128(5u128).pow(
                         (maci_parameters.state_tree_depth + Uint256::from_u128(2u128))
                             .to_string()
                             .parse()
                             .unwrap(),
                     ) - Uint256::from_u128(1u128);
-
                     if dmsg_chain_length + Uint256::from_u128(1u128) > max_deactivate_messages {
                         (
                             false,
@@ -2303,11 +2248,10 @@ pub fn query_check_policy(
                             ),
                         )
                     } else {
-                        (
-                            true,
-                            "publish_deactivate_message check policy passed".to_string(),
-                        )
+                        (true, "publish_deactivate_message check policy passed".to_string())
                     }
+                } else {
+                    (false, "invalid encrypted public key".to_string())
                 }
             }
         }

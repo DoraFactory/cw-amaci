@@ -323,6 +323,8 @@ pub const TALLY_TIMEOUT: Item<Timestamp> = Item::new("tally_timeout"); // tally 
 pub const FIRST_DMSG_TIMESTAMP: Item<Timestamp> = Item::new("first_dmsg_timestamp");
 
 pub const FEE_RECIPIENT: Item<Addr> = Item::new("fee_recipient");
+// The registry contract address that instantiated this AMACI round
+pub const REGISTRY: Item<Addr> = Item::new("registry");
 
 #[cw_serde]
 pub enum DelayType {

@@ -9,6 +9,9 @@ pub enum ContractError {
     #[error("Unauthorized")]
     Unauthorized {},
 
+    #[error("Unauthorized admin {sender}, expected {expected}")]
+    UnauthorizedRegisty { sender: String, expected: String },
+
     #[error("Insufficient funds sent")]
     InsufficientFundsSend {},
 
