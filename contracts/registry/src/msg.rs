@@ -47,6 +47,20 @@ pub struct MsgSetSponsor {
     pub max_grant_per_user: Vec<ProtoCoin>,
 }
 
+// Sponsor module: withdraw leftover sponsor funds for a round to a recipient
+#[derive(Clone, PartialEq, prost::Message)]
+pub struct MsgWithdrawSponsorFunds {
+    // the caller (typically this registry contract address)
+    #[prost(string, tag = "1")]
+    pub creator: String,
+    // the round (AMACI) contract address
+    #[prost(string, tag = "2")]
+    pub contract_address: String,
+    // the recipient to receive remaining sponsor funds
+    #[prost(string, tag = "3")]
+    pub recipient: String,
+}
+
 #[cw_serde]
 pub enum ExecuteMsg {
     SetMaciOperator {
@@ -84,6 +98,10 @@ pub enum ExecuteMsg {
     },
     ChangeChargeConfig {
         config: CircuitChargeConfig,
+    },
+    // Withdraw sponsor funds (if any) to the round admin, then claim the round
+    Claim {
+        round_addr: Addr,
     },
 }
 

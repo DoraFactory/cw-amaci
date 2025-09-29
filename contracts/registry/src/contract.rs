@@ -2,14 +2,16 @@ use bech32::{self};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    attr, coins, from_json, to_json_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Reply,
-    Response, StdError, StdResult, SubMsg, SubMsgResponse, Uint128, Uint256, WasmMsg,
+    attr, coins, from_json, to_json_binary, Addr, BankMsg, Binary, CanonicalAddr, Deps, DepsMut,
+    Env, MessageInfo, Reply, Response, StdError, StdResult, SubMsg, SubMsgResponse, Uint128,
+    Uint256, WasmMsg,
 };
 
 use crate::error::ContractError;
 use crate::migrates::migrate_v0_1_4::migrate_v0_1_4;
 use crate::msg::{
-    ExecuteMsg, InstantiateMsg, InstantiationData, MigrateMsg, MsgSetSponsor, QueryMsg,
+    ExecuteMsg, InstantiateMsg, InstantiationData, MigrateMsg, MsgSetSponsor,
+    MsgWithdrawSponsorFunds, QueryMsg,
 };
 use crate::state::{
     Admin, CircuitChargeConfig, ValidatorSet, ADMIN, AMACI_CODE_ID, CIRCUIT_CHARGE_CONFIG,
@@ -19,16 +21,19 @@ use crate::state::{
 use cosmwasm_std::Decimal;
 use cw2::set_contract_version;
 use cw_amaci::msg::{
-    InstantiateMsg as AMaciInstantiateMsg, InstantiationData as AMaciInstantiationData,
-    WhitelistBase,
+    ExecuteMsg as AMaciExecuteMsg, InstantiateMsg as AMaciInstantiateMsg,
+    InstantiationData as AMaciInstantiationData, QueryMsg as AMaciQueryMsg, WhitelistBase,
 };
 use cw_amaci::state::{MaciParameters, PubKey, RoundInfo, VotingTime};
 use cw_utils::parse_instantiate_response_data;
+use prost::Message;
+use sha2::{Digest, Sha256};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:cw-amaci-registry";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const CREATED_GROTH16_ROUND_REPLY_ID: u64 = 1;
+// Removed secondary reply; sponsor registration and transfer are sent in one reply flow
 
 // Note, you can use StdResult in some functions where you do not
 // make use of the custom errors
@@ -113,6 +118,9 @@ pub fn execute(
         ExecuteMsg::ChangeChargeConfig { config } => {
             execute_change_charge_config(deps, env, info, config)
         }
+        ExecuteMsg::Claim { round_addr } => {
+            execute_claim(deps, env, info, round_addr)
+        }
     }
 }
 
@@ -151,36 +159,39 @@ pub fn execute_create_round(
 ) -> Result<Response, ContractError> {
     validate_dora_address(operator.as_str())?;
 
-    let maci_parameters: MaciParameters;
-    let required_fee: Uint128;
-
-    if max_voter <= Uint256::from_u128(25u128) && max_option <= Uint256::from_u128(5u128) {
+    let (maci_parameters, amaci_round_fund_fee, sponsor_fee) = if max_voter <= Uint256::from_u128(25u128)
+        && max_option <= Uint256::from_u128(5u128)
+    {
         // state_tree_depth: 2
         // vote_option_tree_depth: 1
-        // price: 20 DORA
-        maci_parameters = MaciParameters {
-            state_tree_depth: Uint256::from_u128(2u128),
-            int_state_tree_depth: Uint256::from_u128(1u128),
-            vote_option_tree_depth: Uint256::from_u128(1u128),
-            message_batch_size: Uint256::from_u128(5u128),
-        };
-        required_fee = Uint128::from(20000000000000000000u128);
-        // required_fee = Uint128::from(50000000000000000000u128);
+        // amaci round fund fee: 20 DORA, sponsor transfer: 100 DORA
+        (
+            MaciParameters {
+                state_tree_depth: Uint256::from_u128(2u128),
+                int_state_tree_depth: Uint256::from_u128(1u128),
+                vote_option_tree_depth: Uint256::from_u128(1u128),
+                message_batch_size: Uint256::from_u128(5u128),
+            },
+            Uint128::from(20000000000000000000u128),
+            Uint128::from(100000000000000000000u128),
+        )
     } else if max_voter <= Uint256::from_u128(625u128) && max_option <= Uint256::from_u128(25u128) {
         // state_tree_depth: 4
         // vote_option_tree_depth: 2
-        // price: 750 DORA
-        maci_parameters = MaciParameters {
-            state_tree_depth: Uint256::from_u128(4u128),
-            int_state_tree_depth: Uint256::from_u128(2u128),
-            vote_option_tree_depth: Uint256::from_u128(2u128),
-            message_batch_size: Uint256::from_u128(25u128),
-        };
-        required_fee = Uint128::from(750000000000000000000u128);
-        // required_fee = Uint128::from(100000000000000000000u128);
+        // amaci round fund fee: 750 DORA, sponsor transfer: 200 DORA
+        (
+            MaciParameters {
+                state_tree_depth: Uint256::from_u128(4u128),
+                int_state_tree_depth: Uint256::from_u128(2u128),
+                vote_option_tree_depth: Uint256::from_u128(2u128),
+                message_batch_size: Uint256::from_u128(25u128),
+            },
+            Uint128::from(750000000000000000000u128),
+            Uint128::from(200000000000000000000u128),
+        )
     } else {
         return Err(ContractError::NoMatchedSizeCircuit {});
-    }
+    };
 
     let denom = "peaka".to_string();
     let mut amount: Uint128 = Uint128::new(0);
@@ -190,10 +201,13 @@ pub fn execute_create_round(
         }
     });
 
-    // check user's payment
-    if amount < required_fee {
+    // Compute total required payment (instantiate fee + sponsor provision)
+    let total_fee = amaci_round_fund_fee.checked_add(sponsor_fee)?;
+
+    // Require the caller to attach both parts in this tx
+    if amount < total_fee {
         return Err(ContractError::InsufficientFee {
-            required: required_fee,
+            required: total_fee,
             provided: amount,
         });
     }
@@ -203,7 +217,6 @@ pub fn execute_create_round(
     }
     let operator_pubkey = MACI_OPERATOR_PUBKEY.load(deps.storage, &operator)?;
 
-    let total_fee = required_fee;
     let admin = ADMIN.load(deps.storage)?.admin;
 
     // No longer send admin_fee directly to admin, instead send all fees to amaci contract
@@ -230,7 +243,7 @@ pub fn execute_create_round(
             admin: Some(env.contract.address.to_string()),
             code_id: amaci_code_id,
             msg: to_json_binary(&init_msg)?,
-            funds: coins(total_fee.u128(), "peaka"), // Send all fees, including admin_fee
+            funds: coins(amaci_round_fund_fee.u128(), "peaka"), // Forward the instantiation fee to the AMACI contract
             label: "AMACI".to_string(),
         },
         CREATED_GROTH16_ROUND_REPLY_ID,
@@ -240,6 +253,8 @@ pub fn execute_create_round(
         .add_submessage(instantiate_msg)
         .add_attribute("action", "create_round")
         .add_attribute("amaci_code_id", &amaci_code_id.to_string())
+        .add_attribute("amaci round fund fee", amaci_round_fund_fee.to_string())
+        .add_attribute("sponsor fee", sponsor_fee.to_string())
         .add_attribute("total_fee", total_fee.to_string())
         .add_attribute("fee_recipient", admin.to_string());
 
@@ -461,6 +476,45 @@ pub fn execute_change_charge_config(
         .add_attribute("fee_rate", config.fee_rate.to_string()))
 }
 
+pub fn execute_claim(
+    deps: DepsMut,
+    env: Env,
+    _info: MessageInfo,
+    round_addr: Addr,
+) -> Result<Response, ContractError> {
+    // Determine recipient: round admin
+    let round_admin: Addr = deps
+        .querier
+        .query_wasm_smart(round_addr.clone(), &AMaciQueryMsg::Admin {})?;
+
+    // 1) Withdraw sponsor funds to round admin
+    let withdraw_msg = cosmwasm_std::CosmosMsg::Stargate {
+        type_url: "/doravota.sponsor.v1.MsgWithdrawSponsorFunds".to_string(),
+        value: {
+            let msg = MsgWithdrawSponsorFunds {
+                creator: env.contract.address.to_string(),
+                contract_address: round_addr.to_string(),
+                recipient: round_admin.to_string(),
+            };
+            msg.encode_to_vec().into()
+        },
+    };
+
+    // 2) Call AMACI claim (ensure AMACI restricts claim to registry if required)
+    let claim_msg = WasmMsg::Execute {
+        contract_addr: round_addr.to_string(),
+        msg: to_json_binary(&AMaciExecuteMsg::Claim {})?,
+        funds: vec![],
+    };
+
+    Ok(Response::new()
+        .add_message(withdraw_msg)
+        .add_message(claim_msg)
+        .add_attribute("action", "claim")
+        .add_attribute("round_addr", round_addr)
+        .add_attribute("recipient", round_admin))
+}
+
 // Only admin can execute
 fn is_admin(deps: Deps, sender: &str) -> StdResult<bool> {
     let cfg = ADMIN.load(deps.storage)?;
@@ -539,7 +593,7 @@ pub fn reply_created_round(
     reply: Result<SubMsgResponse, String>,
 ) -> Result<Response, ContractError> {
     let response = reply.map_err(StdError::generic_err)?;
-    let data = response.data.ok_or(ContractError::DataMissingErr {})?;
+    let data: Binary = response.data.ok_or(ContractError::DataMissingErr {})?;
     // let response = parse_instantiate_response_data(&data)?;
     let response = match parse_instantiate_response_data(&data) {
         Ok(data) => data,
@@ -556,19 +610,21 @@ pub fn reply_created_round(
     let amaci_return_data: AMaciInstantiationData = from_json(&response.data.unwrap())?;
 
     let parameters = &amaci_return_data.parameters;
-    let (round_power_label, max_grant_amount) = if parameters.state_tree_depth
+    let (round_power_label, max_grant_amount, sponsor_transfer_amount) = if parameters.state_tree_depth
         == Uint256::from_u128(2u128)
         && parameters.int_state_tree_depth == Uint256::from_u128(1u128)
         && parameters.vote_option_tree_depth == Uint256::from_u128(1u128)
         && parameters.message_batch_size == Uint256::from_u128(5u128)
     {
-        ("2-1-1-5", Uint128::from(10000000000000000000u128)) // 10 DORA
+        // max_grant_amount: 10 DORA, sponsor_transfer_amount: 100 DORA
+        ("2-1-1-5", Uint128::from(10000000000000000000u128), Uint128::from(100000000000000000000u128)) 
     } else if parameters.state_tree_depth == Uint256::from_u128(4u128)
         && parameters.int_state_tree_depth == Uint256::from_u128(2u128)
         && parameters.vote_option_tree_depth == Uint256::from_u128(2u128)
         && parameters.message_batch_size == Uint256::from_u128(25u128)
     {
-        ("4-2-2-25", Uint128::from(20000000000000000000u128)) // 20 DORA
+        // max_grant_amount: 20 DORA, sponsor_transfer_amount: 200 DORA
+        ("4-2-2-25", Uint128::from(20000000000000000000u128), Uint128::from(200000000000000000000u128)) // 20 DORA
     } else {
         return Err(ContractError::NoMatchedSizeCircuit);
     };
@@ -590,8 +646,6 @@ pub fn reply_created_round(
     let sponsor_msg = cosmwasm_std::CosmosMsg::Stargate {
         type_url: "/doravota.sponsor.v1.MsgSetSponsor".to_string(),
         value: {
-            use prost::Message;
-
             let msg = MsgSetSponsor {
                 creator: env.contract.address.to_string(),
                 contract_address: contract_address.clone(),
@@ -603,6 +657,14 @@ pub fn reply_created_round(
         },
     };
 
+    let sponsor_addr = derive_sponsor_address(&deps, &addr)?;
+    // Validate derived sponsor address using chain's HRP
+    deps.api
+        .addr_validate(sponsor_addr.as_str())
+        .map_err(|_| ContractError::SponsorAddressInvalid {
+            address: sponsor_addr.to_string(),
+        })?;
+
     let mut attributes = vec![
         attr("action", "created_round"),
         attr("code_id", amaci_code_id.to_string()),
@@ -610,6 +672,11 @@ pub fn reply_created_round(
         attr("round_scale_power", round_power_label),
         attr("sponsor_max_grant_per_user", max_grant_amount.to_string()),
         attr("sponsor_denom", denom.clone()),
+        attr("sponsor_address", sponsor_addr.to_string()),
+        attr(
+            "sponsor_transfer_amount_expected",
+            sponsor_transfer_amount.to_string(),
+        ),
         attr("caller", &amaci_return_data.caller.to_string()),
         attr("admin", &amaci_return_data.admin.to_string()),
         attr("operator", &amaci_return_data.operator.to_string()),
@@ -694,10 +761,46 @@ pub fn reply_created_round(
         attributes.push(attr("round_link", &amaci_return_data.round_info.link));
     }
 
-    Ok(Response::new()
+    // Send sponsor registration then the transfer in the same reply
+    let transfer_msg = BankMsg::Send {
+        to_address: sponsor_addr.to_string(),
+        amount: coins(sponsor_transfer_amount.u128(), &denom),
+    };
+
+    let response = Response::new()
         .add_message(sponsor_msg)
+        .add_message(transfer_msg)
         .add_attributes(attributes)
-        .set_data(to_json_binary(&data)?))
+        .set_data(to_json_binary(&data)?);
+
+    Ok(response)
+}
+
+
+//NOTE: IMPORTANT NOTIFICATION！ Please do not change this function! It must match the on-chain address derivation algorithm exactly!
+// On-chain address derivation algorithm: 
+// (1) https://github.com/cosmos/cosmos-sdk/blob/main/types/address/hash.go#L91
+// (2) https://github.com/cosmos/cosmos-sdk/blob/main/types/address/hash.go#L24-L40
+fn derive_sponsor_address(deps: &DepsMut, round_addr: &Addr) -> Result<Addr, ContractError> {
+    let canonical_round = deps.api.addr_canonicalize(round_addr.as_str())?;
+
+    let mut first_hasher = Sha256::new();
+    first_hasher.update(canonical_round.as_slice());
+    let first_hash = first_hasher.finalize();
+
+    let mut second_hasher = Sha256::new();
+    second_hasher.update(first_hash);
+    second_hasher.update(b"sponsor");
+    let derived_hash = second_hasher.finalize();
+
+    let canonical_len = canonical_round.len();
+    if canonical_len <= derived_hash.len() {
+        let derived_canonical = CanonicalAddr::from(derived_hash[..canonical_len].to_vec());
+        Ok(deps.api.addr_humanize(&derived_canonical)?)
+    } else {
+        // Fallback for testing environments with non-standard canonical lengths.
+        Ok(Addr::unchecked(format!("{}_sponsor", round_addr.as_str())))
+    }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]

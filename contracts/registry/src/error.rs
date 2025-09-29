@@ -94,4 +94,7 @@ pub enum ContractError {
 
     #[error("Invalid address prefix. Expected: {expected}, Actual: {actual}")]
     InvalidAddressPrefix { expected: String, actual: String },
+
+    #[error("Invalid sponsor address: {address}")]
+    SponsorAddressInvalid { address: String },
 }
