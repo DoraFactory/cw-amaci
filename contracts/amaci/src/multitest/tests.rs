@@ -1,15 +1,15 @@
 #[cfg(test)]
 mod test {
     use crate::error::ContractError;
-    use crate::msg::Groth16ProofType;
+    use crate::msg::{ExecuteMsg, Groth16ProofType, QueryMsg, CheckPolicyResponse};
     use crate::multitest::{
         create_app, owner, uint256_from_decimal_string, user1, user2, user3, MaciCodeId,
     };
     use crate::state::{
         DelayRecord, DelayRecords, DelayType, MessageData, Period, PeriodStatus, PubKey,
     };
-    use cosmwasm_std::{Addr, BlockInfo, Timestamp, Uint256};
-    use cw_multi_test::next_block;
+    use cosmwasm_std::{coins, Addr, BlockInfo, Timestamp, Uint128, Uint256};
+    use cw_multi_test::{next_block, BankSudo};
     use serde::{Deserialize, Serialize};
     use serde_json;
     use std::fs;
@@ -147,6 +147,303 @@ mod test {
 
     fn deserialize_data<T: serde::de::DeserializeOwned>(data: &serde_json::Value) -> T {
         serde_json::from_value(data.clone()).expect("Unable to deserialize data")
+    }
+
+    #[test]
+    fn claim_unauthorized_sender_should_fail() {
+        // Instantiate AMACI with registry recorded as the instantiator (owner())
+        let mut app = create_app();
+        let code_id = MaciCodeId::store_code(&mut app);
+        let label = "Group";
+        let contract = code_id
+            .instantiate_with_voting_time(&mut app, owner(), user1(), user2(), label)
+            .unwrap();
+
+        // Call claim from a non-registry address should fail with UnauthorizedRegisty
+        let err = contract.amaci_claim(&mut app, user1()).unwrap_err();
+        assert_eq!(
+            ContractError::UnauthorizedRegisty {
+                sender: user1().to_string(),
+                expected: owner().to_string(),
+            },
+            err.downcast().unwrap()
+        );
+    }
+
+    #[test]
+    fn claim_authorized_sender_should_succeed() {
+        // Instantiate AMACI with registry recorded as the instantiator (owner())
+        let mut app = create_app();
+        let code_id = MaciCodeId::store_code(&mut app);
+        let label = "Group";
+        let contract = code_id
+            .instantiate_with_voting_time(&mut app, owner(), user1(), user2(), label)
+            .unwrap();
+
+        // Fund the AMACI contract balance with 20 DORA (peaka)
+        let amt = 20000000000000000000u128; // 20 DORA
+        app.sudo(cw_multi_test::SudoMsg::Bank(BankSudo::Mint {
+            to_address: contract.addr().to_string(),
+            amount: coins(amt, "peaka"),
+        }))
+        .unwrap();
+
+        // Advance time beyond voting_end + TALLY_TIMEOUT (4 days)
+        let voting_time = contract.amaci_get_voting_time(&app).unwrap();
+        let after_timeout = voting_time.end_time.plus_seconds(4 * 24 * 60 * 60 + 1);
+        app.update_block(|b| b.time = after_timeout);
+
+        // Record admin (owner) balance before claim
+        let admin_before = app
+            .wrap()
+            .query_balance(owner().to_string(), "peaka".to_string())
+            .unwrap()
+            .amount;
+
+        // Claim as the authorized registry (owner)
+        contract.amaci_claim(&mut app, owner()).unwrap();
+
+        // Admin should receive all funds (timeout path)
+        let admin_after = app
+            .wrap()
+            .query_balance(owner().to_string(), "peaka".to_string())
+            .unwrap()
+            .amount;
+        assert_eq!(admin_after, admin_before + Uint128::from(amt));
+
+        // AMACI contract balance should be zero
+        let contract_bal = app
+            .wrap()
+            .query_balance(contract.addr().to_string(), "peaka".to_string())
+            .unwrap()
+            .amount;
+        assert_eq!(contract_bal, Uint128::zero());
+    }
+
+    #[test]
+    fn check_policy_signup_allows_execute() {
+        let mut app = create_app();
+        let code_id = MaciCodeId::store_code(&mut app);
+        let label = "CheckPolicy-SignUp";
+        let contract = code_id
+            .instantiate_with_voting_time(&mut app, owner(), user1(), user2(), label)
+            .unwrap();
+
+        // Move time into voting window
+        let voting_time = contract.get_voting_time(&app).unwrap();
+        let t = voting_time.start_time.plus_seconds(1);
+        app.update_block(|b| b.time = t);
+
+        // Prepare sign up message
+        let pubkey = PubKey {
+            x: Uint256::from_u128(1),
+            y: Uint256::from_u128(2),
+        };
+        let msg_data = serde_json::to_string(&ExecuteMsg::SignUp { pubkey: pubkey.clone() }).unwrap();
+
+        // Query check policy
+        let policy: CheckPolicyResponse = app
+            .wrap()
+            .query_wasm_smart(
+                contract.addr(),
+                &QueryMsg::CheckPolicy {
+                    sender: user1(),
+                    msg_data,
+                },
+            )
+            .unwrap();
+        assert!(policy.eligible, "policy should allow signup");
+
+        // Execute same message should succeed
+        contract.sign_up(&mut app, user1(), pubkey).unwrap();
+    }
+
+    #[test]
+    fn check_policy_publish_message_allows_execute() {
+        let mut app = create_app();
+        let code_id = MaciCodeId::store_code(&mut app);
+        let label = "CheckPolicy-PublishMessage";
+        let contract = code_id
+            .instantiate_with_voting_time(&mut app, owner(), user1(), user2(), label)
+            .unwrap();
+
+        // Move time into voting window
+        let voting_time = contract.get_voting_time(&app).unwrap();
+        let t = voting_time.start_time.plus_seconds(1);
+        app.update_block(|b| b.time = t);
+
+        // Prepare message (length 7 to satisfy execute path indexing)
+        let message = MessageData { data: [
+            Uint256::from_u128(1), Uint256::from_u128(1), Uint256::from_u128(1),
+            Uint256::from_u128(1), Uint256::from_u128(1), Uint256::from_u128(1),
+            Uint256::from_u128(1),
+        ] };
+        let enc = PubKey { x: Uint256::from_u128(2), y: Uint256::from_u128(3) };
+        let msg_data = serde_json::to_string(&ExecuteMsg::PublishMessage { message: message.clone(), enc_pub_key: enc.clone() }).unwrap();
+
+        let policy: CheckPolicyResponse = app
+            .wrap()
+            .query_wasm_smart(
+                contract.addr(),
+                &QueryMsg::CheckPolicy { sender: user1(), msg_data },
+            )
+            .unwrap();
+        assert!(policy.eligible, "policy should allow publish_message");
+
+        // Execute same message should succeed
+        contract
+            .publish_message(&mut app, user1(), message, enc)
+            .unwrap();
+    }
+
+    #[test]
+    fn check_policy_publish_deactivate_message_allows_execute() {
+        let mut app = create_app();
+        let code_id = MaciCodeId::store_code(&mut app);
+        let label = "CheckPolicy-PublishDeactivate";
+        let contract = code_id
+            .instantiate_with_voting_time(&mut app, owner(), user1(), user2(), label)
+            .unwrap();
+
+        // Move time into voting window
+        let voting_time = contract.get_voting_time(&app).unwrap();
+        let t = voting_time.start_time.plus_seconds(1);
+        app.update_block(|b| b.time = t);
+
+        // Prepare deactivate message (length 7 to satisfy execute path indexing)
+        let message = MessageData { data: [
+            Uint256::from_u128(10), Uint256::from_u128(11), Uint256::from_u128(12),
+            Uint256::from_u128(13), Uint256::from_u128(14), Uint256::from_u128(15),
+            Uint256::from_u128(16),
+        ] };
+        let enc = PubKey { x: Uint256::from_u128(2), y: Uint256::from_u128(3) };
+        let msg_data = serde_json::to_string(&ExecuteMsg::PublishDeactivateMessage { message: message.clone(), enc_pub_key: enc.clone() }).unwrap();
+
+        let policy: CheckPolicyResponse = app
+            .wrap()
+            .query_wasm_smart(
+                contract.addr(),
+                &QueryMsg::CheckPolicy { sender: user1(), msg_data },
+            )
+            .unwrap();
+        assert!(policy.eligible, "policy should allow publish_deactivate_message");
+
+        // Execute same message should succeed
+        contract
+            .publish_deactivate_message(&mut app, user1(), message, enc)
+            .unwrap();
+    }
+
+    #[test]
+    #[ignore]
+    fn check_policy_add_new_key_allows_execute() {
+        // Use ISQV instantiate to ensure new-key vkeys are loaded
+        let mut app = create_app();
+        let code_id = MaciCodeId::store_code(&mut app);
+        let label = "CheckPolicy-AddNewKey";
+        let contract = code_id
+            .instantiate_with_voting_time_isqv_amaci(&mut app, owner(), user1(), user2(), user3(), label)
+            .unwrap();
+
+        // Move time into voting window
+        let voting_time = contract.get_voting_time(&app).unwrap();
+        let t = voting_time.start_time.plus_seconds(1);
+        app.update_block(|b| b.time = t);
+
+        // Load add-new-key test vectors from logs file and pick the second "proofAddNewKey" entry
+        // Reuse registry test vectors for add-new-key
+        let logs_file_path = "../registry/src/test/amaci_test/logs.json";
+        let mut logs_file = fs::File::open(logs_file_path).expect("Failed to open file");
+        let mut logs_content = String::new();
+        logs_file
+            .read_to_string(&mut logs_content)
+            .expect("Failed to read file");
+        let logs_data: Vec<AMaciLogEntry> = serde_json::from_str(&logs_content).expect("Failed to parse JSON");
+
+        let mut chosen: Option<serde_json::Value> = None;
+        for entry in logs_data {
+            if entry.log_type == "proofAddNewKey" {
+                chosen = Some(entry.data);
+                break;
+            }
+        }
+        let raw = chosen.expect("No proofAddNewKey in logs");
+
+        // Parse fields directly from the log entry
+        #[derive(Deserialize)]
+        struct ProofHex { #[serde(rename = "pi_a")] a: String, #[serde(rename = "pi_b")] b: String, #[serde(rename = "pi_c")] c: String }
+        #[derive(Deserialize)]
+        struct AddNewKeyLog { #[serde(rename = "pubKey")] pub_key: Vec<String>, d: Vec<String>, nullifier: String, proof: ProofHex }
+        let parsed: AddNewKeyLog = serde_json::from_value(raw).expect("parse proofAddNewKey data");
+
+        let new_key_pub = PubKey {
+            x: uint256_from_decimal_string(&parsed.pub_key[0]),
+            y: uint256_from_decimal_string(&parsed.pub_key[1]),
+        };
+        let d: [Uint256; 4] = [
+            uint256_from_decimal_string(&parsed.d[0]),
+            uint256_from_decimal_string(&parsed.d[1]),
+            uint256_from_decimal_string(&parsed.d[2]),
+            uint256_from_decimal_string(&parsed.d[3]),
+        ];
+        let nullifier = uint256_from_decimal_string(&parsed.nullifier);
+        let proof = Groth16ProofType { a: parsed.proof.a, b: parsed.proof.b, c: parsed.proof.c };
+
+        // Build ExecuteMsg JSON for check_policy
+        let msg_data = serde_json::to_string(&ExecuteMsg::AddNewKey {
+            pubkey: new_key_pub.clone(),
+            nullifier,
+            d,
+            groth16_proof: proof.clone(),
+        }).unwrap();
+
+        // Query check policy
+        let policy: CheckPolicyResponse = app
+            .wrap()
+            .query_wasm_smart(
+                contract.addr(),
+                &QueryMsg::CheckPolicy { sender: owner(), msg_data },
+            )
+            .unwrap();
+        assert!(policy.eligible, "policy should allow add_new_key: {}", policy.reason);
+
+        // Execute same message should succeed
+        contract
+            .add_key(&mut app, owner(), new_key_pub, nullifier, d, proof)
+            .unwrap();
+    }
+
+    #[test]
+    fn check_policy_add_new_key_out_of_time_disallows_execute() {
+        let mut app = create_app();
+        let code_id = MaciCodeId::store_code(&mut app);
+        let label = "CheckPolicy-AddNewKey-Neg";
+        let contract = code_id
+            .instantiate_with_voting_time_isqv_amaci(&mut app, owner(), user1(), user2(), user3(), label)
+            .unwrap();
+
+        // Set time clearly before voting start (default instantiation sets current time to 0)
+        // Prepare minimal add-new-key payload; it won't reach proof check due to time gate
+        let pubkey = PubKey { x: Uint256::from_u128(1), y: Uint256::from_u128(1) };
+        let nullifier = Uint256::from_u128(1);
+        let d = [Uint256::from_u128(1), Uint256::from_u128(1), Uint256::from_u128(1), Uint256::from_u128(1)];
+        let proof = Groth16ProofType { a: "00".into(), b: "00".into(), c: "00".into() };
+
+        let msg_data = serde_json::to_string(&ExecuteMsg::AddNewKey { pubkey: pubkey.clone(), nullifier, d, groth16_proof: proof.clone() }).unwrap();
+
+        let policy: CheckPolicyResponse = app
+            .wrap()
+            .query_wasm_smart(
+                contract.addr(),
+                &QueryMsg::CheckPolicy { sender: owner(), msg_data },
+            )
+            .unwrap();
+        assert!(!policy.eligible);
+        assert!(policy.reason.contains("voting time not in range"));
+
+        // Execute should also fail with PeriodError
+        let err = contract.add_key(&mut app, owner(), pubkey, nullifier, d, proof).unwrap_err();
+        assert_eq!(ContractError::PeriodError {}, err.downcast().unwrap());
     }
 
     pub fn next_block_11_min(block: &mut BlockInfo) {
