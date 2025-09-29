@@ -1,10 +1,11 @@
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
 
 use anyhow::Result as AnyResult;
 
 use crate::{
-    contract::{execute, instantiate, migrate, query, reply},
+    contract::{execute, instantiate, query, reply},
     msg::*,
     state::{CircuitChargeConfig, ValidatorSet},
 };
@@ -12,7 +13,9 @@ use cosmwasm_std::{Addr, Coin, StdResult, Timestamp, Uint256};
 use cw_amaci::msg::{WhitelistBase, WhitelistBaseConfig};
 
 use cw_amaci::state::{PubKey, RoundInfo, VotingTime};
-use cw_multi_test::{App, AppResponse, ContractWrapper, Executor};
+// Use AMACI's DefaultApp (StargateAccepting) to be compatible with AMACI helpers
+use cw_amaci::multitest::App;
+use cw_multi_test::{AppResponse, ContractWrapper, Executor};
 pub const MOCK_CONTRACT_ADDR: &str = "cosmos2contract";
 pub const DORA_DEMON: &str = "peaka";
 pub const DORA_DECIMALS: u8 = 18;
