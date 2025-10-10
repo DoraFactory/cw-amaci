@@ -207,6 +207,7 @@ impl AmaciRegistryContract {
             circuit_type,
             certification_system,
             oracle_whitelist_pubkey: None,
+            pre_deactivate_coordinator: None,
         };
 
         app.execute_contract(sender, self.addr(), &msg, send_funds)
@@ -260,6 +261,7 @@ impl AmaciRegistryContract {
             circuit_type,
             certification_system,
             oracle_whitelist_pubkey: None,
+            pre_deactivate_coordinator: None,
         };
 
         app.execute_contract(sender, self.addr(), &msg, send_funds)
@@ -306,6 +308,7 @@ impl AmaciRegistryContract {
             circuit_type,
             certification_system,
             oracle_whitelist_pubkey: Some(oracle_whitelist_pubkey),
+            pre_deactivate_coordinator: None,
         };
 
         app.execute_contract(sender, self.addr(), &msg, send_funds)

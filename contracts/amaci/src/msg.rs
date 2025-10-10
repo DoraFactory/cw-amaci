@@ -31,6 +31,8 @@ pub struct InstantiateMsg {
 
     // Oracle whitelist pubkey (optional)
     pub oracle_whitelist_pubkey: Option<String>,
+    // Pre Deactivate Coordinator
+    pub pre_deactivate_coordinator: Option<PubKey>,
 }
 
 #[cw_serde]
@@ -214,6 +216,9 @@ pub enum QueryMsg {
 
     #[returns(Uint256)]
     QueryPreDeactivateRoot {},
+
+    #[returns(Option<Uint256>)]
+    QueryPreDeactivateCoordinatorHash {},
 
     #[returns(DelayRecords)]
     GetDelayRecords {},

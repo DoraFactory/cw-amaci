@@ -345,6 +345,7 @@ impl MaciContract {
             admin: owner(),
             fee_recipient: fee_recipient(),
             oracle_whitelist_pubkey: None,
+            pre_deactivate_coordinator: None,
         };
 
         app.instantiate_contract(
@@ -405,6 +406,7 @@ impl MaciContract {
             admin: owner(),
             fee_recipient: fee_recipient(),
             oracle_whitelist_pubkey: None,
+            pre_deactivate_coordinator: None,
         };
 
         app.instantiate_contract(
@@ -1210,6 +1212,7 @@ impl MaciContract {
             admin: owner(),
             fee_recipient: fee_recipient(),
             oracle_whitelist_pubkey: Some(oracle_whitelist_pubkey),
+            pre_deactivate_coordinator: None,
         };
 
         app.instantiate_contract(

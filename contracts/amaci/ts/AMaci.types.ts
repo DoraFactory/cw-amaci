@@ -17,6 +17,7 @@ export interface InstantiateMsg {
   operator: Addr;
   oracle_whitelist_pubkey?: string | null;
   parameters: MaciParameters;
+  pre_deactivate_coordinator?: PubKey | null;
   pre_deactivate_root: Uint256;
   round_info: RoundInfo;
   voice_credit_amount: Uint256;
@@ -196,6 +197,8 @@ export type QueryMsg = {
 } | {
   query_pre_deactivate_root: {};
 } | {
+  query_pre_deactivate_coordinator_hash: {};
+} | {
   get_delay_records: {};
 } | {
   get_tally_delay: {};
@@ -236,6 +239,7 @@ export interface TallyDelayInfo {
   total_work: number;
 }
 export type NullableString = string | null;
+export type NullableUint256 = Uint256 | null;
 export type Uint128 = string;
 export type ArrayOfString = string[];
 export interface Whitelist {

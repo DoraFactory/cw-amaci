@@ -301,6 +301,16 @@
                   "null"
                 ]
               },
+              "pre_deactivate_coordinator": {
+                "anyOf": [
+                  {
+                    "$ref": "#/definitions/PubKey"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "pre_deactivate_root": {
                 "$ref": "#/definitions/Uint256"
               },

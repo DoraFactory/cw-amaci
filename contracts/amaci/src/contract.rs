@@ -15,10 +15,11 @@ use crate::state::{
     GROTH16_NEWKEY_VKEYS, GROTH16_PROCESS_VKEYS, GROTH16_TALLY_VKEYS, LEAF_IDX_0, MACIPARAMETERS,
     MACI_DEACTIVATE_MESSAGE, MACI_OPERATOR, MAX_LEAVES_COUNT, MAX_VOTE_OPTIONS, MSG_CHAIN_LENGTH,
     MSG_HASHES, NODES, NULLIFIERS, NUMSIGNUPS, ORACLE_WHITELIST, ORACLE_WHITELIST_PUBKEY,
-    PENALTY_RATE, PERIOD, PRE_DEACTIVATE_ROOT, PROCESSED_DMSG_COUNT, PROCESSED_MSG_COUNT,
-    PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO, SIGNUPED, STATEIDXINC, STATE_ROOT_BY_DMSG,
-    TALLY_DELAY_MAX_HOURS, TALLY_TIMEOUT, TOTAL_RESULT, USED_ENC_PUB_KEYS, VOICECREDITBALANCE,
-    VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS, ZEROS_H10,
+    PENALTY_RATE, PERIOD, PRE_DEACTIVATE_COORDINATOR_HASH, PRE_DEACTIVATE_ROOT,
+    PROCESSED_DMSG_COUNT, PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO,
+    SIGNUPED, STATEIDXINC, STATE_ROOT_BY_DMSG, TALLY_DELAY_MAX_HOURS, TALLY_TIMEOUT, TOTAL_RESULT,
+    USED_ENC_PUB_KEYS, VOICECREDITBALANCE, VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP, VOTINGTIME,
+    WHITELIST, ZEROS, ZEROS_H10,
 };
 use cosmwasm_schema::cw_serde;
 #[cfg(not(feature = "library"))]
@@ -189,6 +190,13 @@ pub fn instantiate(
 
     // Save the pre_deactivate_root value to storage
     PRE_DEACTIVATE_ROOT.save(deps.storage, &msg.pre_deactivate_root)?;
+
+    // Calculate and save the pre_deactivate_coordinator hash if provided
+    if let Some(pre_deactivate_coordinator) = msg.pre_deactivate_coordinator {
+        let pre_deactivate_coordinator_hash =
+            hash2([pre_deactivate_coordinator.x, pre_deactivate_coordinator.y]);
+        PRE_DEACTIVATE_COORDINATOR_HASH.save(deps.storage, &pre_deactivate_coordinator_hash)?;
+    }
 
     let vkey = match_vkeys(&msg.parameters)?;
 
@@ -1328,9 +1336,13 @@ pub fn execute_pre_add_new_key(
     let mut input: [Uint256; 7] = [Uint256::zero(); 7];
 
     input[0] = PRE_DEACTIVATE_ROOT.load(deps.storage)?;
-    // input[1] = COORDINATORHASH.load(deps.storage)?;
-    input[1] =
-        uint256_from_hex_string("d53841ab0494365b341d519dcfaf0f69e375ffa406eb4484d38f55e9bdef10b");
+
+    // Use pre_deactivate_coordinator hash if available, otherwise fall back to COORDINATORHASH
+    input[1] = match PRE_DEACTIVATE_COORDINATOR_HASH.may_load(deps.storage)? {
+        Some(hash) => hash,
+        None => COORDINATORHASH.load(deps.storage)?,
+    };
+
     input[2] = nullifier;
     input[3] = d[0];
     input[4] = d[1];
@@ -2247,6 +2259,10 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 .may_load(deps.storage)?
                 .unwrap_or_default(),
         ),
+        QueryMsg::QueryPreDeactivateCoordinatorHash {} => {
+            let coordinator_hash = PRE_DEACTIVATE_COORDINATOR_HASH.may_load(deps.storage)?;
+            to_json_binary(&coordinator_hash)
+        }
         QueryMsg::GetDelayRecords {} => {
             let records = DELAY_RECORDS
                 .may_load(deps.storage)?

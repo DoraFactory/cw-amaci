@@ -160,6 +160,8 @@ pub const NULLIFIERS: Map<Vec<u8>, bool> = Map::new("nullifiers");
 pub const CURRENT_DEACTIVATE_COMMITMENT: Item<Uint256> = Item::new("current_deactivate_commitment");
 pub const SIGNUPED: Map<Vec<u8>, Uint256> = Map::new("signuped");
 pub const PRE_DEACTIVATE_ROOT: Item<Uint256> = Item::new("pre_deactivate_root");
+pub const PRE_DEACTIVATE_COORDINATOR_HASH: Item<Uint256> =
+    Item::new("pre_deactivate_coordinator_hash");
 
 pub const DEACTIVATE_COUNT: Item<u128> = Item::new("deactivate_count");
 

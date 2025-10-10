@@ -262,6 +262,7 @@ impl SaasContract {
                 circuit_type,
                 certification_system,
                 oracle_whitelist_pubkey,
+                pre_deactivate_coordinator: None,
             },
             funds,
         )

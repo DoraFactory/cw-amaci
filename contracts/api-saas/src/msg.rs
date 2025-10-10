@@ -78,6 +78,7 @@ pub enum ExecuteMsg {
         circuit_type: Uint256,
         certification_system: Uint256,
         oracle_whitelist_pubkey: Option<String>,
+        pre_deactivate_coordinator: Option<PubKey>,
     },
 
     // API MACI management
