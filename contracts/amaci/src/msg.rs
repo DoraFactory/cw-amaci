@@ -234,6 +234,9 @@ pub enum QueryMsg {
 
     #[returns(Uint256)]
     WhiteBalanceOf { pubkey: PubKey, certificate: String },
+
+    #[returns(Uint256)]
+    QueryCurrentStateCommitment {},
 }
 
 #[cw_serde]

@@ -240,7 +240,13 @@ pub fn instantiate(
     NODES.save(
         deps.storage,
         Uint256::from_u128(0u128).to_be_bytes().to_vec(),
-        &Uint256::from_u128(0u128),
+        &zeros_h10[msg
+            .parameters
+            .state_tree_depth
+            .to_string()
+            .parse::<usize>()
+            .unwrap()],
+        // &Uint256::from_u128(0u128),
     )?;
 
     // Define an array of zero values
@@ -1614,11 +1620,17 @@ pub fn execute_stop_processing_period(
         return Err(ContractError::PeriodError {});
     }
 
-    let processed_msg_count = PROCESSED_MSG_COUNT.load(deps.storage)?;
-    let msg_chain_length = MSG_CHAIN_LENGTH.load(deps.storage)?;
+    let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
 
-    if processed_msg_count != msg_chain_length {
-        return Err(ContractError::MsgLeftProcess {});
+    // If there are registered users, check if all messages have been processed
+    // If num_sign_ups is 0, skip the message processing check as all votes are invalid
+    if num_sign_ups != Uint256::zero() {
+        let processed_msg_count = PROCESSED_MSG_COUNT.load(deps.storage)?;
+        let msg_chain_length = MSG_CHAIN_LENGTH.load(deps.storage)?;
+
+        if processed_msg_count != msg_chain_length {
+            return Err(ContractError::MsgLeftProcess {});
+        }
     }
 
     let period = Period {
@@ -2291,6 +2303,10 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         } => {
             let balance = user_balance_of_oracle(deps, _env, pubkey, certificate)?;
             to_json_binary(&balance)
+        }
+        QueryMsg::QueryCurrentStateCommitment {} => {
+            let current_state_commitment = CURRENT_STATE_COMMITMENT.may_load(deps.storage)?;
+            to_json_binary(&current_state_commitment)
         }
     }
 }
