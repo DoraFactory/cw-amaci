@@ -941,13 +941,19 @@ pub fn execute_stop_processing_period(
         return Err(ContractError::PeriodError {});
     }
 
-    // Check that all users have not been processed yet
-    let processed_msg_count = PROCESSED_MSG_COUNT.load(deps.storage)?;
-    let msg_chain_length = MSG_CHAIN_LENGTH.load(deps.storage)?;
+    let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
 
-    if processed_msg_count != msg_chain_length {
-        return Err(ContractError::MsgLeftProcess {});
+    // If there are registered users, check if all messages have been processed
+    // If num_sign_ups is 0, skip the message processing check as all votes are invalid
+    if num_sign_ups != Uint256::zero() {
+        let processed_msg_count = PROCESSED_MSG_COUNT.load(deps.storage)?;
+        let msg_chain_length = MSG_CHAIN_LENGTH.load(deps.storage)?;
+
+        if processed_msg_count != msg_chain_length {
+            return Err(ContractError::MsgLeftProcess {});
+        }
     }
+
     // Update the period status to Tallying
     let period = Period {
         status: PeriodStatus::Tallying,
@@ -1792,6 +1798,10 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
         }
         QueryMsg::QueryOracleWhitelistConfig {} => {
             to_json_binary::<OracleWhitelistConfig>(&ORACLE_WHITELIST_CONFIG.load(deps.storage)?)
+        }
+        QueryMsg::QueryCurrentStateCommitment {} => {
+            let current_state_commitment = CURRENT_STATE_COMMITMENT.may_load(deps.storage)?;
+            to_json_binary(&current_state_commitment)
         }
     }
 }

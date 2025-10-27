@@ -187,4 +187,7 @@ pub enum QueryMsg {
 
     #[returns(Uint256)]
     QueryCertSystem {},
+
+    #[returns(Uint256)]
+    QueryCurrentStateCommitment {},
 }

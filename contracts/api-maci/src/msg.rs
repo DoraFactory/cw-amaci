@@ -209,6 +209,9 @@ pub enum QueryMsg {
 
     #[returns(OracleWhitelistConfig)]
     QueryOracleWhitelistConfig {},
+
+    #[returns(Uint256)]
+    QueryCurrentStateCommitment {},
 }
 
 #[cw_serde]
