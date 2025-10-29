@@ -139,6 +139,9 @@ pub enum ContractError {
     #[error("Oracle whitelist not configured")]
     OracleWhitelistNotConfigured {},
 
+    #[error("Whitelist not configured")]
+    WhitelistNotConfigured {},
+
     #[error("Invalid base64 encoding")]
     InvalidBase64 {},
 

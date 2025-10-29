@@ -716,6 +716,12 @@ pub fn execute_sign_up(
         // Oracle verification passed - user is qualified
         // In amaci, all verified users get the same voice_credit_amount
     } else {
+        // Traditional mode: check if whitelist exists
+        let whitelist = WHITELIST.may_load(deps.storage)?;
+        if whitelist.is_none() {
+            return Err(ContractError::WhitelistNotConfigured {});
+        }
+
         // Traditional mode: check whitelist
         if !is_whitelist(deps.as_ref(), &info.sender)? {
             return Err(ContractError::Unauthorized {});
