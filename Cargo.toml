@@ -1,5 +1,13 @@
 [workspace]
-members = ["contracts/amaci", "contracts/registry", "contracts/saas", "contracts/maci", "contracts/oracle-maci"]
+members = [
+    "contracts/amaci",
+    "contracts/registry",
+    "contracts/saas",
+    "contracts/maci",
+    "contracts/oracle-maci",
+    "contracts/api-maci",
+    "contracts/api-saas",
+]
 resolver = "2"
 
 # [workspace.dependencies]

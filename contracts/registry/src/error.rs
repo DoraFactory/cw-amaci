@@ -1,4 +1,4 @@
-use cosmwasm_std::{StdError, Uint128, OverflowError};
+use cosmwasm_std::{OverflowError, StdError, Uint128};
 use thiserror::Error;
 
 use cw_controllers::{AdminError, HookError};
@@ -72,20 +72,32 @@ pub enum ContractError {
     NotSetOperatorPubkey,
 
     #[error("Insufficient fee provided. Required: {required}, provided: {provided}")]
-    InsufficientFee { required: Uint128, provided: Uint128 },
+    InsufficientFee {
+        required: Uint128,
+        provided: Uint128,
+    },
 
     #[error("No claimable rewards")]
     NoClaimableRewards {},
 
     #[error("Insufficient stake amount. Required: {required}, provided: {provided}")]
-    InsufficientStake { required: Uint128, provided: Uint128 },
+    InsufficientStake {
+        required: Uint128,
+        provided: Uint128,
+    },
 
     #[error("Operator {operator} is not healthy")]
     UnhealthyOperator { operator: String },
-    
+
     #[error("Invalid address: {address}")]
     InvalidAddress { address: String },
-    
+
     #[error("Invalid address prefix. Expected: {expected}, Actual: {actual}")]
     InvalidAddressPrefix { expected: String, actual: String },
+
+    #[error("Exact fee required. Expected: {required}, provided: {provided}")]
+    ExactFeeRequired {
+        required: Uint128,
+        provided: Uint128,
+    },
 }

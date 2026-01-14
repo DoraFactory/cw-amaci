@@ -1,4 +1,6 @@
 #[cfg(test)]
+mod certificate_generator;
+#[cfg(test)]
 mod tests;
 
 use anyhow::Result as AnyResult;
@@ -325,8 +327,14 @@ impl MaciContract {
                     "4363822302427519764561660537570341277214758164895027920046745209970137856681",
                 ),
             },
-            max_vote_options: Uint256::from_u128(5u128),
             voice_credit_amount: Uint256::from_u128(100u128),
+            vote_option_map: vec![
+                "Option 1".to_string(),
+                "Option 2".to_string(),
+                "Option 3".to_string(),
+                "Option 4".to_string(),
+                "Option 5".to_string(),
+            ],
             pre_deactivate_root: Uint256::from_u128(0u128),
             round_info,
             whitelist,
@@ -336,6 +344,8 @@ impl MaciContract {
             operator: operator(),
             admin: owner(),
             fee_recipient: fee_recipient(),
+            oracle_whitelist_pubkey: None,
+            pre_deactivate_coordinator: None,
         };
 
         app.instantiate_contract(
@@ -378,8 +388,14 @@ impl MaciContract {
                     "4363822302427519764561660537570341277214758164895027920046745209970137856681",
                 ),
             },
-            max_vote_options: Uint256::from_u128(5u128),
             voice_credit_amount: Uint256::from_u128(100u128),
+            vote_option_map: vec![
+                "Option 1".to_string(),
+                "Option 2".to_string(),
+                "Option 3".to_string(),
+                "Option 4".to_string(),
+                "Option 5".to_string(),
+            ],
             pre_deactivate_root: Uint256::from_u128(0u128),
             round_info,
             whitelist,
@@ -389,6 +405,8 @@ impl MaciContract {
             operator: operator(),
             admin: owner(),
             fee_recipient: fee_recipient(),
+            oracle_whitelist_pubkey: None,
+            pre_deactivate_coordinator: None,
         };
 
         app.instantiate_contract(
@@ -404,7 +422,34 @@ impl MaciContract {
 
     #[track_caller]
     pub fn sign_up(&self, app: &mut App, sender: Addr, pubkey: PubKey) -> AnyResult<AppResponse> {
-        app.execute_contract(sender, self.addr(), &ExecuteMsg::SignUp { pubkey }, &[])
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::SignUp {
+                pubkey,
+                certificate: None,
+            },
+            &[],
+        )
+    }
+
+    #[track_caller]
+    pub fn sign_up_oracle(
+        &self,
+        app: &mut App,
+        sender: Addr,
+        pubkey: PubKey,
+        certificate: String,
+    ) -> AnyResult<AppResponse> {
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::SignUp {
+                pubkey,
+                certificate: Some(certificate),
+            },
+            &[],
+        )
     }
 
     #[track_caller]
@@ -737,7 +782,34 @@ impl MaciContract {
         sender: Addr,
         pubkey: PubKey,
     ) -> AnyResult<AppResponse> {
-        app.execute_contract(sender, self.addr(), &ExecuteMsg::SignUp { pubkey }, &[])
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::SignUp {
+                pubkey,
+                certificate: None,
+            },
+            &[],
+        )
+    }
+
+    #[track_caller]
+    pub fn amaci_sign_up_oracle(
+        &self,
+        app: &mut DefaultApp,
+        sender: Addr,
+        pubkey: PubKey,
+        certificate: String,
+    ) -> AnyResult<AppResponse> {
+        app.execute_contract(
+            sender,
+            self.addr(),
+            &ExecuteMsg::SignUp {
+                pubkey,
+                certificate: Some(certificate),
+            },
+            &[],
+        )
     }
 
     #[track_caller]
@@ -1091,6 +1163,68 @@ impl MaciContract {
         app.wrap()
             .query_wasm_smart(self.addr(), &QueryMsg::GetTallyDelay {})
     }
+
+    #[allow(clippy::too_many_arguments)]
+    #[track_caller]
+    pub fn instantiate_with_oracle(
+        app: &mut App,
+        code_id: MaciCodeId,
+        sender: Addr,
+        round_info: RoundInfo,
+        whitelist: Option<WhitelistBase>,
+        voting_time: VotingTime,
+        circuit_type: Uint256,
+        certification_system: Uint256,
+        oracle_whitelist_pubkey: String,
+        label: &str,
+    ) -> AnyResult<Self> {
+        let parameters = MaciParameters {
+            state_tree_depth: Uint256::from_u128(2u128),
+            int_state_tree_depth: Uint256::from_u128(1u128),
+            message_batch_size: Uint256::from_u128(5u128),
+            vote_option_tree_depth: Uint256::from_u128(1u128),
+        };
+        let init_msg = InstantiateMsg {
+            parameters,
+            coordinator: PubKey {
+                x: uint256_from_decimal_string(
+                    "3557592161792765812904087712812111121909518311142005886657252371904276697771",
+                ),
+                y: uint256_from_decimal_string(
+                    "4363822302427519764561660537570341277214758164895027920046745209970137856681",
+                ),
+            },
+            voice_credit_amount: Uint256::from_u128(100u128),
+            vote_option_map: vec![
+                "Option 1".to_string(),
+                "Option 2".to_string(),
+                "Option 3".to_string(),
+                "Option 4".to_string(),
+                "Option 5".to_string(),
+            ],
+            pre_deactivate_root: Uint256::from_u128(0u128),
+            round_info,
+            whitelist,
+            voting_time,
+            circuit_type,
+            certification_system,
+            operator: operator(),
+            admin: owner(),
+            fee_recipient: fee_recipient(),
+            oracle_whitelist_pubkey: Some(oracle_whitelist_pubkey),
+            pre_deactivate_coordinator: None,
+        };
+
+        app.instantiate_contract(
+            code_id.0,
+            Addr::unchecked(sender),
+            &init_msg,
+            &[],
+            label,
+            None,
+        )
+        .map(Self::from)
+    }
 }
 
 impl From<Addr> for MaciContract {
@@ -1121,4 +1255,32 @@ pub fn fee_recipient() -> Addr {
 
 pub fn operator() -> Addr {
     Addr::unchecked("operator")
+}
+
+// Test data for oracle mode
+pub fn test_pubkey1() -> PubKey {
+    PubKey {
+        x: uint256_from_decimal_string(
+            "3557592161792765812904087712812111121909518311142005886657252371904276697771",
+        ),
+        y: uint256_from_decimal_string(
+            "4363822302427519764561660537570341277214758164895027920046745209970137856681",
+        ),
+    }
+}
+
+pub fn test_pubkey2() -> PubKey {
+    PubKey {
+        x: uint256_from_decimal_string(
+            "1234567890123456789012345678901234567890123456789012345678901234567890123456",
+        ),
+        y: uint256_from_decimal_string(
+            "9876543210987654321098765432109876543210987654321098765432109876543210987654",
+        ),
+    }
+}
+
+// Generate test oracle pubkey
+pub fn test_oracle_pubkey() -> String {
+    "A9ekxvWjYNpnHTasS008PG+EuF2ssIkUPaDdnn8ZdzTb".to_string()
 }

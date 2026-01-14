@@ -1,10 +1,10 @@
+use bech32::{self};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    attr, coins, from_json, to_json_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo,
-    Reply, Response, StdError, StdResult, SubMsg, SubMsgResponse, Uint128, Uint256, WasmMsg,
+    attr, coins, from_json, to_json_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Reply,
+    Response, StdError, StdResult, SubMsg, SubMsgResponse, Uint128, Uint256, WasmMsg,
 };
-use bech32::{self};
 
 use crate::error::ContractError;
 use crate::migrates::migrate_v0_1_4::migrate_v0_1_4;
@@ -20,7 +20,7 @@ use cw_amaci::msg::{
     InstantiateMsg as AMaciInstantiateMsg, InstantiationData as AMaciInstantiationData,
     WhitelistBase,
 };
-use cw_amaci::state::{MaciParameters, PubKey, RoundInfo, VotingTime};
+use cw_amaci::state::{PubKey, RoundInfo, VotingTime};
 use cw_utils::parse_instantiate_response_data;
 
 // version info for migration info
@@ -75,28 +75,32 @@ pub fn execute(
         ExecuteMsg::CreateRound {
             operator,
             max_voter,
-            max_option,
             voice_credit_amount,
+            vote_option_map,
             round_info,
             voting_time,
             whitelist,
             pre_deactivate_root,
             circuit_type,
             certification_system,
+            oracle_whitelist_pubkey,
+            pre_deactivate_coordinator,
         } => execute_create_round(
             deps,
             env,
             info,
             operator,
             max_voter,
-            max_option,
             voice_credit_amount,
+            vote_option_map,
             round_info,
             voting_time,
             whitelist,
             pre_deactivate_root,
             circuit_type,
             certification_system,
+            oracle_whitelist_pubkey,
+            pre_deactivate_coordinator,
         ),
         ExecuteMsg::SetValidators { addresses } => {
             execute_set_validators(deps, env, info, addresses)
@@ -138,47 +142,22 @@ pub fn execute_create_round(
     info: MessageInfo,
     operator: Addr,
     max_voter: Uint256,
-    max_option: Uint256,
     voice_credit_amount: Uint256,
+    vote_option_map: Vec<String>,
     round_info: RoundInfo,
     voting_time: VotingTime,
     whitelist: Option<WhitelistBase>,
     pre_deactivate_root: Uint256,
     circuit_type: Uint256,
     certification_system: Uint256,
+    oracle_whitelist_pubkey: Option<String>,
+    pre_deactivate_coordinator: Option<PubKey>,
 ) -> Result<Response, ContractError> {
     validate_dora_address(operator.as_str())?;
-    
-    let maci_parameters: MaciParameters;
-    let required_fee: Uint128;
 
-    if max_voter <= Uint256::from_u128(25u128) && max_option <= Uint256::from_u128(5u128) {
-        // state_tree_depth: 2
-        // vote_option_tree_depth: 1
-        // price: 20 DORA
-        maci_parameters = MaciParameters {
-            state_tree_depth: Uint256::from_u128(2u128),
-            int_state_tree_depth: Uint256::from_u128(1u128),
-            vote_option_tree_depth: Uint256::from_u128(1u128),
-            message_batch_size: Uint256::from_u128(5u128),
-        };
-        required_fee = Uint128::from(20000000000000000000u128);
-        // required_fee = Uint128::from(50000000000000000000u128);
-    } else if max_voter <= Uint256::from_u128(625u128) && max_option <= Uint256::from_u128(25u128) {
-        // state_tree_depth: 4
-        // vote_option_tree_depth: 2
-        // price: 750 DORA
-        maci_parameters = MaciParameters {
-            state_tree_depth: Uint256::from_u128(4u128),
-            int_state_tree_depth: Uint256::from_u128(2u128),
-            vote_option_tree_depth: Uint256::from_u128(2u128),
-            message_batch_size: Uint256::from_u128(25u128),
-        };
-        required_fee = Uint128::from(750000000000000000000u128);
-        // required_fee = Uint128::from(100000000000000000000u128);
-    } else {
-        return Err(ContractError::NoMatchedSizeCircuit {});
-    }
+    let max_option = Uint256::from_u128(vote_option_map.len() as u128);
+    let (required_fee, maci_parameters) =
+        crate::utils::calculate_round_fee_and_params(max_voter, max_option)?;
 
     let denom = "peaka".to_string();
     let mut amount: Uint128 = Uint128::new(0);
@@ -188,12 +167,19 @@ pub fn execute_create_round(
         }
     });
 
-    // check user's payment
-    if amount < required_fee {
-        return Err(ContractError::InsufficientFee {
-            required: required_fee,
-            provided: amount,
-        });
+    // check user's payment - require exact fee amount
+    if amount != required_fee {
+        if amount < required_fee {
+            return Err(ContractError::InsufficientFee {
+                required: required_fee,
+                provided: amount,
+            });
+        } else {
+            return Err(ContractError::ExactFeeRequired {
+                required: required_fee,
+                provided: amount,
+            });
+        }
     }
 
     if !MACI_OPERATOR_PUBKEY.has(deps.storage, &operator) {
@@ -203,7 +189,7 @@ pub fn execute_create_round(
 
     let total_fee = required_fee;
     let admin = ADMIN.load(deps.storage)?.admin;
-    
+
     // No longer send admin_fee directly to admin, instead send all fees to amaci contract
     // Add admin_fee information in the instantiate message for potential refunds in the future
 
@@ -213,14 +199,16 @@ pub fn execute_create_round(
         operator,
         admin: info.sender.clone(),
         fee_recipient: admin.clone(),
-        max_vote_options: max_option,
         voice_credit_amount,
+        vote_option_map,
         round_info,
         voting_time,
         whitelist,
         pre_deactivate_root,
         circuit_type,
         certification_system,
+        oracle_whitelist_pubkey,
+        pre_deactivate_coordinator,
     };
     let amaci_code_id = AMACI_CODE_ID.load(deps.storage)?;
     let instantiate_msg = SubMsg::reply_on_success(
@@ -252,7 +240,7 @@ pub fn execute_set_maci_operator(
     operator: Addr,
 ) -> Result<Response, ContractError> {
     validate_dora_address(operator.as_str())?;
-    
+
     if !is_validator(deps.as_ref(), &info.sender)? {
         return Err(ContractError::Unauthorized {});
     }
@@ -430,7 +418,7 @@ pub fn execute_change_operator(
     address: Addr,
 ) -> Result<Response, ContractError> {
     validate_dora_address(address.as_str())?;
-    
+
     if !is_admin(deps.as_ref(), info.sender.as_ref())? {
         Err(ContractError::Unauthorized {})
     } else {
@@ -581,8 +569,8 @@ pub fn reply_created_round(
             &amaci_return_data.coordinator.y.to_string(),
         ),
         attr(
-            "max_vote_options",
-            &amaci_return_data.max_vote_options.to_string(),
+            "vote_option_map",
+            format!("{:?}", amaci_return_data.vote_option_map),
         ),
         attr(
             "voice_credit_amount",

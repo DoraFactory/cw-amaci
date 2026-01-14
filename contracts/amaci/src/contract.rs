@@ -7,18 +7,19 @@ use crate::msg::{
 };
 use crate::state::{
     Admin, DelayRecord, DelayRecords, DelayType, Groth16ProofStr, MaciParameters, MessageData,
-    Period, PeriodStatus, PubKey, QuinaryTreeRoot, RoundInfo, StateLeaf, VotingTime, Whitelist,
-    WhitelistConfig, ADMIN, CERTSYSTEM, CIRCUITTYPE, COORDINATORHASH, CREATE_ROUND_WINDOW,
-    CURRENT_DEACTIVATE_COMMITMENT, CURRENT_STATE_COMMITMENT, CURRENT_TALLY_COMMITMENT,
-    DEACTIVATE_COUNT, DEACTIVATE_DELAY, DELAY_RECORDS, DMSG_CHAIN_LENGTH, DMSG_HASHES, DNODES,
-    FEEGRANTS, FIRST_DMSG_TIMESTAMP, GROTH16_DEACTIVATE_VKEYS, GROTH16_NEWKEY_VKEYS,
-    GROTH16_PROCESS_VKEYS, GROTH16_TALLY_VKEYS, LEAF_IDX_0, MACIPARAMETERS,
+    OracleWhitelistUser, Period, PeriodStatus, PubKey, QuinaryTreeRoot, RoundInfo, StateLeaf,
+    VotingTime, Whitelist, WhitelistConfig, ADMIN, CERTSYSTEM, CIRCUITTYPE, COORDINATORHASH,
+    CREATE_ROUND_WINDOW, CURRENT_DEACTIVATE_COMMITMENT, CURRENT_STATE_COMMITMENT,
+    CURRENT_TALLY_COMMITMENT, DEACTIVATE_COUNT, DEACTIVATE_DELAY, DELAY_RECORDS, DMSG_CHAIN_LENGTH,
+    DMSG_HASHES, DNODES, FEEGRANTS, FEE_RECIPIENT, FIRST_DMSG_TIMESTAMP, GROTH16_DEACTIVATE_VKEYS,
+    GROTH16_NEWKEY_VKEYS, GROTH16_PROCESS_VKEYS, GROTH16_TALLY_VKEYS, LEAF_IDX_0, MACIPARAMETERS,
     MACI_DEACTIVATE_MESSAGE, MACI_OPERATOR, MAX_LEAVES_COUNT, MAX_VOTE_OPTIONS, MSG_CHAIN_LENGTH,
-    MSG_HASHES, NODES, NULLIFIERS, NUMSIGNUPS, PENALTY_RATE, PERIOD, PRE_DEACTIVATE_ROOT,
+    MSG_HASHES, NODES, NULLIFIERS, NUMSIGNUPS, ORACLE_WHITELIST, ORACLE_WHITELIST_PUBKEY,
+    PENALTY_RATE, PERIOD, PRE_DEACTIVATE_COORDINATOR_HASH, PRE_DEACTIVATE_ROOT,
     PROCESSED_DMSG_COUNT, PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO,
-    SIGNUPED, STATEIDXINC, STATE_ROOT_BY_DMSG, TALLY_TIMEOUT, TOTAL_RESULT,
-    VOICECREDITBALANCE, VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS,
-    ZEROS_H10, TALLY_DELAY_MAX_HOURS, FEE_RECIPIENT
+    SIGNUPED, STATEIDXINC, STATE_ROOT_BY_DMSG, TALLY_DELAY_MAX_HOURS, TALLY_TIMEOUT, TOTAL_RESULT,
+    USED_ENC_PUB_KEYS, VOICECREDITBALANCE, VOICE_CREDIT_AMOUNT, VOTEOPTIONMAP, VOTINGTIME,
+    WHITELIST, ZEROS, ZEROS_H10,
 };
 use cosmwasm_schema::cw_serde;
 #[cfg(not(feature = "library"))]
@@ -29,15 +30,40 @@ use pairing_ce::bn256::Bn256;
 
 use crate::utils::{hash2, hash5, hash_256_uint256_list, uint256_from_hex_string};
 use cosmwasm_std::{
-    attr, coins, to_json_binary, Addr, BankMsg, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
-    Response, StdResult, Timestamp, Uint128, Uint256, Decimal,
+    attr, coins, to_json_binary, Addr, BankMsg, Binary, CosmosMsg, Decimal, Deps, DepsMut, Env,
+    MessageInfo, Response, StdResult, Timestamp, Uint128, Uint256,
 };
+
+use sha2::{Digest, Sha256};
 
 use bellman_ce_verifier::{prepare_verifying_key, verify_proof as groth16_verify};
 
 use ff_ce::PrimeField as Fr;
 
 use hex;
+
+/// Convert a contract address to Uint256 format
+/// This function takes the address bytes and converts them to a Uint256
+fn address_to_uint256(address: &Addr) -> Uint256 {
+    let address_bytes = address.as_bytes();
+
+    // Use SHA256 hash to convert the address to a fixed-length 32-byte format
+    let mut hasher = Sha256::new();
+    hasher.update(address_bytes);
+    let hash_result = hasher.finalize();
+
+    // Convert the hash bytes to Uint256
+    let mut bytes = [0u8; 32];
+    bytes.copy_from_slice(&hash_result[..]);
+
+    // Convert bytes to Uint256 (big-endian)
+    let mut uint256_bytes = [0u8; 32];
+    for (i, &byte) in bytes.iter().enumerate() {
+        uint256_bytes[31 - i] = byte; // Reverse for little-endian to big-endian conversion
+    }
+
+    Uint256::from_be_bytes(uint256_bytes)
+}
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:cw-amaci";
@@ -57,7 +83,6 @@ pub fn instantiate(
     };
     ADMIN.save(deps.storage, &admin)?;
 
-    // An error will be thrown if the number of vote options exceeds the circuit's capacity.
     let vote_option_max_amount = Uint256::from_u128(
         5u128.pow(
             msg.parameters
@@ -67,9 +92,10 @@ pub fn instantiate(
                 .unwrap(),
         ),
     );
-    if msg.max_vote_options > vote_option_max_amount {
+    let actual_vote_options = Uint256::from_u128(msg.vote_option_map.len() as u128);
+    if actual_vote_options > vote_option_max_amount {
         return Err(ContractError::MaxVoteOptionsExceeded {
-            current: msg.max_vote_options,
+            current: actual_vote_options,
             max_allowed: vote_option_max_amount,
         });
     }
@@ -122,6 +148,11 @@ pub fn instantiate(
         None => {}
     }
 
+    // Save oracle whitelist pubkey if provided
+    if let Some(oracle_pubkey) = msg.oracle_whitelist_pubkey {
+        ORACLE_WHITELIST_PUBKEY.save(deps.storage, &oracle_pubkey)?;
+    }
+
     // Save the MACI parameters to storage
     MACIPARAMETERS.save(deps.storage, &msg.parameters)?;
     let qtr_lab = QuinaryTreeRoot {
@@ -159,6 +190,13 @@ pub fn instantiate(
 
     // Save the pre_deactivate_root value to storage
     PRE_DEACTIVATE_ROOT.save(deps.storage, &msg.pre_deactivate_root)?;
+
+    // Calculate and save the pre_deactivate_coordinator hash if provided
+    if let Some(pre_deactivate_coordinator) = msg.pre_deactivate_coordinator {
+        let pre_deactivate_coordinator_hash =
+            hash2([pre_deactivate_coordinator.x, pre_deactivate_coordinator.y]);
+        PRE_DEACTIVATE_COORDINATOR_HASH.save(deps.storage, &pre_deactivate_coordinator_hash)?;
+    }
 
     let vkey = match_vkeys(&msg.parameters)?;
 
@@ -202,7 +240,13 @@ pub fn instantiate(
     NODES.save(
         deps.storage,
         Uint256::from_u128(0u128).to_be_bytes().to_vec(),
-        &Uint256::from_u128(0u128),
+        &zeros_h10[msg
+            .parameters
+            .state_tree_depth
+            .to_string()
+            .parse::<usize>()
+            .unwrap()],
+        // &Uint256::from_u128(0u128),
     )?;
 
     // Define an array of zero values
@@ -239,7 +283,10 @@ pub fn instantiate(
     CURRENT_TALLY_COMMITMENT.save(deps.storage, &Uint256::from_u128(0u128))?;
     PROCESSED_USER_COUNT.save(deps.storage, &Uint256::from_u128(0u128))?;
     NUMSIGNUPS.save(deps.storage, &Uint256::from_u128(0u128))?;
-    MAX_VOTE_OPTIONS.save(deps.storage, &msg.max_vote_options)?;
+    MAX_VOTE_OPTIONS.save(
+        deps.storage,
+        &Uint256::from_u128(msg.vote_option_map.len() as u128),
+    )?;
     VOICE_CREDIT_AMOUNT.save(deps.storage, &msg.voice_credit_amount)?;
 
     PROCESSED_DMSG_COUNT.save(deps.storage, &Uint256::from_u128(0u128))?;
@@ -275,11 +322,7 @@ pub fn instantiate(
         &Uint256::from_u128(0u128),
     )?;
 
-    let mut vote_option_map: Vec<String> = Vec::new();
-    for _ in 0..msg.max_vote_options.to_string().parse().unwrap() {
-        vote_option_map.push(String::new());
-    }
-    VOTEOPTIONMAP.save(deps.storage, &vote_option_map)?;
+    VOTEOPTIONMAP.save(deps.storage, &msg.vote_option_map)?;
     ROUNDINFO.save(deps.storage, &msg.round_info)?;
 
     VOTINGTIME.save(deps.storage, &msg.voting_time)?;
@@ -293,7 +336,7 @@ pub fn instantiate(
     PERIOD.save(deps.storage, &period)?;
 
     MACI_OPERATOR.save(deps.storage, &msg.operator)?;
-    
+
     FEE_RECIPIENT.save(deps.storage, &msg.fee_recipient)?;
 
     let circuit_type = if msg.circuit_type == Uint256::from_u128(0u128) {
@@ -336,7 +379,8 @@ pub fn instantiate(
         coordinator: msg.coordinator.clone(),
         admin: msg.admin.clone(),
         operator: msg.operator.clone(),
-        max_vote_options: msg.max_vote_options.clone(),
+        vote_option_map: msg.vote_option_map.clone(),
+        // max_vote_options: Uint256::from_u128(msg.vote_option_map.len() as u128),
         voice_credit_amount: msg.voice_credit_amount.clone(),
         round_info: msg.round_info.clone(),
         voting_time: msg.voting_time.clone(),
@@ -361,7 +405,7 @@ pub fn instantiate(
         attr("round_title", &msg.round_info.title.to_string()),
         attr("coordinator_pubkey_x", &msg.coordinator.x.to_string()),
         attr("coordinator_pubkey_y", &msg.coordinator.y.to_string()),
-        attr("max_vote_options", &msg.max_vote_options.to_string()),
+        attr("max_vote_options", &msg.vote_option_map.len().to_string()),
         attr("voice_credit_amount", &msg.voice_credit_amount.to_string()),
         attr("pre_deactivate_root", &msg.pre_deactivate_root.to_string()),
         attr(
@@ -424,7 +468,10 @@ pub fn execute(
             execute_set_vote_options_map(deps, env, info, vote_option_map)
         }
         // ExecuteMsg::StartVotingPeriod {} => execute_start_voting_period(deps, env, info),
-        ExecuteMsg::SignUp { pubkey } => execute_sign_up(deps, env, info, pubkey),
+        ExecuteMsg::SignUp {
+            pubkey,
+            certificate,
+        } => execute_sign_up(deps, env, info, pubkey, certificate),
         // ExecuteMsg::StopVotingPeriod {} => execute_stop_voting_period(deps, env, info),
         ExecuteMsg::PublishDeactivateMessage {
             message,
@@ -597,38 +644,100 @@ pub fn execute_set_vote_options_map(
     }
 }
 
-// in voting
+// in voting - unified signup for both traditional and oracle modes
 pub fn execute_sign_up(
     mut deps: DepsMut,
     env: Env,
     info: MessageInfo,
     pubkey: PubKey,
+    certificate: Option<String>,
 ) -> Result<Response, ContractError> {
     let voting_time = VOTINGTIME.load(deps.storage)?;
-    check_voting_time(env, voting_time)?;
-    if !is_whitelist(deps.as_ref(), &info.sender)? {
-        return Err(ContractError::Unauthorized {});
-    }
+    check_voting_time(env.clone(), voting_time)?;
 
-    if is_register(deps.as_ref(), &info.sender)? {
-        return Err(ContractError::UserAlreadyRegistered {});
-    }
-    // let user_balance = user_balance_of(deps.as_ref(), info.sender.as_ref())?;
-    // if user_balance == Uint256::from_u128(0u128) {
-    //     return Err(ContractError::Unauthorized {});
-    // }
+    // Determine which mode to use based on certificate parameter
+    let is_oracle_mode = certificate.is_some();
+
+    // Load voice credit amount (unified for both modes)
     let voice_credit_amount = VOICE_CREDIT_AMOUNT.load(deps.storage)?;
 
-    let mut num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
+    if is_oracle_mode {
+        // Oracle mode: verify signature using voice_credit_amount
+        let certificate = certificate.unwrap();
 
+        // Check if oracle whitelist pubkey exists
+        let oracle_whitelist_pubkey = ORACLE_WHITELIST_PUBKEY.may_load(deps.storage)?;
+        if oracle_whitelist_pubkey.is_none() {
+            return Err(ContractError::OracleWhitelistNotConfigured {});
+        }
+        let oracle_pubkey_str = oracle_whitelist_pubkey.unwrap();
+
+        // Verify oracle signature using voice_credit_amount as the standard amount
+        // Convert contract address to uint256 format to match api-maci
+        let contract_address_uint256 = address_to_uint256(&env.contract.address);
+
+        let payload = serde_json::json!({
+            "amount": voice_credit_amount.to_string(),
+            "contract_address": contract_address_uint256.to_string(),
+            "pubkey_x": pubkey.x.to_string(),
+            "pubkey_y": pubkey.y.to_string(),
+        });
+
+        let msg = payload.to_string().into_bytes();
+        let hash = Sha256::digest(&msg);
+
+        let certificate_binary =
+            Binary::from_base64(&certificate).map_err(|_| ContractError::InvalidBase64 {})?;
+        let oracle_pubkey_binary =
+            Binary::from_base64(&oracle_pubkey_str).map_err(|_| ContractError::InvalidBase64 {})?;
+        let verify_result = deps
+            .api
+            .secp256k1_verify(
+                hash.as_ref(),
+                certificate_binary.as_slice(),
+                oracle_pubkey_binary.as_slice(),
+            )
+            .map_err(|_| ContractError::VerificationFailed {})?;
+        if !verify_result {
+            return Err(ContractError::InvalidSignature {});
+        }
+
+        // Check if user already signed up in oracle mode - use pubkey instead of sender
+        if ORACLE_WHITELIST.has(
+            deps.storage,
+            &(
+                pubkey.x.to_be_bytes().to_vec(),
+                pubkey.y.to_be_bytes().to_vec(),
+            ),
+        ) {
+            return Err(ContractError::AlreadySignedUp {});
+        }
+
+        // Oracle verification passed - user is qualified
+        // In amaci, all verified users get the same voice_credit_amount
+    } else {
+        // Traditional mode: check if whitelist exists
+        let whitelist = WHITELIST.may_load(deps.storage)?;
+        if whitelist.is_none() {
+            return Err(ContractError::WhitelistNotConfigured {});
+        }
+
+        // Traditional mode: check whitelist
+        if !is_whitelist(deps.as_ref(), &info.sender)? {
+            return Err(ContractError::Unauthorized {});
+        }
+
+        if is_register(deps.as_ref(), &info.sender)? {
+            return Err(ContractError::UserAlreadyRegistered {});
+        }
+    }
+
+    let mut num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
     let max_leaves_count = MAX_LEAVES_COUNT.load(deps.storage)?;
 
-    // // Load the scalar field value
+    // Load the scalar field value
     let snark_scalar_field =
         uint256_from_hex_string("30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001");
-    // let snark_scalar_field = uint256_from_decimal_string(
-    // "21888242871839275222246405745257275088548364400416034343698204186575808495617",
-    // );
 
     // Check if the number of sign-ups is less than the maximum number of leaves
     assert!(num_sign_ups < max_leaves_count, "full");
@@ -638,7 +747,7 @@ pub fn execute_sign_up(
         "MACI: pubkey values should be less than the snark scalar field"
     );
 
-    // Create a state leaf with the provided pubkey and amount
+    // Create a state leaf with the provided pubkey and voice credit amount
     let state_leaf = StateLeaf {
         pub_key: pubkey.clone(),
         voice_credit_balance: voice_credit_amount,
@@ -652,22 +761,42 @@ pub fn execute_sign_up(
     state_enqueue(&mut deps, state_leaf)?;
     num_sign_ups += Uint256::from_u128(1u128);
 
-    // Save the updated state index, voice credit balance, and number of sign-ups
-    // STATEIDXINC.save(deps.storage, &info.sender, &num_sign_ups)?;
-    // VOICECREDITBALANCE.save(
-    //     deps.storage,
-    //     state_index.to_be_bytes().to_vec(),
-    //     &voice_credit_amount,
-    // )?;
+    // Save the updated state index and number of sign-ups
     NUMSIGNUPS.save(deps.storage, &num_sign_ups)?;
     SIGNUPED.save(deps.storage, pubkey.x.to_be_bytes().to_vec(), &num_sign_ups)?;
 
-    let mut whitelist = WHITELIST.load(deps.storage)?;
-    whitelist.register(&info.sender);
-    WHITELIST.save(deps.storage, &whitelist)?;
+    // Update storage based on mode
+    if is_oracle_mode {
+        // Save oracle whitelist user - use pubkey instead of sender
+        let oracle_user = OracleWhitelistUser {
+            balance: voice_credit_amount,
+            is_register: true,
+        };
+        ORACLE_WHITELIST.save(
+            deps.storage,
+            &(
+                pubkey.x.to_be_bytes().to_vec(),
+                pubkey.y.to_be_bytes().to_vec(),
+            ),
+            &oracle_user,
+        )?;
+    } else {
+        // Update traditional whitelist
+        let mut whitelist = WHITELIST.load(deps.storage)?;
+        whitelist.register(&info.sender);
+        WHITELIST.save(deps.storage, &whitelist)?;
+    }
 
     Ok(Response::new()
         .add_attribute("action", "sign_up")
+        .add_attribute(
+            "mode",
+            if is_oracle_mode {
+                "oracle"
+            } else {
+                "traditional"
+            },
+        )
         .add_attribute("state_idx", state_index.to_string())
         .add_attribute(
             "pubkey",
@@ -701,6 +830,15 @@ pub fn execute_publish_message(
         && enc_pub_key.x < snark_scalar_field
         && enc_pub_key.y < snark_scalar_field
     {
+        // Check if enc_pub_key has already been used
+        let pubkey_storage_key = generate_pubkey_storage_key(&enc_pub_key);
+        if USED_ENC_PUB_KEYS.has(deps.storage, pubkey_storage_key.clone()) {
+            return Err(ContractError::EncPubKeyAlreadyUsed {});
+        }
+
+        // Mark this enc_pub_key as used
+        USED_ENC_PUB_KEYS.save(deps.storage, pubkey_storage_key, &true)?;
+
         let mut msg_chain_length = MSG_CHAIN_LENGTH.load(deps.storage)?;
         let old_msg_hashes =
             MSG_HASHES.load(deps.storage, msg_chain_length.to_be_bytes().to_vec())?;
@@ -758,10 +896,16 @@ pub fn execute_publish_deactivate_message(
 
     let maci_parameters: MaciParameters = MACIPARAMETERS.load(deps.storage)?;
     // Calculate maximum allowed deactivate messages: 5^(state_tree_depth+2)-1
-    let max_deactivate_messages = Uint256::from_u128(5u128).pow((maci_parameters.state_tree_depth + 
-        Uint256::from_u128(2u128)).to_string().parse().unwrap()) - Uint256::from_u128(1u128);
+    let max_deactivate_messages = Uint256::from_u128(5u128).pow(
+        (maci_parameters.state_tree_depth + Uint256::from_u128(2u128))
+            .to_string()
+            .parse()
+            .unwrap(),
+    ) - Uint256::from_u128(1u128);
     if dmsg_chain_length + Uint256::from_u128(1u128) > max_deactivate_messages {
-        return Err(ContractError::MaxDeactivateMessagesReached { max_deactivate_messages });
+        return Err(ContractError::MaxDeactivateMessagesReached {
+            max_deactivate_messages,
+        });
     }
     // let snark_scalar_field = uint256_from_decimal_string(
     //     "21888242871839275222246405745257275088548364400416034343698204186575808495617",
@@ -1204,9 +1348,13 @@ pub fn execute_pre_add_new_key(
     let mut input: [Uint256; 7] = [Uint256::zero(); 7];
 
     input[0] = PRE_DEACTIVATE_ROOT.load(deps.storage)?;
-    // input[1] = COORDINATORHASH.load(deps.storage)?;
-    input[1] =
-        uint256_from_hex_string("d53841ab0494365b341d519dcfaf0f69e375ffa406eb4484d38f55e9bdef10b");
+
+    // Use pre_deactivate_coordinator hash if available, otherwise fall back to COORDINATORHASH
+    input[1] = match PRE_DEACTIVATE_COORDINATOR_HASH.may_load(deps.storage)? {
+        Some(hash) => hash,
+        None => COORDINATORHASH.load(deps.storage)?,
+    };
+
     input[2] = nullifier;
     input[3] = d[0];
     input[4] = d[1];
@@ -1478,11 +1626,17 @@ pub fn execute_stop_processing_period(
         return Err(ContractError::PeriodError {});
     }
 
-    let processed_msg_count = PROCESSED_MSG_COUNT.load(deps.storage)?;
-    let msg_chain_length = MSG_CHAIN_LENGTH.load(deps.storage)?;
+    let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
 
-    if processed_msg_count != msg_chain_length {
-        return Err(ContractError::MsgLeftProcess {});
+    // If there are registered users, check if all messages have been processed
+    // If num_sign_ups is 0, skip the message processing check as all votes are invalid
+    if num_sign_ups != Uint256::zero() {
+        let processed_msg_count = PROCESSED_MSG_COUNT.load(deps.storage)?;
+        let msg_chain_length = MSG_CHAIN_LENGTH.load(deps.storage)?;
+
+        if processed_msg_count != msg_chain_length {
+            return Err(ContractError::MsgLeftProcess {});
+        }
     }
 
     let period = Period {
@@ -1834,7 +1988,7 @@ fn execute_claim(deps: DepsMut, env: Env, _info: MessageInfo) -> Result<Response
     let penalty_amount = withdraw_amount - operator_reward;
 
     let mut messages: Vec<CosmosMsg> = vec![];
-    
+
     // Send 10% to fee_recipient
     if !fee_amount.is_zero() {
         messages.push(CosmosMsg::Bank(BankMsg::Send {
@@ -2009,6 +2163,14 @@ pub fn hash_message_and_enc_pub_key(
     return m_n_hash;
 }
 
+// Generate storage key for PubKey
+fn generate_pubkey_storage_key(pubkey: &PubKey) -> Vec<u8> {
+    let mut key = Vec::new();
+    key.extend_from_slice(&pubkey.x.to_be_bytes());
+    key.extend_from_slice(&pubkey.y.to_be_bytes());
+    key
+}
+
 // Only admin can execute
 fn is_admin(deps: Deps, sender: &str) -> StdResult<bool> {
     let cfg = ADMIN.load(deps.storage)?;
@@ -2115,6 +2277,10 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 .may_load(deps.storage)?
                 .unwrap_or_default(),
         ),
+        QueryMsg::QueryPreDeactivateCoordinatorHash {} => {
+            let coordinator_hash = PRE_DEACTIVATE_COORDINATOR_HASH.may_load(deps.storage)?;
+            to_json_binary(&coordinator_hash)
+        }
         QueryMsg::GetDelayRecords {} => {
             let records = DELAY_RECORDS
                 .may_load(deps.storage)?
@@ -2125,6 +2291,28 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             let delay_info = calculate_tally_delay(deps)
                 .map_err(|e| cosmwasm_std::StdError::generic_err(e.to_string()))?;
             to_json_binary(&delay_info)
+        }
+        QueryMsg::QueryOracleWhitelistConfig {} => {
+            let pubkey = ORACLE_WHITELIST_PUBKEY.may_load(deps.storage)?;
+            to_json_binary(&pubkey)
+        }
+        QueryMsg::CanSignUpWithOracle {
+            pubkey,
+            certificate,
+        } => {
+            let can_signup = can_sign_up_with_oracle(deps, _env, pubkey, certificate)?;
+            to_json_binary(&can_signup)
+        }
+        QueryMsg::WhiteBalanceOf {
+            pubkey,
+            certificate,
+        } => {
+            let balance = user_balance_of_oracle(deps, _env, pubkey, certificate)?;
+            to_json_binary(&balance)
+        }
+        QueryMsg::QueryCurrentStateCommitment {} => {
+            let current_state_commitment = CURRENT_STATE_COMMITMENT.may_load(deps.storage)?;
+            to_json_binary(&current_state_commitment)
         }
     }
 }
@@ -2264,4 +2452,108 @@ pub fn calculate_tally_delay(deps: Deps) -> Result<TallyDelayInfo, ContractError
         msg_chain_length,
         calculated_hours,
     })
+}
+
+// Check if user can sign up with oracle
+fn can_sign_up_with_oracle(
+    deps: Deps,
+    env: Env,
+    pubkey: PubKey,
+    certificate: String,
+) -> StdResult<bool> {
+    // Check if oracle whitelist pubkey exists
+    let oracle_whitelist_pubkey = ORACLE_WHITELIST_PUBKEY.may_load(deps.storage)?;
+    if oracle_whitelist_pubkey.is_none() {
+        return Ok(false);
+    }
+    let oracle_pubkey_str = oracle_whitelist_pubkey.unwrap();
+
+    // Use the contract's voice_credit_amount for verification
+    let voice_credit_amount = VOICE_CREDIT_AMOUNT.load(deps.storage)?;
+
+    // Convert contract address to uint256 format to match api-maci
+    let contract_address_uint256 = address_to_uint256(&env.contract.address);
+
+    let payload = serde_json::json!({
+        "amount": voice_credit_amount.to_string(),
+        "contract_address": contract_address_uint256.to_string(),
+        "pubkey_x": pubkey.x.to_string(),
+        "pubkey_y": pubkey.y.to_string(),
+    });
+
+    let msg = payload.to_string().into_bytes();
+    let hash = Sha256::digest(&msg);
+
+    let certificate_binary = Binary::from_base64(&certificate)?;
+    let oracle_pubkey_binary = Binary::from_base64(&oracle_pubkey_str)?;
+    let verify_result = deps.api.secp256k1_verify(
+        hash.as_ref(),
+        certificate_binary.as_slice(),
+        oracle_pubkey_binary.as_slice(),
+    )?;
+
+    Ok(verify_result)
+}
+
+// Get user balance with oracle verification
+fn user_balance_of_oracle(
+    deps: Deps,
+    env: Env,
+    pubkey: PubKey,
+    certificate: String,
+) -> StdResult<Uint256> {
+    // Check if user already registered (by pubkey)
+    if ORACLE_WHITELIST.has(
+        deps.storage,
+        &(
+            pubkey.x.to_be_bytes().to_vec(),
+            pubkey.y.to_be_bytes().to_vec(),
+        ),
+    ) {
+        let cfg = ORACLE_WHITELIST.load(
+            deps.storage,
+            &(
+                pubkey.x.to_be_bytes().to_vec(),
+                pubkey.y.to_be_bytes().to_vec(),
+            ),
+        )?;
+        return Ok(cfg.balance_of());
+    }
+
+    // Check if oracle whitelist pubkey exists
+    let oracle_whitelist_pubkey = ORACLE_WHITELIST_PUBKEY.may_load(deps.storage)?;
+    if oracle_whitelist_pubkey.is_none() {
+        return Ok(Uint256::zero());
+    }
+    let oracle_pubkey_str = oracle_whitelist_pubkey.unwrap();
+
+    // Use the contract's voice_credit_amount for verification
+    let voice_credit_amount = VOICE_CREDIT_AMOUNT.load(deps.storage)?;
+
+    // Convert contract address to uint256 format to match api-maci
+    let contract_address_uint256 = address_to_uint256(&env.contract.address);
+
+    let payload = serde_json::json!({
+        "amount": voice_credit_amount.to_string(),
+        "contract_address": contract_address_uint256.to_string(),
+        "pubkey_x": pubkey.x.to_string(),
+        "pubkey_y": pubkey.y.to_string(),
+    });
+
+    let msg = payload.to_string().into_bytes();
+    let hash = Sha256::digest(&msg);
+
+    let certificate_binary = Binary::from_base64(&certificate)?;
+    let oracle_pubkey_binary = Binary::from_base64(&oracle_pubkey_str)?;
+    let verify_result = deps.api.secp256k1_verify(
+        hash.as_ref(),
+        certificate_binary.as_slice(),
+        oracle_pubkey_binary.as_slice(),
+    )?;
+
+    if verify_result {
+        // Always return voice_credit_amount if verification passes
+        return Ok(voice_credit_amount);
+    }
+    Ok(Uint256::zero())
 }

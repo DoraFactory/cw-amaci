@@ -18,8 +18,6 @@
 *.iml
 .idea
 
-Cargo.lock
-
 # claude only
 .claude
 CLAUDE.md

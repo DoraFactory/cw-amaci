@@ -14,7 +14,8 @@ use crate::state::{
     MACIPARAMETERS, MAX_LEAVES_COUNT, MAX_VOTE_OPTIONS, MAX_WHITELIST_NUM, MSG_CHAIN_LENGTH,
     MSG_HASHES, NODES, NUMSIGNUPS, ORACLE_WHITELIST_CONFIG, PERIOD, PLONK_PROCESS_VKEYS,
     PLONK_TALLY_VKEYS, PROCESSED_MSG_COUNT, PROCESSED_USER_COUNT, QTR_LIB, RESULT, ROUNDINFO,
-    STATEIDXINC, TOTAL_RESULT, VOICECREDITBALANCE, VOTEOPTIONMAP, VOTINGTIME, WHITELIST, ZEROS,
+    STATEIDXINC, TOTAL_RESULT, USED_ENC_PUB_KEYS, VOICECREDITBALANCE, VOTEOPTIONMAP, VOTINGTIME,
+    WHITELIST, ZEROS,
 };
 use sha2::{Digest as ShaDigest, Sha256};
 
@@ -121,7 +122,7 @@ pub fn instantiate(
     let fee_grant_amount = info
         .funds
         .iter()
-        .find(|coin| coin.denom == "peaka") // 或者使用适当的代币名称
+        .find(|coin| coin.denom == "peaka") // Or use appropriate token name
         .map(|coin| coin.amount)
         .unwrap_or_else(|| Uint128::zero());
 
@@ -511,7 +512,6 @@ pub fn execute_sign_up(
     }
 
     let oracle_whitelist_config = ORACLE_WHITELIST_CONFIG.load(deps.storage)?;
-    let whitelist_snapshot_height = oracle_whitelist_config.snapshot_height;
     let whitelist_ecosystem = oracle_whitelist_config.ecosystem;
     let whitelist_backend_pubkey = oracle_whitelist_config.backend_pubkey;
     let payload = serde_json::json!({
@@ -639,6 +639,15 @@ pub fn execute_publish_message(
         && enc_pub_key.x < snark_scalar_field
         && enc_pub_key.y < snark_scalar_field
     {
+        // Check if enc_pub_key has already been used
+        let pubkey_storage_key = generate_pubkey_storage_key(&enc_pub_key);
+        if USED_ENC_PUB_KEYS.has(deps.storage, pubkey_storage_key.clone()) {
+            return Err(ContractError::EncPubKeyAlreadyUsed {});
+        }
+
+        // Mark this enc_pub_key as used
+        USED_ENC_PUB_KEYS.save(deps.storage, pubkey_storage_key, &true)?;
+
         let mut msg_chain_length = MSG_CHAIN_LENGTH.load(deps.storage)?;
         let old_msg_hashes =
             MSG_HASHES.load(deps.storage, msg_chain_length.to_be_bytes().to_vec())?;
@@ -932,13 +941,19 @@ pub fn execute_stop_processing_period(
         return Err(ContractError::PeriodError {});
     }
 
-    // Check that all users have not been processed yet
-    let processed_msg_count = PROCESSED_MSG_COUNT.load(deps.storage)?;
-    let msg_chain_length = MSG_CHAIN_LENGTH.load(deps.storage)?;
+    let num_sign_ups = NUMSIGNUPS.load(deps.storage)?;
 
-    if processed_msg_count != msg_chain_length {
-        return Err(ContractError::MsgLeftProcess {});
+    // If there are registered users, check if all messages have been processed
+    // If num_sign_ups is 0, skip the message processing check as all votes are invalid
+    if num_sign_ups != Uint256::zero() {
+        let processed_msg_count = PROCESSED_MSG_COUNT.load(deps.storage)?;
+        let msg_chain_length = MSG_CHAIN_LENGTH.load(deps.storage)?;
+
+        if processed_msg_count != msg_chain_length {
+            return Err(ContractError::MsgLeftProcess {});
+        }
     }
+
     // Update the period status to Tallying
     let period = Period {
         status: PeriodStatus::Tallying,
@@ -1494,7 +1509,6 @@ fn user_balance_of(
     }
 
     let oracle_whitelist_config = ORACLE_WHITELIST_CONFIG.load(deps.storage)?;
-    let whitelist_snapshot_height = oracle_whitelist_config.snapshot_height;
     let whitelist_ecosystem = oracle_whitelist_config.ecosystem;
     let whitelist_backend_pubkey = oracle_whitelist_config.backend_pubkey;
     let payload = serde_json::json!({
@@ -1665,6 +1679,14 @@ pub fn hash_message_and_enc_pub_key(
     return m_n_hash;
 }
 
+// Generate storage key for PubKey
+fn generate_pubkey_storage_key(pubkey: &PubKey) -> Vec<u8> {
+    let mut key = Vec::new();
+    key.extend_from_slice(&pubkey.x.to_be_bytes());
+    key.extend_from_slice(&pubkey.y.to_be_bytes());
+    key
+}
+
 // Only admin can execute
 fn can_execute(deps: Deps, sender: &str) -> StdResult<bool> {
     let cfg = ADMIN.load(deps.storage)?;
@@ -1777,6 +1799,10 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::QueryOracleWhitelistConfig {} => {
             to_json_binary::<OracleWhitelistConfig>(&ORACLE_WHITELIST_CONFIG.load(deps.storage)?)
         }
+        QueryMsg::QueryCurrentStateCommitment {} => {
+            let current_state_commitment = CURRENT_STATE_COMMITMENT.may_load(deps.storage)?;
+            to_json_binary(&current_state_commitment)
+        }
     }
 }
 
@@ -1805,6 +1831,6 @@ mod tests {}
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(_deps: DepsMut, _env: Env, _msg: Reply) -> Result<Response, ContractError> {
-    // Oracle MACI合约本身不需要处理任何reply，但需要这个函数来支持multitest
+    // Oracle MACI contract itself does not need to handle any reply, but needs this function to support multitest
     Ok(Response::default())
 }

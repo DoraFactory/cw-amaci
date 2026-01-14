@@ -147,6 +147,9 @@ pub const MSG_CHAIN_LENGTH: Item<Uint256> = Item::new("msg_chain_length");
 pub const PROCESSED_MSG_COUNT: Item<Uint256> = Item::new("processed_msg_count");
 pub const PROCESSED_USER_COUNT: Item<Uint256> = Item::new("processed_user_count");
 
+// Storage for tracking used enc_pub_keys to ensure uniqueness
+pub const USED_ENC_PUB_KEYS: Map<Vec<u8>, bool> = Map::new("used_enc_pub_keys");
+
 pub const DMSG_CHAIN_LENGTH: Item<Uint256> = Item::new("dmsg_chain_length");
 pub const DMSG_HASHES: Map<Vec<u8>, Uint256> = Map::new("dmsg_hashes");
 pub const STATE_ROOT_BY_DMSG: Map<Vec<u8>, Uint256> = Map::new("state_root_by_dmsg");
@@ -157,6 +160,8 @@ pub const NULLIFIERS: Map<Vec<u8>, bool> = Map::new("nullifiers");
 pub const CURRENT_DEACTIVATE_COMMITMENT: Item<Uint256> = Item::new("current_deactivate_commitment");
 pub const SIGNUPED: Map<Vec<u8>, Uint256> = Map::new("signuped");
 pub const PRE_DEACTIVATE_ROOT: Item<Uint256> = Item::new("pre_deactivate_root");
+pub const PRE_DEACTIVATE_COORDINATOR_HASH: Item<Uint256> =
+    Item::new("pre_deactivate_coordinator_hash");
 
 pub const DEACTIVATE_COUNT: Item<u128> = Item::new("deactivate_count");
 
@@ -345,6 +350,29 @@ pub struct DelayRecords {
 }
 
 pub const DELAY_RECORDS: Item<DelayRecords> = Item::new("delay_records");
+
+// Oracle whitelist backend pubkey
+pub const ORACLE_WHITELIST_PUBKEY: Item<String> = Item::new("oracle_whitelist_pubkey");
+
+// Oracle whitelist storage per user
+#[cw_serde]
+pub struct OracleWhitelistUser {
+    pub balance: Uint256,
+    pub is_register: bool,
+}
+
+impl OracleWhitelistUser {
+    pub fn register(&mut self) {
+        self.is_register = true;
+    }
+
+    pub fn balance_of(&self) -> Uint256 {
+        return self.balance;
+    }
+}
+
+pub const ORACLE_WHITELIST: Map<&(Vec<u8>, Vec<u8>), OracleWhitelistUser> =
+    Map::new("oracle_whitelist");
 
 #[cfg(test)]
 mod tests {

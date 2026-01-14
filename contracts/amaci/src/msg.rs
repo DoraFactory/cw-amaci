@@ -17,8 +17,8 @@ pub struct InstantiateMsg {
     // pub groth16_tally_vkey: Groth16VKeyType,
     // pub groth16_deactivate_vkey: Groth16VKeyType,
     // pub groth16_add_key_vkey: Groth16VKeyType,
-    pub max_vote_options: Uint256,
     pub voice_credit_amount: Uint256,
+    pub vote_option_map: Vec<String>,
 
     pub round_info: RoundInfo,
     pub voting_time: VotingTime,
@@ -28,6 +28,11 @@ pub struct InstantiateMsg {
 
     pub circuit_type: Uint256,         // <0: 1p1v | 1: pv>
     pub certification_system: Uint256, // <0: groth16 | 1: plonk>
+
+    // Oracle whitelist pubkey (optional)
+    pub oracle_whitelist_pubkey: Option<String>,
+    // Pre Deactivate Coordinator
+    pub pre_deactivate_coordinator: Option<PubKey>,
 }
 
 #[cw_serde]
@@ -70,6 +75,8 @@ pub enum ExecuteMsg {
     },
     SignUp {
         pubkey: PubKey, // user's pubkey
+        // Oracle mode parameter (optional)
+        certificate: Option<String>,
     },
     StartProcessPeriod {},
     PublishDeactivateMessage {
@@ -210,11 +217,26 @@ pub enum QueryMsg {
     #[returns(Uint256)]
     QueryPreDeactivateRoot {},
 
+    #[returns(Option<Uint256>)]
+    QueryPreDeactivateCoordinatorHash {},
+
     #[returns(DelayRecords)]
     GetDelayRecords {},
 
     #[returns(TallyDelayInfo)]
     GetTallyDelay {},
+
+    #[returns(Option<String>)]
+    QueryOracleWhitelistConfig {},
+
+    #[returns(bool)]
+    CanSignUpWithOracle { pubkey: PubKey, certificate: String },
+
+    #[returns(Uint256)]
+    WhiteBalanceOf { pubkey: PubKey, certificate: String },
+
+    #[returns(Uint256)]
+    QueryCurrentStateCommitment {},
 }
 
 #[cw_serde]
@@ -233,7 +255,8 @@ pub struct InstantiationData {
     pub coordinator: PubKey,
     pub admin: Addr,
     pub operator: Addr,
-    pub max_vote_options: Uint256,
+    pub vote_option_map: Vec<String>,
+    // pub max_vote_options: Uint256,
     pub voice_credit_amount: Uint256,
     pub round_info: RoundInfo,
     pub voting_time: VotingTime,

@@ -1,8 +1,9 @@
 pub mod contract;
 mod error;
+mod migrates;
 pub mod msg;
 pub mod state;
-mod migrates;
+pub mod utils;
 
 #[cfg(any(feature = "mt", test))]
 pub mod multitest;

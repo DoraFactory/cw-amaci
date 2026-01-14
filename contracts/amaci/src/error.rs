@@ -128,4 +128,32 @@ pub enum ContractError {
 
     #[error("Maximum number of deactivate messages ({max_deactivate_messages}) has been reached")]
     MaxDeactivateMessagesReached { max_deactivate_messages: Uint256 },
+
+    #[error("Encrypted public key already used")]
+    EncPubKeyAlreadyUsed {},
+
+    // Oracle whitelist related errors
+    #[error("Amount is zero")]
+    AmountIsZero {},
+
+    #[error("Oracle whitelist not configured")]
+    OracleWhitelistNotConfigured {},
+
+    #[error("Whitelist not configured")]
+    WhitelistNotConfigured {},
+
+    #[error("Invalid base64 encoding")]
+    InvalidBase64 {},
+
+    #[error("Verification failed")]
+    VerificationFailed {},
+
+    #[error("Invalid signature")]
+    InvalidSignature {},
+
+    #[error("Already signed up")]
+    AlreadySignedUp {},
+
+    #[error("Voting power is zero")]
+    VotingPowerIsZero {},
 }

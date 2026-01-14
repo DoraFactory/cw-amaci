@@ -40,14 +40,16 @@ pub enum ExecuteMsg {
     CreateRound {
         operator: Addr,
         max_voter: Uint256,
-        max_option: Uint256,
         voice_credit_amount: Uint256,
+        vote_option_map: Vec<String>,
         round_info: RoundInfo,
         voting_time: VotingTime,
         whitelist: Option<WhitelistBase>,
         pre_deactivate_root: Uint256,
         circuit_type: Uint256,
         certification_system: Uint256,
+        oracle_whitelist_pubkey: Option<String>,
+        pre_deactivate_coordinator: Option<PubKey>,
     },
     SetValidators {
         addresses: ValidatorSet,
